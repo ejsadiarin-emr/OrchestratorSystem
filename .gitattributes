@@ -1,0 +1,14 @@
+# Handle line endings automatically for all text files
+* text=auto
+
+# Ensure specific code files are always treated as text
+*.cs     text
+*.csproj text
+*.sln    text
+*.json   text
+*.script text
+
+# Keep binary files as-is
+*.png  binary
+*.jpg  binary
+*.sh text eol=lf

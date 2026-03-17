@@ -1,0 +1,6 @@
+@EJInstaller.Orchestrator_HostAddress = http://localhost:5124
+
+GET {{EJInstaller.Orchestrator_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
+using NUnit.Framework;
 using EJInstaller.Orchestrator;
 using EJInstaller.Orchestrator.Controllers;
 
@@ -19,10 +20,9 @@ public class InstallControllerTests
         _controller = new InstallController(_pipelineMock.Object, _loggerMock.Object);
     }
 
-    [Fact]
+    [Test]
     public async Task Install_ReturnsSuccess_WhenPipelineSucceeds()
     {
-        // Arrange
         var context = new InstallContext
         {
             PackageName = "SQLServer",
@@ -43,18 +43,16 @@ public class InstallControllerTests
             Version = "2022"
         };
 
-        // Act
         var result = await _controller.Install(request);
 
-        // Assert
-        var okResult = Assert.IsType<OkObjectResult>(result);
-        Assert.NotNull(okResult.Value);
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
+        var okResult = (OkObjectResult)result;
+        Assert.That(okResult.Value, Is.Not.Null);
     }
 
-    [Fact]
+    [Test]
     public async Task Install_ReturnsError_WhenPipelineFails()
     {
-        // Arrange
         var context = new InstallContext
         {
             PackageName = "SQLServer",
@@ -74,11 +72,10 @@ public class InstallControllerTests
             Version = "2022"
         };
 
-        // Act
         var result = await _controller.Install(request);
 
-        // Assert
-        var okResult = Assert.IsType<OkObjectResult>(result);
-        Assert.NotNull(okResult.Value);
+        Assert.That(result, Is.TypeOf<OkObjectResult>());
+        var okResult = (OkObjectResult)result;
+        Assert.That(okResult.Value, Is.Not.Null);
     }
 }

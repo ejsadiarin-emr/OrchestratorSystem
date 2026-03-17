@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Moq;
+using NUnit.Framework;
 using EJInstaller.Orchestrator;
 
 namespace EJInstaller.Orchestrator.Tests;
@@ -13,10 +14,9 @@ public class PipelineTests
         _loggerMock = new Mock<ILogger<Pipeline<InstallContext>>>();
     }
 
-    [Fact]
-    public void ExecuteAsync_RunsAllSteps_WhenAllPass()
+    [Test]
+    public async Task ExecuteAsync_RunsAllSteps_WhenAllPass()
     {
-        // Arrange
         var step1Mock = new Mock<IInstallStep<InstallContext>>();
         step1Mock.Setup(s => s.Name).Returns("Step1");
         step1Mock.Setup(s => s.CanExecute(It.IsAny<InstallContext>())).Returns(true);
@@ -33,19 +33,16 @@ public class PipelineTests
 
         var context = new InstallContext { PackageName = "TestPackage" };
 
-        // Act
-        var result = pipeline.ExecuteAsync(context).Result;
+        var result = await pipeline.ExecuteAsync(context);
 
-        // Assert
-        Assert.True(result.IsSuccessful);
+        Assert.That(result.IsSuccessful, Is.True);
         step1Mock.Verify(s => s.ExecuteAsync(It.IsAny<InstallContext>()), Times.Once);
         step2Mock.Verify(s => s.ExecuteAsync(It.IsAny<InstallContext>()), Times.Once);
     }
 
-    [Fact]
-    public void ExecuteAsync_StopsOnFailure_WhenStepThrows()
+    [Test]
+    public async Task ExecuteAsync_StopsOnFailure_WhenStepThrows()
     {
-        // Arrange
         var step1Mock = new Mock<IInstallStep<InstallContext>>();
         step1Mock.Setup(s => s.Name).Returns("Step1");
         step1Mock.Setup(s => s.CanExecute(It.IsAny<InstallContext>())).Returns(true);
@@ -63,20 +60,17 @@ public class PipelineTests
 
         var context = new InstallContext { PackageName = "TestPackage" };
 
-        // Act
-        var result = pipeline.ExecuteAsync(context).Result;
+        var result = await pipeline.ExecuteAsync(context);
 
-        // Assert
-        Assert.False(result.IsSuccessful);
-        Assert.Equal("Step 2 failed", result.ErrorMessage);
+        Assert.That(result.IsSuccessful, Is.False);
+        Assert.That(result.ErrorMessage, Is.EqualTo("Step 2 failed"));
         step1Mock.Verify(s => s.ExecuteAsync(It.IsAny<InstallContext>()), Times.Once);
         step2Mock.Verify(s => s.ExecuteAsync(It.IsAny<InstallContext>()), Times.Once);
     }
 
-    [Fact]
-    public void ExecuteAsync_SkipsStep_WhenCanExecuteReturnsFalse()
+    [Test]
+    public async Task ExecuteAsync_SkipsStep_WhenCanExecuteReturnsFalse()
     {
-        // Arrange
         var step1Mock = new Mock<IInstallStep<InstallContext>>();
         step1Mock.Setup(s => s.Name).Returns("Step1");
         step1Mock.Setup(s => s.CanExecute(It.IsAny<InstallContext>())).Returns(false);
@@ -86,17 +80,14 @@ public class PipelineTests
 
         var context = new InstallContext { PackageName = "" };
 
-        // Act
-        var result = pipeline.ExecuteAsync(context).Result;
+        await pipeline.ExecuteAsync(context);
 
-        // Assert
         step1Mock.Verify(s => s.ExecuteAsync(It.IsAny<InstallContext>()), Times.Never);
     }
 
-    [Fact]
-    public void ExecuteAsync_LogsEachStep()
+    [Test]
+    public async Task ExecuteAsync_LogsEachStep()
     {
-        // Arrange
         var stepMock = new Mock<IInstallStep<InstallContext>>();
         stepMock.Setup(s => s.Name).Returns("TestStep");
         stepMock.Setup(s => s.CanExecute(It.IsAny<InstallContext>())).Returns(true);
@@ -107,11 +98,8 @@ public class PipelineTests
 
         var context = new InstallContext();
 
-        // Act
-        pipeline.ExecuteAsync(context).Wait();
+        await pipeline.ExecuteAsync(context);
 
-        // Assert - just verify it ran without checking specific log calls
-        // (log verification would require capturing logger output)
-        Assert.True(true);
+        Assert.That(true, Is.True);
     }
 }

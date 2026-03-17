@@ -3,6 +3,16 @@ using EJInstaller.Orchestrator.Steps;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
 // Add services to the container
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -20,11 +30,11 @@ builder.Services.AddTransient<IPipeline<InstallContext>>(sp =>
 {
     var logger = sp.GetRequiredService<ILogger<Pipeline<InstallContext>>>();
     var pipeline = new Pipeline<InstallContext>(logger);
-    
+
     // Add steps in order
     pipeline.AddStep(sp.GetRequiredService<PreConditionCheckStep>());
     pipeline.AddStep(sp.GetRequiredService<CopyFilesStep>());
-    
+
     return pipeline;
 });
 
@@ -37,6 +47,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseCors();
 app.UseHttpsRedirection();
 app.MapControllers();
 

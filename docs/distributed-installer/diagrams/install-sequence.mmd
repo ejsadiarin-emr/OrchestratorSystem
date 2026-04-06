@@ -1,0 +1,33 @@
+sequenceDiagram
+    participant Admin as System Admin
+    participant UI as React UI
+    participant Orchestrator as Orchestrator API
+    participant Agent as Agent Service
+    participant Repo as Package Repo
+    participant Installer as Installer Adapter
+    participant Obs as OTel Pipeline
+
+    Admin->>UI: Submit install request
+    UI->>Orchestrator: POST /jobs
+    Orchestrator->>Orchestrator: Validate + queue job
+    Orchestrator->>Agent: Job available (pull claim)
+    Agent->>Orchestrator: Claim job
+    Agent->>Obs: Start root + step spans
+
+    Agent->>Agent: Prechecks
+    Agent->>Repo: Download artifact
+    Agent->>Agent: Verify signature/hash
+    Agent->>Installer: Execute install
+    Installer-->>Agent: Exit code/log
+    Agent->>Agent: Post-verify
+
+    alt Success
+        Agent->>Orchestrator: Report succeeded
+    else Failure
+        Agent->>Agent: Run rollback/compensation
+        Agent->>Orchestrator: Report failed/rolledback
+    end
+
+    Agent->>Obs: Emit final status telemetry
+    Orchestrator->>UI: Stream/fetch final state
+    UI-->>Admin: Show outcome and diagnostics

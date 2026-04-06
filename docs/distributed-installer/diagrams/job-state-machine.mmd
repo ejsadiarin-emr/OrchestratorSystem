@@ -1,0 +1,16 @@
+stateDiagram-v2
+    [*] --> Queued
+    Queued --> Assigned
+    Assigned --> PrecheckFailed
+    Assigned --> Installing
+    Installing --> VerifyFailed
+    Installing --> Failed
+    Installing --> Succeeded
+    VerifyFailed --> RollbackInProgress
+    Failed --> RollbackInProgress
+    RollbackInProgress --> RolledBack
+    Queued --> Cancelled
+    Assigned --> Cancelled
+    Succeeded --> [*]
+    RolledBack --> [*]
+    Cancelled --> [*]

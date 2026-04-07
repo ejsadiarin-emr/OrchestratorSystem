@@ -4,8 +4,10 @@ flowchart LR
     end
 
     subgraph Orchestrator[Orchestrator Node]
-        API[.NET Web API]
-        DB[(State Store)]
+        API[REST API]
+        HUB[SignalR Hub]
+        HANGFIRE[Hangfire Queue]
+        DB[(SQL Server)]
         AUDIT[(Audit Events)]
     end
 
@@ -14,12 +16,16 @@ flowchart LR
     end
 
     subgraph AgentNodeA[Remote Machine A]
-        AGENT1[Agent Service]
+        AGENT1[Agent Windows Service]
+        CH1[Channel<T> + BackgroundService]
+        CHILD1[Child Process (Job Executor)]
         PIPE1[Install Pipeline]
     end
 
     subgraph AgentNodeB[Remote Machine B]
-        AGENT2[Agent Service]
+        AGENT2[Agent Windows Service]
+        CH2[Channel<T> + BackgroundService]
+        CHILD2[Child Process (Job Executor)]
         PIPE2[Install Pipeline]
     end
 
@@ -36,17 +42,27 @@ flowchart LR
         TRACES[(Traces)]
     end
 
-    UI --> API
+    UI -->|REST| API
+    UI -->|live updates| HUB
     API --> DB
     API --> AUDIT
-    API -->|assign jobs| AGENT1
-    API -->|assign jobs| AGENT2
+    API -->|enqueue| HANGFIRE
+    HANGFIRE -->|resolve + dispatch| HUB
+
+    HUB -->|SignalR: AssignJob| AGENT1
+    HUB -->|SignalR: AssignJob| AGENT2
+    AGENT1 -->|SignalR: heartbeat + status| HUB
+    AGENT2 -->|SignalR: heartbeat + status| HUB
+
+    AGENT1 -->|enqueue| CH1
+    AGENT2 -->|enqueue| CH2
+    CH1 -->|dequeue| CHILD1
+    CH2 -->|dequeue| CHILD2
+    CHILD1 --> PIPE1
+    CHILD2 --> PIPE2
 
     AGENT1 --> REPO
     AGENT2 --> REPO
-
-    AGENT1 --> PIPE1
-    AGENT2 --> PIPE2
 
     PIPE1 --> MSI
     PIPE1 --> EXE

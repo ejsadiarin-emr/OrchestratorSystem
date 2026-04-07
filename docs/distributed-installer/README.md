@@ -1,42 +1,37 @@
-# Distributed Installer PoC - Research Artifacts
+# Distributed Installer PoC - Design Documentation
 
-This folder contains the deep research, market research, design artifacts, diagrams, and mockups for the Emerson Distributed Installer Framework PoC.
+Emerson internship PoC: Windows-first distributed installer framework in .NET + React.
 
 ## Recommended reading order
 
-1. `docs/distributed-installer/01-research-report.md`
-2. `docs/distributed-installer/02-market-and-ansible-comparison.md`
-3. `docs/distributed-installer/03-poc-design-spec.md`
-4. `docs/distributed-installer/04-testing-strategy.md`
-5. `docs/distributed-installer/05-security-reliability-observability.md`
-6. `docs/distributed-installer/adr/`
+1. `00-meeting-summary-notes.md` — meeting context and stakeholder validation
+2. `01-research-report.md` — deep research on architecture alternatives
+3. `02-market-and-ansible-comparison.md` — market landscape and competitive analysis
+4. `03-architecture-and-design.md` — **core architecture spec** (start here for implementation)
+5. `04-agent-bootstrap-and-communication.md` — agent onboarding and wire protocol
+6. `05-orchestration-and-validation.md` — job queue, orchestration, dry-run validation
+7. `06-testing-strategy.md` — test layers and quality gates
+8. `07-security-reliability-observability.md` — security baseline, reliability, OTel
+9. `adr/` — architectural decision records
 
 ## Diagram files
 
-- `docs/distributed-installer/diagrams/architecture.mmd`
-- `docs/distributed-installer/diagrams/install-sequence.mmd`
-- `docs/distributed-installer/diagrams/job-state-machine.mmd`
+- `diagrams/architecture.mmd` / `.ascii.md`
+- `diagrams/install-sequence.mmd` / `.ascii.md`
+- `diagrams/job-state-machine.mmd` / `.ascii.md`
 
-## ASCII diagram files (for Eraser replication)
+## Mockups
 
-- `docs/distributed-installer/diagrams/architecture.ascii.md`
-- `docs/distributed-installer/diagrams/install-sequence.ascii.md`
-- `docs/distributed-installer/diagrams/job-state-machine.ascii.md`
+- `mockups/dashboard-wireframes.md`
 
-## Mockups and comparison artifacts
+## Session notes
 
-- `docs/distributed-installer/mockups/dashboard-wireframes.md`
-- `docs/distributed-installer/02-market-and-ansible-comparison.md`
+- `sessions/20260407-gap-analysis-meeting-notes.md`
 
-## Scope assumptions used in these artifacts
+## Scope assumptions
 
-- PoC environment: developer machine + 1 VM.
-- PoC platform focus: Windows-first agents.
-- Dependency policy for PoC: OSS allowed with vetting.
-- Architecture direction: hybrid control plane (custom Orchestrator + Agent, Ansible-inspired idempotent manifests).
-- End-state vision remains distributed and cross-platform, but Linux support is phase 2+.
-
-## Notes
-
-- These documents are intentionally explicit about tradeoffs, not just happy-path recommendations.
-- Any uncertain or source-conflicting areas are called out directly.
+- PoC environment: developer machine + 1 VM
+- PoC platform focus: Windows-first agents
+- Dependency policy for PoC: OSS allowed with vetting
+- Architecture direction: hybrid control plane (custom Orchestrator + Agent, Ansible-inspired idempotent manifests)
+- End-state vision remains distributed and cross-platform; Linux support is phase 2+

@@ -1,33 +1,49 @@
 sequenceDiagram
     participant Admin as System Admin
     participant UI as React UI
-    participant Orchestrator as Orchestrator API
-    participant Agent as Agent Service
+    participant API as Orchestrator REST API
+    participant HF as Hangfire
+    participant Hub as SignalR Hub
+    participant Agent as Agent Windows Service
+    participant Ch as Channel<T> + BG Service
+    participant Child as Child Process
     participant Repo as Package Repo
     participant Installer as Installer Adapter
     participant Obs as OTel Pipeline
 
     Admin->>UI: Submit install request
-    UI->>Orchestrator: POST /jobs
-    Orchestrator->>Orchestrator: Validate + queue job
-    Orchestrator->>Agent: Job available (pull claim)
-    Agent->>Orchestrator: Claim job
-    Agent->>Obs: Start root + step spans
+    UI->>API: POST /jobs
+    API->>API: Validate manifest
+    API->>HF: Enqueue job
+    HF->>HF: Resolve dependencies
+    HF->>Hub: Dispatch to target agent
+    Hub->>Agent: SignalR: AssignJob
+    Agent->>Ch: Enqueue job message
+    Ch->>Child: Spawn child process
 
-    Agent->>Agent: Prechecks
-    Agent->>Repo: Download artifact
-    Agent->>Agent: Verify signature/hash
-    Agent->>Installer: Execute install
-    Installer-->>Agent: Exit code/log
-    Agent->>Agent: Post-verify
+    Child->>Obs: Start root + step spans
+    Child->>Child: Prechecks (dry-run)
+    Child->>Repo: Download artifact
+    Child->>Child: Verify signature/hash
+    Child->>Installer: Execute install
+    Installer-->>Child: Exit code/log
+    Child->>Child: Post-verify
+
+    Child->>Agent: Report step status
+    Agent->>Hub: SignalR: JobStatusUpdate
+    Hub->>UI: Push live update
 
     alt Success
-        Agent->>Orchestrator: Report succeeded
+        Child->>Agent: Report succeeded
+        Agent->>Hub: SignalR: terminal state
+        Hub->>HF: Mark job complete
     else Failure
-        Agent->>Agent: Run rollback/compensation
-        Agent->>Orchestrator: Report failed/rolledback
+        Child->>Child: Run rollback/compensation
+        Child->>Agent: Report failed/rolledback
+        Agent->>Hub: SignalR: terminal state
+        Hub->>HF: Mark job failed
     end
 
-    Agent->>Obs: Emit final status telemetry
-    Orchestrator->>UI: Stream/fetch final state
+    Child->>Obs: Emit final status telemetry
+    Hub->>UI: Push final state
     UI-->>Admin: Show outcome and diagnostics

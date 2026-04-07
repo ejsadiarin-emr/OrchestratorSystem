@@ -1,14 +1,46 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <AssemblyName>EJInstaller.Orchestrator</AssemblyName>
   </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="8.0.25" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+  </ItemGroup>
+
+  <!-- Exclude Static from content -->
+  <ItemGroup>
+    <Content Remove="Static\**" />
+    <None Remove="Static\**" />
+  </ItemGroup>
+
+  <!-- Embed Static as resources -->
+  <ItemGroup>
+    <EmbeddedResource Include="Static\index.html">
+      <LogicalName>wwwroot\index.html</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Static\favicon.svg">
+      <LogicalName>wwwroot\favicon.svg</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Static\icons.svg">
+      <LogicalName>wwwroot\icons.svg</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Static\assets\**\*">
+      <LogicalName>wwwroot\assets\%(RecursiveDir)%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
 </Project>

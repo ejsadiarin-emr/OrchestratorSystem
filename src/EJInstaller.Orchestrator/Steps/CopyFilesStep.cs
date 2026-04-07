@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 namespace EJInstaller.Orchestrator.Steps;
 
 public class CopyFilesStep : IInstallStep<InstallContext>

@@ -1,0 +1,31 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      ecc-universal:
+        specifier: ^1.9.0
+        version: 1.9.0
+
+packages:
+
+  ecc-universal@1.9.0:
+    resolution: {integrity: sha512-3LlWa6KJhzB1x02mtxH7mA2m+bHfaNNayj9VcdZv1ytMhFgJ5dcRrc0xi/gcwe+IqH6dM/5ISWL+yc+K65ta6g==}
+    engines: {node: '>=18'}
+    hasBin: true
+
+  sql.js@1.14.1:
+    resolution: {integrity: sha512-gcj8zBWU5cFsi9WUP+4bFNXAyF1iRpA3LLyS/DP5xlrNzGmPIizUeBggKa8DbDwdqaKwUcTEnChtd2grWo/x/A==}
+
+snapshots:
+
+  ecc-universal@1.9.0:
+    dependencies:
+      sql.js: 1.14.1
+
+  sql.js@1.14.1: {}

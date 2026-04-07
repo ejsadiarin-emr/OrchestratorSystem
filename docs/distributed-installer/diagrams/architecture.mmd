@@ -1,0 +1,65 @@
+flowchart LR
+    subgraph Admin[System Admin]
+        UI[React Dashboard]
+    end
+
+    subgraph Orchestrator[Orchestrator Node]
+        API[.NET Web API]
+        DB[(State Store)]
+        AUDIT[(Audit Events)]
+    end
+
+    subgraph Artifact[Artifact Source]
+        REPO[(UNC/HTTPS Package Repo)]
+    end
+
+    subgraph AgentNodeA[Remote Machine A]
+        AGENT1[Agent Service]
+        PIPE1[Install Pipeline]
+    end
+
+    subgraph AgentNodeB[Remote Machine B]
+        AGENT2[Agent Service]
+        PIPE2[Install Pipeline]
+    end
+
+    subgraph Legacy[Legacy/External Installers]
+        MSI[MSI]
+        EXE[EXE/Custom]
+        VB[Legacy Components]
+    end
+
+    subgraph Obs[Observability]
+        OTEL[OTel Collector]
+        LOGS[(Logs)]
+        METRICS[(Metrics)]
+        TRACES[(Traces)]
+    end
+
+    UI --> API
+    API --> DB
+    API --> AUDIT
+    API -->|assign jobs| AGENT1
+    API -->|assign jobs| AGENT2
+
+    AGENT1 --> REPO
+    AGENT2 --> REPO
+
+    AGENT1 --> PIPE1
+    AGENT2 --> PIPE2
+
+    PIPE1 --> MSI
+    PIPE1 --> EXE
+    PIPE1 --> VB
+
+    PIPE2 --> MSI
+    PIPE2 --> EXE
+    PIPE2 --> VB
+
+    API --> OTEL
+    AGENT1 --> OTEL
+    AGENT2 --> OTEL
+
+    OTEL --> LOGS
+    OTEL --> METRICS
+    OTEL --> TRACES

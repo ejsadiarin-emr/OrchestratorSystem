@@ -86,10 +86,22 @@ Lightweight persistent Windows service on each target machine:
 ### 4.1 Agent ↔ Orchestrator: SignalR
 
 - Persistent WebSocket connection from agent to orchestrator SignalR hub
-- Orchestrator pushes job assignments and operational commands
+- Orchestrator pushes job assignments and operational commands after agent connection/auth
 - Agent pushes heartbeats, status updates, and log streams
 - Built-in automatic reconnection with exponential backoff
 - Connection state tracked in orchestrator (online/offline/last-seen)
+
+Canonical runtime protocol sequence:
+
+`Connect -> Register/Authenticate -> AssignJob -> AckClaim -> LeaseHeartbeat -> StepStatus* -> Complete/Fail -> LeaseClose`
+
+Lease and stale-assignment defaults (PoC):
+
+- Lease TTL: `90s`
+- Heartbeat interval: `15s`
+- Stale threshold: `3` missed heartbeats
+- Stale state: `AssignedStale`
+- Stale timeout bound: auto-fail with `lease_timeout_exhausted` after 2 reassignment attempts or 15 minutes total stale duration
 
 ### 4.2 UI ↔ Orchestrator: REST + SignalR
 
@@ -120,6 +132,7 @@ This means: no spin-up/spin-down lifecycle per job. The agent is always present,
 
 - `Queued`: accepted and validated by orchestrator
 - `Assigned`: claimed by agent via SignalR
+- `AssignedStale`: prior lease holder timed out; safe reassignment policy applies
 - `Prechecking`: running dry-run validation
 - `PrecheckPassed`: all prerequisites satisfied
 - `PrecheckFailed`: environment prerequisite failed
@@ -132,6 +145,8 @@ This means: no spin-up/spin-down lifecycle per job. The agent is always present,
 - `RolledBack`: rollback completed
 - `Succeeded`: full success
 - `Cancelled`: manually aborted before terminal success
+
+`AssignedStale` transitions to terminal `Failed` with reason code `lease_timeout_exhausted` when stale-timeout bounds are exceeded.
 
 ## Transition rule
 
@@ -160,6 +175,17 @@ Optional compensation step chain:
 - `RollbackVerify`
 
 Each step must emit telemetry and structured outcome.
+
+### 7.1 Upgrade config persistence contract (PoC)
+
+Upgrade executions are contractually bound to config safety requirements:
+
+- Capture pre-mutation config snapshot (`configSnapshotId`).
+- Run deterministic migration path (`vN -> vN+1`) only.
+- Restore snapshot on migration/verification failure.
+- Emit audit-linked config events for snapshot, migration, and restore outcomes.
+
+Canonical contract source: `docs/distributed-installer/11-config-persistence-contract.md`.
 
 ## 8. Manifest contract (Ansible-inspired, C#-typed execution)
 

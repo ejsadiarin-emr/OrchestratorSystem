@@ -43,6 +43,7 @@ flowchart LR
     end
 
     UI -->|REST| API
+    UI -.->|TB-01| API
     UI -->|live updates| HUB
     API --> DB
     API --> AUDIT
@@ -51,6 +52,8 @@ flowchart LR
 
     HUB -->|SignalR: AssignJob| AGENT1
     HUB -->|SignalR: AssignJob| AGENT2
+    AGENT1 -.->|TB-02| HUB
+    AGENT2 -.->|TB-02| HUB
     AGENT1 -->|SignalR: heartbeat + status| HUB
     AGENT2 -->|SignalR: heartbeat + status| HUB
 
@@ -63,6 +66,11 @@ flowchart LR
 
     AGENT1 --> REPO
     AGENT2 --> REPO
+    API -.->|TB-03| REPO
+    AGENT1 -.->|TB-03| REPO
+    AGENT2 -.->|TB-03| REPO
+
+    API -.->|TB-04| AUDIT
 
     PIPE1 --> MSI
     PIPE1 --> EXE

@@ -13,6 +13,12 @@ Emerson internship PoC: Windows-first distributed installer framework in .NET + 
 7. `06-testing-strategy.md` — test layers and quality gates
 8. `07-security-reliability-observability.md` — security baseline, reliability, OTel
 9. `adr/` — architectural decision records
+10. `08-requirements-contract.md` — requirements ID contract scaffold (`FR/NFR/AC`)
+11. `09-security-pack.md` — DFD + STRIDE + secure coding checklist scaffold
+12. `10-core-contracts-pack.md` — API/data/message/interface contract scaffold
+13. `11-config-persistence-contract.md` — backup/migration/restore contract scaffold
+14. `12-devops-pipeline-design-pack.md` — CI/CD stage/gate/versioning scaffold
+15. `13-poc-phase1-definition-of-done.md` — PoC phase-1 signoff checklist and evidence tracker
 
 ## Diagram files
 
@@ -27,6 +33,7 @@ Emerson internship PoC: Windows-first distributed installer framework in .NET + 
 ## Session notes
 
 - `sessions/20260407-gap-analysis-meeting-notes.md`
+- `sessions/20260411-poc-phase1-spec-plan-tasklist.md`
 
 ## Scope assumptions
 

@@ -70,29 +70,29 @@ UI/API → Orchestrator REST API → Hangfire enqueue
                                     ↓
                             Hangfire dequeues → resolves target agent(s)
                                     ↓
-                            SignalR Hub → AssignJob to agent
+                            SignalR Hub → AssignJob(assignmentId, leaseId, sequence)
                                     ↓
-                            Agent SignalR client → Channel<T> enqueue
+                            Agent SignalR client → AckClaim → Channel<T> enqueue
                                     ↓
-                            BackgroundService → dequeue → execute
+                            BackgroundService → dequeue → execute full job pipeline
                                     ↓
-                            Agent → SignalR → status updates → orchestrator
+                            Agent → SignalR → StepStatus + LeaseHeartbeat → orchestrator
                                     ↓
                             Orchestrator → updates SQL → Hangfire marks complete
 ```
 
 ## 2. Orchestration pattern
 
-### 2.1 Airflow CeleryExecutor model
+### 2.1 Orchestration ownership model
 
-The orchestrator follows the **Airflow CeleryExecutor** pattern:
+For PoC, ownership is split as follows:
 
-- The orchestrator understands the full DAG (job dependencies, ordering)
-- The orchestrator resolves the DAG and enqueues individual steps to agents
-- Agents only execute individual steps — they don't understand the full DAG
-- The orchestrator tracks step completion and enqueues the next dependent step
+- Orchestrator owns job-level sequencing, dependencies, policy, and state
+- Orchestrator dispatches jobs (not individual pipeline steps)
+- Agent executes full per-job step pipeline locally
+- Agent reports step-level telemetry and state transitions back to orchestrator
 
-This keeps agents simple and stateless regarding orchestration logic.
+This keeps orchestration centralized while avoiding chatty step-by-step remote dispatch.
 
 ### 2.2 Dependency resolution
 
@@ -102,7 +102,23 @@ For PoC, dependency resolution is simple:
 - Hangfire enqueues jobs only after their dependencies have reached `Succeeded`
 - If a dependency fails, dependent jobs are marked `Failed` with reason `dependency_failed`
 
-Future phases can add more sophisticated DAG resolution (parallel branches, conditional paths).
+Future phases can add more sophisticated dependency resolution (parallel branches, conditional paths).
+
+### 2.3 Lease and stale-assignment policy (PoC defaults)
+
+- Lease TTL: `90s`
+- Heartbeat interval: `15s`
+- Stale after: `3` missed heartbeats
+- Stale state: `AssignedStale`
+- Reassignment guard: replay-safe checkpoint + no active prior heartbeat in grace window + mutation checkpoint consistency
+- Stale timeout bound: auto-fail with `lease_timeout_exhausted` after 2 reassignment attempts or 15 minutes total stale duration
+
+Status update handling contract:
+
+- Step status updates are idempotent upserts keyed by `(jobId, stepId, sequence)`.
+- Same-key payload mismatch is rejected and audited as `sequence_payload_conflict`.
+- Stale/out-of-order updates are rejected.
+- Reconnect resumes from `lastAcknowledgedSequence + 1`.
 
 ## 3. Dry-run validation (pre-check) confidence
 

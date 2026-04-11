@@ -17,7 +17,8 @@ sequenceDiagram
     API->>HF: Enqueue job
     HF->>HF: Resolve dependencies
     HF->>Hub: Dispatch to target agent
-    Hub->>Agent: SignalR: AssignJob
+    Hub->>Agent: SignalR: AssignJob(assignmentId, leaseId, sequence)
+    Agent->>Hub: SignalR: AckClaim(assignmentId, leaseId, sequence)
     Agent->>Ch: Enqueue job message
     Ch->>Child: Spawn child process
 
@@ -30,17 +31,20 @@ sequenceDiagram
     Child->>Child: Post-verify
 
     Child->>Agent: Report step status
-    Agent->>Hub: SignalR: JobStatusUpdate
+    Agent->>Hub: SignalR: StepStatus(jobId, stepId, sequence, status)
+    Agent->>Hub: SignalR: LeaseHeartbeat(leaseId)
     Hub->>UI: Push live update
 
     alt Success
         Child->>Agent: Report succeeded
-        Agent->>Hub: SignalR: terminal state
+        Agent->>Hub: SignalR: Complete(result, reasonCode)
+        Agent->>Hub: SignalR: LeaseClose(leaseId)
         Hub->>HF: Mark job complete
     else Failure
         Child->>Child: Run rollback/compensation
         Child->>Agent: Report failed/rolledback
-        Agent->>Hub: SignalR: terminal state
+        Agent->>Hub: SignalR: Fail(result, reasonCode)
+        Agent->>Hub: SignalR: LeaseClose(leaseId)
         Hub->>HF: Mark job failed
     end
 

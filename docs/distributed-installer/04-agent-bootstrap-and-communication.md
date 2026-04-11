@@ -5,9 +5,13 @@ Scope: How agents get onto machines and how they talk to the orchestrator
 
 ## 1. Agent bootstrap (initial provisioning)
 
-### 1.1 Model: one-time push, then permanent pull
+### 1.1 Model: one-time push, then persistent connect + claimed assignment
 
-Agents are installed onto target machines via a **one-time push mechanism**, after which the agent takes over and connects to the orchestrator in pull mode. The push step is a provisioning concern only — the agent never relies on push for job delivery.
+Agents are installed onto target machines via a **one-time push mechanism**, after which the agent takes over and maintains a persistent SignalR connection to the orchestrator. The push step is a provisioning concern only.
+
+Runtime assignment is canonicalized as agent-initiated connection plus orchestrator assignment over that connection:
+
+`Connect -> Register/Authenticate -> AssignJob -> AckClaim -> LeaseHeartbeat -> StepStatus* -> Complete/Fail -> LeaseClose`
 
 ### 1.2 Supported push mechanisms (production)
 
@@ -41,6 +45,14 @@ The one-time script must:
 - Start the service and verify it connects successfully
 - Report success or failure back to the operator
 
+If bootstrap fails at any point, cleanup runs in reverse order (provisioning scope only):
+
+- Stop service (if started)
+- Remove service registration
+- Remove staged files/config
+- Invalidate enrollment token
+- Emit bootstrap audit event
+
 ### 1.5 Agent registration
 
 On first connection, the agent sends a registration payload:
@@ -50,7 +62,9 @@ On first connection, the agent sends a registration payload:
 - Available capabilities (disk space, installed runtimes, etc.)
 - Registration token (pre-shared or generated during bootstrap)
 
-The orchestrator validates the token, creates a node record, and assigns a persistent agent ID. The token is single-use — subsequent connections use the agent ID with the SignalR connection.
+The orchestrator validates the token, creates a node record, and assigns a persistent agent ID. The token is single-use.
+
+After enrollment, steady-state connections require per-agent mTLS certificate identity bound to the persistent agent ID. Reconnect attempts without a valid bound certificate are rejected.
 
 ## 2. Communication protocol
 
@@ -74,10 +88,12 @@ The orchestrator validates the token, creates a node record, and assigns a persi
 | Orchestrator → Agent | `AssignJob` | Send job definition with manifest |
 | Orchestrator → Agent | `CancelJob` | Cancel a running job |
 | Orchestrator → Agent | `Ping` | Liveness check |
-| Agent → Orchestrator | `Heartbeat` | Periodic alive signal with metadata |
-| Agent → Orchestrator | `JobStatusUpdate` | State transition events |
+| Agent → Orchestrator | `LeaseHeartbeat` | Periodic lease heartbeat with metadata |
+| Agent → Orchestrator | `StepStatus` | State transition events |
 | Agent → Orchestrator | `LogStream` | Real-time log output from pipeline steps |
 | Agent → Orchestrator | `Register` | Initial registration on first connect |
+
+During certificate rotation, old and new agent certificates may overlap for up to 15 minutes; rebind events are audited.
 
 ### 2.2 UI ↔ Orchestrator: REST + SignalR
 
@@ -91,21 +107,22 @@ The UI connects to a separate SignalR hub (or the same hub with different author
 ```
 Agent starts
   → Connects to SignalR hub
-  → If first connection: sends Register, receives Agent ID
-  → Enters idle state, waiting for job assignments
-  → Receives AssignJob → processes job → reports status
-  → Sends Heartbeat every N seconds
+  → Register/Authenticate (first connection consumes enrollment token)
+  → Receives AssignJob(assignmentId, leaseId, sequence)
+  → Sends AckClaim
+  → Processes job pipeline and emits StepStatus updates
+  → Sends LeaseHeartbeat every 15s (PoC default)
   → On disconnect: automatic reconnection with exponential backoff
-  → On reconnect: re-sends any unacknowledged status updates
+  → On reconnect: resume handshake from `lastAcknowledgedSequence + 1`
 ```
 
 ### 2.4 Reconnection and message durability
 
 - SignalR handles transport-level reconnection automatically
 - Job state is persisted in SQL Server on the orchestrator side
-- If an agent disconnects mid-job, the orchestrator marks the job as `Assigned` (not terminal)
-- When the agent reconnects, it queries for any in-progress jobs and resumes
-- Heartbeat timeout (configurable, e.g., 60s) triggers agent status change to `Offline`
+- If heartbeat lease expires, orchestrator marks job `AssignedStale` and applies safe reassignment policy
+- Reassignment requires idempotency/replay-safe checkpoint checks
+- PoC defaults: lease TTL 90s, heartbeat interval 15s, stale threshold 3 missed heartbeats
 
 ## 3. Agent architecture
 

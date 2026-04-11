@@ -31,8 +31,10 @@ A distributed installer is a high-privilege control system. If compromised or un
 ## Secret and sensitive data handling
 
 - No plaintext secrets in config files or logs
-- Use platform-secure secret protection patterns (Windows DPAPI, Azure Key Vault, etc.)
+- PoC uses on-prem-first secret protection patterns (Windows DPAPI, Windows certificate store, Windows Credential Manager)
 - Apply log redaction for sensitive fields
+
+Cloud key-vault integrations are future optional extensions and not part of PoC baseline requirements.
 
 ## Audit integrity
 
@@ -157,6 +159,8 @@ A PoC run should be considered valid only if:
 - policy-based rollout rings and blast-radius controls
 - hardware-backed key protection where available
 - WORM-class audit retention
+
+All backlog items in this section are deferred to `[Hardening Phase 2]` and are not required for PoC Phase 1 implementation signoff.
 
 ## 7) Source-backed guidance themes used
 

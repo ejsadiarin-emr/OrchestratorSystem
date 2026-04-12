@@ -20,7 +20,17 @@ The bootstrap flow:
 3. Downloads agent binary, writes configuration, registers Windows service
 4. Starts the service and verifies SignalR connection to orchestrator
 
+Bootstrap is transactional for provisioning scope. If any step fails, rollback/cleanup runs in reverse order:
+
+- stop service (if started)
+- remove service registration
+- remove staged files/config
+- invalidate enrollment token
+- emit bootstrap audit event with failure reason
+
 Production deployments may use GPO, SCCM, or other enterprise mechanisms.
+
+Bootstrap channels are provisioning-only. Runtime package installs/upgrades/rollbacks are triggered through Orchestrator API/CLI.
 
 ## Consequences
 

@@ -1,4 +1,4 @@
-# ADR-002: Agent Pull-First Distribution Model
+# ADR-002: Agent-Initiated Connection with Push Assignment
 
 Date: 2026-04-06
 
@@ -8,21 +8,26 @@ Accepted for PoC.
 
 ## Context
 
-On-prem and potentially segmented enterprise networks make controller push connectivity brittle in some environments.
+On-prem and potentially segmented enterprise networks make controller-initiated connectivity brittle in some environments. The system also needs low-latency assignment and explicit ownership semantics during reconnect windows.
 
 ## Decision
 
-Agents will poll/claim jobs (pull-first). Push remains a possible future optimization for urgent actions.
+Use an agent-initiated persistent connection model:
+
+- Agent initiates and maintains SignalR connectivity to orchestrator.
+- Orchestrator sends `AssignJob` over the established channel.
+- Agent must `Ack/Claim` with lease ownership before execution.
+- Execution lifecycle uses lease + heartbeat + completion/failure closure semantics.
 
 ## Consequences
 
 ### Positive
 
-- Better resilience across constrained networks.
-- Simpler firewall posture.
-- Cleaner reconnection/recovery behavior.
+- Better resilience across constrained networks (agent initiates outbound connection).
+- Lower assignment latency than polling intervals.
+- Cleaner ownership/recovery behavior through claim + lease semantics.
 
 ### Negative
 
-- Slightly higher latency from poll intervals.
-- Requires careful queue/claim logic to avoid contention.
+- Requires careful lease/claim and ordering logic to avoid split ownership.
+- Adds protocol complexity compared with simple polling.

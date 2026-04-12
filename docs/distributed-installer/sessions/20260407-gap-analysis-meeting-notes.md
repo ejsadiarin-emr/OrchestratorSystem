@@ -17,11 +17,11 @@ Review meeting notes questions against current `docs/distributed-installer/` con
 | **Self-contained (one .exe)** | `01-research-report.md:46-47` — "Self-contained binaries simplify deployment" |
 | **Pull-based agent model** | `01-research-report.md:52-69` — pull-first by default, push optional later |
 | **Ansible SSH push problems** | `02-market-and-ansible-comparison.md:36-38` — Ansible Windows remote execution hits delegation/logon/interactivity edge cases |
-| **Rollback/compensation** | `01-research-report.md:113-116`, `03-poc-design-spec.md:113-117` — MSI native rollback, EXE requires compensating actions |
-| **Job orchestrator / task queue** | `03-poc-design-spec.md:31` — "Job queue, assignment, execution, and status tracking" |
-| **Job state machine** | `01-research-report.md:131-144`, `03-poc-design-spec.md:79-99` — full state definitions |
-| **Happy path flow** | `03-poc-design-spec.md:183-188` — Scenario A covers it |
-| **Different machine configs** | Implicit in `03-poc-design-spec.md:124-131` manifest contract — per-job targeting with detection rules |
+| **Rollback/compensation** | `01-research-report.md:113-116`, `03-architecture-and-design.md:157-162` — MSI native rollback, EXE requires compensating actions |
+| **Job orchestrator / task queue** | `03-architecture-and-design.md:31-33` — "Job queue, assignment, execution, and status tracking" |
+| **Job state machine** | `01-research-report.md:131-144`, `03-architecture-and-design.md:117-135` — full state definitions |
+| **Happy path flow** | `03-architecture-and-design.md:228-233` — Scenario A covers it |
+| **Different machine configs** | Implicit in `03-architecture-and-design.md:182-188` manifest/targeting contract — per-job targeting with detection rules |
 
 ---
 
@@ -32,7 +32,7 @@ Review meeting notes questions against current `docs/distributed-installer/` con
 | **How to install agent on remote machines (bootstrap)** | Docs assume agent exists as a Windows service, but **no bootstrap/onboarding mechanism** is specified. No mention of how the agent gets onto a fresh machine in the first place. | Need: initial provisioning story — manual install? push script? self-registration? |
 | **Ephemeral agent lifecycle** | Not addressed. Docs assume persistent Windows service agents. | Need: design for spin-up → execute → spin-down agents |
 | **Agent communication protocol** | Docs mention "heartbeat" and "pull" but **no specific protocol** (HTTP/gRPC/WebSocket/SignalR). | Need: protocol decision |
-| **Dry-run / pre-validation reflecting reality** | `03-poc-design-spec.md:105` has `PreConditionCheck` step, but no discussion of how dry-run outputs are validated against actual state. | Need: dry-run semantics and confidence scoring |
+| **Dry-run / pre-validation reflecting reality** | `03-architecture-and-design.md:149` has `PreConditionCheck` step, but no discussion of how dry-run outputs are validated against actual state. | Need: dry-run semantics and confidence scoring |
 | **How ephemeral agents discover/read jobs** | Not addressed — assumes persistent polling agents. | Need: job discovery mechanism for ephemeral agents |
 | **How Airflow/Dagster-style orchestration works** | Not researched. Docs cover job state machines but not DAG-style dependency orchestration. | Could be useful reference |
 | **Self-hosted CI/CD runner patterns** (GitHub Actions, etc.) | Not researched. | Relevant for ephemeral agent + job pull patterns |

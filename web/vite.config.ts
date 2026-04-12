@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   base: './',
   build: {
-    outDir: path.resolve(__dirname, '../src/EJInstaller.Orchestrator/wwwroot'),
+    outDir: path.resolve(__dirname, '../src/DeploymentPoC.Orchestrator/wwwroot'),
     emptyOutDir: true
   },
   server: {

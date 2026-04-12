@@ -14,6 +14,17 @@ Agents need a reliable, real-time bidirectional communication channel with the o
 
 Use ASP.NET Core SignalR for all agent-to-orchestrator communication.
 
+Runtime dispatch and ownership sequence is canonicalized as:
+
+`Connect -> Register/Authenticate -> AssignJob -> AckClaim -> LeaseHeartbeat -> StepStatus* -> Complete/Fail -> LeaseClose`
+
+Message handling constraints:
+
+- `AssignJob` carries `assignmentId`, `leaseId`, and monotonic `sequence`
+- status updates are idempotent upserts keyed by `(jobId, stepId, sequence)`
+- stale/out-of-order updates are ignored
+- reconnect uses resume handshake with last acknowledged sequence
+
 SignalR provides:
 - native .NET integration with typed hub contracts
 - automatic WebSocket transport with fallback (SSE, Long Polling)

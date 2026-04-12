@@ -6,9 +6,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EJInstaller.Orchestrator", "src\EJInstaller.Orchestrator\EJInstaller.Orchestrator.csproj", "{2575BC58-87CF-29A4-D4FD-DC71A0E049D7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeploymentPoC.Orchestrator", "src\DeploymentPoC.Orchestrator\DeploymentPoC.Orchestrator.csproj", "{A1B2C3D4-E5F6-7890-1234-56789ABCDEF0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EJInstaller.Orchestrator.Tests", "tests\EJInstaller.Orchestrator.Tests\EJInstaller.Orchestrator.Tests.csproj", "{BD4C27EE-B7C9-6D28-2C75-45D0E9164700}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeploymentPoC.Orchestrator.Tests", "tests\DeploymentPoC.Orchestrator.Tests\DeploymentPoC.Orchestrator.Tests.csproj", "{BD4C27EE-B7C9-6D28-2C75-45D0E9164700}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeploymentPoC.Contracts", "src\DeploymentPoC.Contracts\DeploymentPoC.Contracts.csproj", "{A1B2C3D4-E5F6-7890-1234-56789ABCDEF0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -16,10 +18,10 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{2575BC58-87CF-29A4-D4FD-DC71A0E049D7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2575BC58-87CF-29A4-D4FD-DC71A0E049D7}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2575BC58-87CF-29A4-D4FD-DC71A0E049D7}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2575BC58-87CF-29A4-D4FD-DC71A0E049D7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A1B2C3D4-E5F6-7890-1234-56789ABCDEF0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1B2C3D4-E5F6-7890-1234-56789ABCDEF0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1B2C3D4-E5F6-7890-1234-56789ABCDEF0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1B2C3D4-E5F6-7890-1234-56789ABCDEF0}.Release|Any CPU.Build.0 = Release|Any CPU
 		{BD4C27EE-B7C9-6D28-2C75-45D0E9164700}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{BD4C27EE-B7C9-6D28-2C75-45D0E9164700}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BD4C27EE-B7C9-6D28-2C75-45D0E9164700}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -28,10 +30,11 @@ Global
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
-	GlobalSection(NestedProjects) = preSolution
-		{2575BC58-87CF-29A4-D4FD-DC71A0E049D7} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
-		{BD4C27EE-B7C9-6D28-2C75-45D0E9164700} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
-	EndGlobalSection
+GlobalSection(NestedProjects) = preSolution
+	{A1B2C3D4-E5F6-7890-1234-56789ABCDEF0} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+	{BD4C27EE-B7C9-6D28-2C75-45D0E9164700} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+	{A1B2C3D4-E5F6-7890-1234-56789ABCDEF0} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {32A6F7D6-BCC2-43D5-BA27-916A49BF31B9}
 	EndGlobalSection

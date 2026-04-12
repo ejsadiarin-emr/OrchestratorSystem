@@ -1,7 +1,7 @@
 # PoC Phase 1 Code Implementation Tracker
 
-Date: 2026-04-11
-Status: Ready for execution
+Date: 2026-04-12
+Status: In Progress (1/14 tasks complete)
 Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-contracts-pack.md`, `11-config-persistence-contract.md`, `12-devops-pipeline-design-pack.md`, `13-poc-phase1-definition-of-done.md`, `03/04/05/07`, diagrams, and decision lock addendum.
 
 ## Scope guardrails (non-negotiable)
@@ -25,7 +25,7 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 
 | Task ID | Task | Sprint | Depends On | Owner | Status | AC IDs |
 |---|---|---|---|---|---|---|
-| P0-01 | Shared runtime contracts library | S1 | - | TBD (Backend) | Not Started | AC-003 |
+| P0-01 | Shared runtime contracts library | S1 | - | TBD (Backend) | Done | AC-003 |
 | P1-01 | SQL persistence for canonical entities | S1 | P0-01 | TBD (Backend) | Not Started | AC-001, AC-002, AC-007, AC-101 |
 | P1-02 | API contract alignment (`/api/jobs`, `/steps`, `/cancel`, `/nodes`) | S1 | P1-01 | TBD (Backend) | Not Started | AC-001, AC-002, AC-104 |
 | P2-01 | SignalR protocol + sequence/idempotency enforcement | S1 | P1-02 | TBD (Backend) | Not Started | AC-003, AC-101 |
@@ -46,25 +46,25 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 ### P0-01 - Shared runtime contracts library
 
 - Owner: `TBD (Backend)`
-- Status: `Not Started`
+- Status: `Done`
 - Objective: Centralize message envelope, canonical message types, state/reason enums for orchestrator and agent.
 - Target modules:
-  - Create `src/EJInstaller.Contracts/EJInstaller.Contracts.csproj`
-  - Create `src/EJInstaller.Contracts/Runtime/MessageEnvelope.cs`
-  - Create `src/EJInstaller.Contracts/Runtime/MessageTypes.cs`
-  - Create `src/EJInstaller.Contracts/Jobs/JobState.cs`
-  - Create `src/EJInstaller.Contracts/Jobs/ReasonCodes.cs`
+  - Create `src/DeploymentPoC.Contracts/DeploymentPoC.Contracts.csproj`
+  - Create `src/DeploymentPoC.Contracts/Runtime/MessageEnvelope.cs`
+  - Create `src/DeploymentPoC.Contracts/Runtime/MessageTypes.cs`
+  - Create `src/DeploymentPoC.Contracts/Jobs/JobState.cs`
+  - Create `src/DeploymentPoC.Contracts/Jobs/ReasonCodes.cs`
   - Modify `DeploymentPoC.sln`
 - Interfaces/contracts impacted: FR-002, core message envelope in `10-core-contracts-pack.md`.
 - Test requirements: unit tests for required envelope fields and enum compatibility.
 - Verification commands:
   - `dotnet build DeploymentPoC.sln`
-  - `dotnet test tests/EJInstaller.Contracts.Tests`
+  - `dotnet test tests/DeploymentPoC.Contracts.Tests`
 - Acceptance links: AC-003
 - Suggested commit boundary: `feat(contracts): add shared runtime envelope and state contracts`
 - Checklist:
-  - [ ] Contracts project compiles and is referenced by orchestrator and agent projects.
-  - [ ] Envelope includes `assignmentId`, `leaseId`, `jobId`, `agentId`, `sequence` fields.
+  - [x] Contracts project compiles and is referenced by orchestrator and agent projects.
+  - [x] Envelope includes `assignmentId`, `leaseId`, `jobId`, `agentId`, `sequence` fields.
 
 ### P1-01 - SQL persistence for canonical entities
 
@@ -72,18 +72,18 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 - Status: `Not Started`
 - Objective: Replace in-memory state with SQL-backed canonical entities.
 - Target modules:
-  - Create `src/EJInstaller.Orchestrator/Data/InstallerDbContext.cs`
-  - Create `src/EJInstaller.Orchestrator/Data/Entities/JobEntity.cs`
-  - Create `src/EJInstaller.Orchestrator/Data/Entities/NodeEntity.cs`
-  - Create `src/EJInstaller.Orchestrator/Data/Entities/AssignmentLeaseEntity.cs`
-  - Create `src/EJInstaller.Orchestrator/Data/Entities/ConfigSnapshotEntity.cs`
-  - Create `src/EJInstaller.Orchestrator/Data/Migrations/*`
-  - Modify `src/EJInstaller.Orchestrator/Program.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Data/InstallerDbContext.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Data/Entities/JobEntity.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Data/Entities/NodeEntity.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Data/Entities/AssignmentLeaseEntity.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Data/Entities/ConfigSnapshotEntity.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Data/Migrations/*`
+  - Modify `src/DeploymentPoC.Orchestrator/Program.cs`
 - Interfaces/contracts impacted: FR-001, FR-006, NFR-001.
 - Test requirements: unit mapping tests and integration persistence tests.
 - Verification commands:
-  - `dotnet ef database update --project src/EJInstaller.Orchestrator`
-  - `dotnet test tests/EJInstaller.Orchestrator.IntegrationTests --filter Persistence`
+  - `dotnet ef database update --project src/DeploymentPoC.Orchestrator`
+  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Persistence`
 - Acceptance links: AC-001, AC-002, AC-007, AC-101
 - Suggested commit boundary: `feat(orchestrator): add sql persistence for canonical entities`
 - Checklist:
@@ -96,19 +96,19 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 - Status: `Not Started`
 - Objective: Align API behavior and payloads with API-001..API-005.
 - Target modules:
-  - Modify `src/EJInstaller.Orchestrator/Controllers/JobsController.cs`
-  - Modify `src/EJInstaller.Orchestrator/Controllers/NodesController.cs`
-  - Create `src/EJInstaller.Orchestrator/Contracts/Api/CreateJobRequest.cs`
-  - Create `src/EJInstaller.Orchestrator/Contracts/Api/CreateJobResponse.cs`
-  - Create `src/EJInstaller.Orchestrator/Contracts/Api/JobDetailResponse.cs`
-  - Create `src/EJInstaller.Orchestrator/Contracts/Api/JobStepListResponse.cs`
-  - Create `src/EJInstaller.Orchestrator/Contracts/Api/CancelJobRequest.cs`
-  - Create `src/EJInstaller.Orchestrator/Contracts/Api/CancelJobResponse.cs`
+  - Modify `src/DeploymentPoC.Orchestrator/Controllers/JobsController.cs`
+  - Modify `src/DeploymentPoC.Orchestrator/Controllers/NodesController.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Contracts/Api/CreateJobRequest.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Contracts/Api/CreateJobResponse.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Contracts/Api/JobDetailResponse.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Contracts/Api/JobStepListResponse.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Contracts/Api/CancelJobRequest.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Contracts/Api/CancelJobResponse.cs`
 - Interfaces/contracts impacted: FR-001, NFR-004, API-001..API-005.
 - Test requirements: API contract integration tests and endpoint auth tests.
 - Verification commands:
-  - `dotnet test tests/EJInstaller.Orchestrator.Tests --filter Controllers`
-  - `dotnet test tests/EJInstaller.Orchestrator.IntegrationTests --filter ApiContract`
+  - `dotnet test tests/DeploymentPoC.Orchestrator.Tests --filter Controllers`
+  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter ApiContract`
 - Acceptance links: AC-001, AC-002, AC-104
 - Suggested commit boundary: `feat(api): align job and node endpoints with core contract pack`
 - Checklist:
@@ -121,15 +121,15 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 - Status: `Not Started`
 - Objective: Enforce canonical runtime message sequence and strict idempotency/replay guards.
 - Target modules:
-  - Create `src/EJInstaller.Orchestrator/Hubs/AgentRuntimeHub.cs`
-  - Create `src/EJInstaller.Orchestrator/Runtime/StepStatusIngestService.cs`
-  - Create `src/EJInstaller.Orchestrator/Runtime/SequenceConflictAuditService.cs`
-  - Modify `src/EJInstaller.Orchestrator/Program.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Hubs/AgentRuntimeHub.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Runtime/StepStatusIngestService.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Runtime/SequenceConflictAuditService.cs`
+  - Modify `src/DeploymentPoC.Orchestrator/Program.cs`
 - Interfaces/contracts impacted: FR-002, NFR-001.
 - Test requirements: unit + integration tests for stale/out-of-order and payload conflict behavior.
 - Verification commands:
-  - `dotnet test tests/EJInstaller.Orchestrator.Tests --filter Sequence`
-  - `dotnet test tests/EJInstaller.Orchestrator.IntegrationTests --filter SignalRProtocol`
+  - `dotnet test tests/DeploymentPoC.Orchestrator.Tests --filter Sequence`
+  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter SignalRProtocol`
 - Acceptance links: AC-003, AC-101
 - Suggested commit boundary: `feat(runtime): implement signalr protocol sequencing and idempotent status ingest`
 - Checklist:
@@ -143,14 +143,14 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 - Status: `Not Started`
 - Objective: Enforce lease TTL, heartbeat interval, stale threshold, and stale timeout bounds.
 - Target modules:
-  - Create `src/EJInstaller.Orchestrator/Runtime/LeaseManager.cs`
-  - Create `src/EJInstaller.Orchestrator/Runtime/LeaseTimeoutWorker.cs`
-  - Modify `src/EJInstaller.Orchestrator/Data/Entities/AssignmentLeaseEntity.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Runtime/LeaseManager.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Runtime/LeaseTimeoutWorker.cs`
+  - Modify `src/DeploymentPoC.Orchestrator/Data/Entities/AssignmentLeaseEntity.cs`
 - Interfaces/contracts impacted: FR-002, NFR-001.
 - Test requirements: integration + chaos tests for heartbeat loss and stale timeout behavior.
 - Verification commands:
-  - `dotnet test tests/EJInstaller.Orchestrator.IntegrationTests --filter Lease`
-  - `dotnet test tests/EJInstaller.Orchestrator.ChaosTests --filter AssignedStale`
+  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Lease`
+  - `dotnet test tests/DeploymentPoC.Orchestrator.ChaosTests --filter AssignedStale`
 - Acceptance links: AC-101
 - Suggested commit boundary: `feat(reliability): add lease ttl heartbeat and assignedstale timeout policy`
 - Checklist:
@@ -163,17 +163,17 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 - Status: `Not Started`
 - Objective: Create persistent Windows service agent with SignalR client and channel-based execution loop.
 - Target modules:
-  - Create `src/EJInstaller.Agent/EJInstaller.Agent.csproj`
-  - Create `src/EJInstaller.Agent/Program.cs`
-  - Create `src/EJInstaller.Agent/Services/AgentWorker.cs`
-  - Create `src/EJInstaller.Agent/Services/RuntimeClient.cs`
-  - Create `src/EJInstaller.Agent/Services/JobChannelService.cs`
+  - Create `src/DeploymentPoC.Agent/DeploymentPoC.Agent.csproj`
+  - Create `src/DeploymentPoC.Agent/Program.cs`
+  - Create `src/DeploymentPoC.Agent/Services/AgentWorker.cs`
+  - Create `src/DeploymentPoC.Agent/Services/RuntimeClient.cs`
+  - Create `src/DeploymentPoC.Agent/Services/JobChannelService.cs`
   - Modify `DeploymentPoC.sln`
 - Interfaces/contracts impacted: FR-003.
 - Test requirements: unit tests for queue processing and cancellation behavior.
 - Verification commands:
-  - `dotnet build src/EJInstaller.Agent/EJInstaller.Agent.csproj`
-  - `dotnet test tests/EJInstaller.Agent.Tests --filter Worker`
+  - `dotnet build src/DeploymentPoC.Agent/DeploymentPoC.Agent.csproj`
+  - `dotnet test tests/DeploymentPoC.Agent.Tests --filter Worker`
 - Acceptance links: AC-004
 - Suggested commit boundary: `feat(agent): scaffold windows service runtime and signalr client`
 - Checklist:
@@ -186,15 +186,15 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 - Status: `Not Started`
 - Objective: Support one-time enrollment token and enforce per-agent mTLS identity for steady-state reconnect.
 - Target modules:
-  - Create `src/EJInstaller.Orchestrator/Security/EnrollmentService.cs`
-  - Create `src/EJInstaller.Orchestrator/Security/AgentCertificateValidator.cs`
-  - Modify `src/EJInstaller.Orchestrator/Hubs/AgentRuntimeHub.cs`
-  - Create `src/EJInstaller.Agent/Security/CertificateBindingService.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Security/EnrollmentService.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Security/AgentCertificateValidator.cs`
+  - Modify `src/DeploymentPoC.Orchestrator/Hubs/AgentRuntimeHub.cs`
+  - Create `src/DeploymentPoC.Agent/Security/CertificateBindingService.cs`
 - Interfaces/contracts impacted: FR-004, NFR-002.
 - Test requirements: integration tests for token single-use and invalid-cert reconnect rejection.
 - Verification commands:
-  - `dotnet test tests/EJInstaller.Orchestrator.IntegrationTests --filter Auth`
-  - `dotnet test tests/EJInstaller.Agent.Tests --filter Enrollment`
+  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Auth`
+  - `dotnet test tests/DeploymentPoC.Agent.Tests --filter Enrollment`
 - Acceptance links: AC-005, AC-102
 - Suggested commit boundary: `feat(security): enforce enrollment token flow and mtls steady-state identity`
 - Checklist:
@@ -207,23 +207,23 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 - Status: `Not Started`
 - Objective: Execute full per-job step pipeline locally and support MSI/EXE adapters with normalized outcomes.
 - Target modules:
-  - Create `src/EJInstaller.Agent/Pipeline/IInstallStep.cs`
-  - Create `src/EJInstaller.Agent/Pipeline/IPreCheck.cs`
-  - Create `src/EJInstaller.Agent/Pipeline/PipelineExecutor.cs`
-  - Create `src/EJInstaller.Agent/Steps/PreConditionCheck.cs`
-  - Create `src/EJInstaller.Agent/Steps/AcquireArtifact.cs`
-  - Create `src/EJInstaller.Agent/Steps/ValidateSignatureAndHash.cs`
-  - Create `src/EJInstaller.Agent/Steps/DetectCurrentState.cs`
-  - Create `src/EJInstaller.Agent/Steps/InstallOrUpgrade.cs`
-  - Create `src/EJInstaller.Agent/Steps/PostInstallVerify.cs`
-  - Create `src/EJInstaller.Agent/Steps/EmitFinalization.cs`
-  - Create `src/EJInstaller.Agent/Adapters/MsiAdapter.cs`
-  - Create `src/EJInstaller.Agent/Adapters/ExeAdapter.cs`
+  - Create `src/DeploymentPoC.Agent/Pipeline/IInstallStep.cs`
+  - Create `src/DeploymentPoC.Agent/Pipeline/IPreCheck.cs`
+  - Create `src/DeploymentPoC.Agent/Pipeline/PipelineExecutor.cs`
+  - Create `src/DeploymentPoC.Agent/Steps/PreConditionCheck.cs`
+  - Create `src/DeploymentPoC.Agent/Steps/AcquireArtifact.cs`
+  - Create `src/DeploymentPoC.Agent/Steps/ValidateSignatureAndHash.cs`
+  - Create `src/DeploymentPoC.Agent/Steps/DetectCurrentState.cs`
+  - Create `src/DeploymentPoC.Agent/Steps/InstallOrUpgrade.cs`
+  - Create `src/DeploymentPoC.Agent/Steps/PostInstallVerify.cs`
+  - Create `src/DeploymentPoC.Agent/Steps/EmitFinalization.cs`
+  - Create `src/DeploymentPoC.Agent/Adapters/MsiAdapter.cs`
+  - Create `src/DeploymentPoC.Agent/Adapters/ExeAdapter.cs`
 - Interfaces/contracts impacted: FR-003, FR-005.
 - Test requirements: unit tests for step ordering and adapter normalization; integration tests for MSI/EXE flow.
 - Verification commands:
-  - `dotnet test tests/EJInstaller.Agent.Tests --filter Pipeline`
-  - `dotnet test tests/EJInstaller.Agent.IntegrationTests --filter Adapter`
+  - `dotnet test tests/DeploymentPoC.Agent.Tests --filter Pipeline`
+  - `dotnet test tests/DeploymentPoC.Agent.IntegrationTests --filter Adapter`
 - Acceptance links: AC-004, AC-006
 - Suggested commit boundary: `feat(agent): implement local typed pipeline with msi exe adapters`
 - Checklist:
@@ -236,17 +236,17 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 - Status: `Not Started`
 - Objective: Implement upgrade config persistence contract with deterministic migration and restore-on-failure.
 - Target modules:
-  - Create `src/EJInstaller.Agent/Config/IConfigMigration.cs`
-  - Create `src/EJInstaller.Agent/Config/MigrationChainResolver.cs`
-  - Create `src/EJInstaller.Agent/Config/SnapshotService.cs`
-  - Create `src/EJInstaller.Agent/Config/RestoreService.cs`
-  - Create `src/EJInstaller.Orchestrator/Services/ConfigAuditService.cs`
-  - Modify `src/EJInstaller.Orchestrator/Data/Entities/ConfigSnapshotEntity.cs`
+  - Create `src/DeploymentPoC.Agent/Config/IConfigMigration.cs`
+  - Create `src/DeploymentPoC.Agent/Config/MigrationChainResolver.cs`
+  - Create `src/DeploymentPoC.Agent/Config/SnapshotService.cs`
+  - Create `src/DeploymentPoC.Agent/Config/RestoreService.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Services/ConfigAuditService.cs`
+  - Modify `src/DeploymentPoC.Orchestrator/Data/Entities/ConfigSnapshotEntity.cs`
 - Interfaces/contracts impacted: FR-006, `11-config-persistence-contract.md`.
 - Test requirements: unit tests for missing migration hop; integration tests for restore and audit event emission.
 - Verification commands:
-  - `dotnet test tests/EJInstaller.Agent.Tests --filter Migration`
-  - `dotnet test tests/EJInstaller.Orchestrator.IntegrationTests --filter ConfigSnapshot`
+  - `dotnet test tests/DeploymentPoC.Agent.Tests --filter Migration`
+  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter ConfigSnapshot`
 - Acceptance links: AC-007
 - Suggested commit boundary: `feat(upgrade): implement snapshot migration restore contract and audit linkage`
 - Checklist:
@@ -259,16 +259,16 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 - Status: `Not Started`
 - Objective: Enforce RBAC, artifact trust checks, audit tamper evidence, and no plaintext secret handling.
 - Target modules:
-  - Create `src/EJInstaller.Orchestrator/Security/RbacPolicies.cs`
-  - Create `src/EJInstaller.Orchestrator/Security/AuditHashChainService.cs`
-  - Modify `src/EJInstaller.Orchestrator/Controllers/*.cs`
-  - Create `src/EJInstaller.Agent/Security/ArtifactValidationService.cs`
-  - Create `src/EJInstaller.Agent/Security/SecretProvider.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Security/RbacPolicies.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Security/AuditHashChainService.cs`
+  - Modify `src/DeploymentPoC.Orchestrator/Controllers/*.cs`
+  - Create `src/DeploymentPoC.Agent/Security/ArtifactValidationService.cs`
+  - Create `src/DeploymentPoC.Agent/Security/SecretProvider.cs`
 - Interfaces/contracts impacted: NFR-002, mitigation mappings M-001..M-006.
 - Test requirements: security integration tests for unsigned artifact block, unauthorized role denial, and secret redaction.
 - Verification commands:
-  - `dotnet test tests/EJInstaller.SecurityTests`
-  - `dotnet test tests/EJInstaller.Orchestrator.IntegrationTests --filter Authorization`
+  - `dotnet test tests/DeploymentPoC.SecurityTests`
+  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Authorization`
 - Acceptance links: AC-102, AC-002
 - Suggested commit boundary: `feat(security): add artifact trust rbac audit chain and secret protection`
 - Checklist:
@@ -288,7 +288,7 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
   - Modify `web/src/pages/Install.tsx`
   - Create `web/src/services/api.ts`
   - Create `web/src/services/realtime.ts`
-  - Modify `src/EJInstaller.Orchestrator/EJInstaller.Orchestrator.csproj`
+  - Modify `src/DeploymentPoC.Orchestrator/DeploymentPoC.Orchestrator.csproj`
 - Interfaces/contracts impacted: FR-001, NFR-003, NFR-005.
 - Test requirements: web integration tests and E2E tests for job submit/cancel/status.
 - Verification commands:
@@ -307,15 +307,15 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 - Status: `Not Started`
 - Objective: Implement runtime command path via CLI (not script orchestration).
 - Target modules:
-  - Create `src/EJInstaller.Cli/EJInstaller.Cli.csproj`
-  - Create `src/EJInstaller.Cli/Commands/JobsCommand.cs`
-  - Create `src/EJInstaller.Cli/Commands/NodesCommand.cs`
+  - Create `src/DeploymentPoC.Cli/DeploymentPoC.Cli.csproj`
+  - Create `src/DeploymentPoC.Cli/Commands/JobsCommand.cs`
+  - Create `src/DeploymentPoC.Cli/Commands/NodesCommand.cs`
   - Modify `DeploymentPoC.sln`
 - Interfaces/contracts impacted: NFR-004, FR-001.
 - Test requirements: integration tests for create/cancel/status commands.
 - Verification commands:
-  - `dotnet run --project src/EJInstaller.Cli -- jobs create --help`
-  - `dotnet test tests/EJInstaller.Cli.IntegrationTests`
+  - `dotnet run --project src/DeploymentPoC.Cli -- jobs create --help`
+  - `dotnet test tests/DeploymentPoC.Cli.IntegrationTests`
 - Acceptance links: AC-104, AC-001, AC-002
 - Suggested commit boundary: `feat(cli): add runtime api cli surface for jobs and nodes`
 - Checklist:
@@ -327,13 +327,13 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 - Status: `Not Started`
 - Objective: Produce self-contained single-file orchestrator executable with embedded React UI for clean-host run.
 - Target modules:
-  - Modify `src/EJInstaller.Orchestrator/EJInstaller.Orchestrator.csproj`
+  - Modify `src/DeploymentPoC.Orchestrator/DeploymentPoC.Orchestrator.csproj`
   - Create `scripts/package-orchestrator.ps1`
-  - Modify `src/EJInstaller.Orchestrator/Program.cs`
+  - Modify `src/DeploymentPoC.Orchestrator/Program.cs`
 - Interfaces/contracts impacted: NFR-005.
 - Test requirements: packaging validation on clean Windows machine without .NET/IIS.
 - Verification commands:
-  - `dotnet publish src/EJInstaller.Orchestrator/EJInstaller.Orchestrator.csproj --self-contained --runtime win-x64 -p:PublishSingleFile=true`
+  - `dotnet publish src/DeploymentPoC.Orchestrator/DeploymentPoC.Orchestrator.csproj --self-contained --runtime win-x64 -p:PublishSingleFile=true`
   - Run published executable on clean host and verify dashboard + API.
 - Acceptance links: AC-105
 - Suggested commit boundary: `feat(packaging): publish self-contained single-file orchestrator with embedded ui`
@@ -367,16 +367,16 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 - Status: `Not Started`
 - Objective: Build acceptance test suite and evidence pack covering all PoC AC IDs.
 - Target modules:
-  - Create `tests/EJInstaller.Orchestrator.IntegrationTests/*`
-  - Create `tests/EJInstaller.Agent.IntegrationTests/*`
-  - Create `tests/EJInstaller.E2E/*`
-  - Create `tests/EJInstaller.ChaosTests/*`
+  - Create `tests/DeploymentPoC.Orchestrator.IntegrationTests/*`
+  - Create `tests/DeploymentPoC.Agent.IntegrationTests/*`
+  - Create `tests/DeploymentPoC.E2E/*`
+  - Create `tests/DeploymentPoC.ChaosTests/*`
 - Interfaces/contracts impacted: All FR/NFR acceptance criteria.
 - Test requirements: unit, integration, e2e, and chaos scenarios.
 - Verification commands:
   - `dotnet test DeploymentPoC.sln`
   - `pnpm --dir web run test:e2e`
-  - `dotnet test tests/EJInstaller.ChaosTests`
+  - `dotnet test tests/DeploymentPoC.ChaosTests`
 - Acceptance links: AC-001..AC-007, AC-101..AC-105
 - Suggested commit boundary: `test(poc): add full acceptance matrix for phase-1 contracts`
 - Checklist:
@@ -401,7 +401,7 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 |---|---|---|---|
 | AC-001 | TBD | TBD | Not Started |
 | AC-002 | TBD | TBD | Not Started |
-| AC-003 | TBD | TBD | Not Started |
+| AC-003 | src/DeploymentPoC.Contracts/* | TBD (Backend) | Done |
 | AC-004 | TBD | TBD | Not Started |
 | AC-005 | TBD | TBD | Not Started |
 | AC-006 | TBD | TBD | Not Started |

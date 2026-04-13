@@ -5,7 +5,8 @@ paginate: true
 ---
 
 # Distributed Installer PoC
-## Emerson Internship — Design Overview
+## Ej Sadiarin
+<!-- ## Emerson Internship — Design Overview -->
 
 ---
 
@@ -21,27 +22,19 @@ A **distributed installer framework** for Windows machines using .NET + React
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────┐
-│                   React UI                         │
-│         (Job submission, real-time status)          │
-└──────────────────┬──────────────────────────────┘
-                     │ REST + SignalR
-┌────────────────────▼──────────────────────────────┐
-│              ASP.NET Core Orchestrator           │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────┐  │
-│  │ REST API   │  │SignalR Hub│  │Hangfire│  │
-│  │ (CRUD)    │  │(realtime)│  │(queue) │  │
-│  └───────────┘  └──────────┘  └────────┘  │
-└──────────────────┬──────────────────────────────┘
-                    │ SignalR
-        ┌───────────▼───────────┐
-        │   Windows Agent     │
-        │ (Windows Service)  │
-        │ - SignalR Client  │
-        │ - Job Executor   │
-        │ - Child Process │
-        └─────────────────┘
+```text
++----------------------+       +-------------------------------------------+       +------------------+
+|      React UI         |       |        ASP.NET Core Orchestrator            |       | Windows Agent    |
+| (Job submission,     |<----->|  +----------+  +----------+  +------+ |<------| (Windows       |
+|  real-time status)  |       |  | REST API |  |SignalR Hub|  |Hangfire||       |  Service)      |
++----------+---------+       |  | (CRUD)   |  |(realtime)|  |(queue)||       |  - SignalR    |
+           |              |  +-----+----+  +-----+----+  +---+--+|       |  - Job Exec   |
+           | REST+SignalR   |        |          |          |      |       |  - Child Proc |
+           v              |        v          v          v      |       +--------------+
++----------------------+       +----+-----------------+------+               +---------------+
+|                         |       | SQL Server       | Audit/Event |              |
+|                         |<------| (job state)      | (append)    |              |
++----------------------+       +-------------------+-------------+--------------+
 ```
 
 ---
@@ -57,21 +50,28 @@ A **distributed installer framework** for Windows machines using .NET + React
 | Large fleet | SCCM/MECM |
 | Linux (phase 2) | SSH |
 
-**PoC Flow (WinRM):**
-1. Operator runs bootstrap script from orchestrator
-2. Script uses WinRM to connect to target machine
-3. Downloads agent binary, writes config
-4. Registers as Windows Service
-5. Agent starts, connects via SignalR
-6. Ready for job assignments
+```text
+     Step 1                   Step 2                   Step 3                   Step 4/5                  Step 6
+       |                      |                      |                      |                       |
+       v                      v                      v                      v                       v
++------------------+   +------------------+   +------------------+   +------------------+   +------------------+
+|    Operator      |   |   Orchestrator   |   | Target Machine  |   | Windows Service  |   |   Orchestrator   |
+| (runs bootstrap)|-->| (source script)  |-->| (WinRM target)  |-->|   (Agent.exe)  |-->| (SignalR Hub)   |
++------------------+   +------------------+   +------------------+   +------------------+   +------------------+
+                                                                                          |
+                                                                                          v
+                                                                              +---------------------------+
+                                                                              | Ready for job assignments |
+                                                                              +---------------------------+
+```
 
 ---
 
 ## Communication Protocol
 
-### SignalR — Why?
+### SignalR
 
-- Native .NET — no third-party dependencies
+- Native .NET, no third-party dependencies
 - Built-in WebSocket + automatic fallback
 - Automatic reconnection with exponential backoff
 - Real-time bidirectional push
@@ -83,6 +83,8 @@ A **distributed installer framework** for Windows machines using .NET + React
 Connect → Register → AssignJob → AckClaim → 
 LeaseHeartbeat → StepStatus* → Complete/Fail → LeaseClose
 ```
+
+---
 
 ### Lease Defaults (PoC)
 
@@ -175,10 +177,10 @@ Agent.exe (Windows Service)
 ```
 
 **Why child processes?**
-- Isolation: crashed installer ≠ killed agent
-- Security: different privilege levels
-- Cleanup: orphaned processes killable
-- Resource limits: CPU/memory per job
+- Isolation - crashed installer ≠ killed agent
+- Security - different privilege levels
+- Cleanup - orphaned processes killable
+- Resource limits - CPU/memory per job
 
 ---
 
@@ -206,7 +208,7 @@ Structured JSON with correlation IDs — no secrets.
 
 ## Demo Scenarios
 
-| Scenario |验证 Point |
+| Scenario |Sequence |
 |----------|-----------|
 | Happy path | Queue → assigned → precheck → install → succeeded |
 | Failure + rollback | Trigger failure → observe rollback → confirm consistent state |
@@ -231,8 +233,3 @@ Structured JSON with correlation IDs — no secrets.
 4. Scale-oriented queueing strategies
 5. Advanced diagnostics + self-healing
 
----
-
-# Questions?
-
-Docs: `docs/distributed-installer/`

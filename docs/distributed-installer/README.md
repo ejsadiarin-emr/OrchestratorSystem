@@ -19,7 +19,15 @@ Emerson internship PoC: Windows-first distributed installer framework in .NET + 
 13. `11-config-persistence-contract.md` — backup/migration/restore contract scaffold
 14. `12-devops-pipeline-design-pack.md` — CI/CD stage/gate/versioning scaffold
 15. `13-poc-phase1-definition-of-done.md` — PoC phase-1 signoff checklist and evidence tracker
-16. `14-poc-phase1-code-implementation-tracker.md` — dependency-ordered engineering execution tracker (tasks, owners, status, AC mapping)
+14. `17-poc-phase1-prd-v2-capability-addendum.md` — decision-closure addendum for unresolved/partial Phase 1 points
+15. `18-installation-and-operational-storyboards-canonical.md` — canonical merged storyboard flows for Phase 1
+16. `poc-phase1-prd-final.md` — canonical product source of truth for PoC Phase 1
+17. `poc-phase1-prd-and-implementation-tracker.md` — dependency-ordered engineering execution tracker aligned to final PRD
+
+## Superseded / historical references
+
+- `15-installation-and-operational-storyboards.md` — superseded by `18-installation-and-operational-storyboards-canonical.md`
+- `16-installation-and-operational-storyboards-independent.md` — superseded by `18-installation-and-operational-storyboards-canonical.md`
 
 ## Diagram files
 

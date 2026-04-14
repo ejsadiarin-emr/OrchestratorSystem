@@ -1,8 +1,8 @@
-# PoC Phase 1 Code Implementation Tracker
+# PoC Phase 1 PRD and Implementation Tracker
 
-Date: 2026-04-12
-Status: In Progress (1/14 tasks complete)
-Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-contracts-pack.md`, `11-config-persistence-contract.md`, `12-devops-pipeline-design-pack.md`, `13-poc-phase1-definition-of-done.md`, `03/04/05/07`, diagrams, and decision lock addendum.
+Date: 2026-04-14
+Status: In Progress (3/20 tasks complete)
+Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-storyboards-canonical.md`, `08-requirements-contract.md`, `09-security-pack.md`, `10-core-contracts-pack.md`, `11-config-persistence-contract.md`, `12-devops-pipeline-design-pack.md`, and `13-poc-phase1-definition-of-done.md`.
 
 ## Scope guardrails (non-negotiable)
 
@@ -11,6 +11,8 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 - Orchestrator launch must not require preinstalled .NET runtime or IIS.
 - Runtime workstation install/upgrade/rollback actions must be Orchestrator API/CLI driven only.
 - Direct workstation deployment from Azure DevOps pipeline is out of scope.
+- Runtime package/artifact source must be internal-only (no external package source dependency).
+- Phase 1 execution target is single orchestrator (no HA/multi-orchestrator commitments).
 - Canonical runtime sequence is fixed:
   `Connect -> Register/Authenticate -> AssignJob -> AckClaim -> LeaseHeartbeat -> StepStatus* -> Complete/Fail -> LeaseClose`
 
@@ -26,15 +28,20 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 | Task ID | Task | Sprint | Depends On | Owner | Status | AC IDs |
 |---|---|---|---|---|---|---|
 | P0-01 | Shared runtime contracts library | S1 | - | TBD (Backend) | Done | AC-003 |
-| P1-01 | SQL persistence for canonical entities | S1 | P0-01 | TBD (Backend) | Not Started | AC-001, AC-002, AC-007, AC-101 |
+| P0-02 | Phase 1 decision closure from PRD addendum | S1 | P0-01 | TBD (Product/Arch/Security) | Done | AC-001..AC-007, AC-101..AC-105 |
+| P0-03 | Canonical storyboard merge and contradiction fixes | S1 | P0-02 | TBD (Architecture) | Done | AC-001, AC-002, AC-003, AC-102 |
+| P1-01 | SQLite persistence for canonical entities | S1 | P0-03 | TBD (Backend) | Not Started | AC-001, AC-002, AC-007, AC-101 |
 | P1-02 | API contract alignment (`/api/jobs`, `/steps`, `/cancel`, `/nodes`) | S1 | P1-01 | TBD (Backend) | Not Started | AC-001, AC-002, AC-104 |
+| P1-03 | Artifact HTTP transport + range/chunk retrieval | S1 | P1-02 | TBD (Backend/Agent) | Not Started | AC-001, AC-006, AC-102 |
 | P2-01 | SignalR protocol + sequence/idempotency enforcement | S1 | P1-02 | TBD (Backend) | Not Started | AC-003, AC-101 |
 | P2-02 | Lease manager + `AssignedStale` timeout policy | S1 | P2-01 | TBD (Backend) | Not Started | AC-101 |
+| P2-03 | Policy evaluation engine (retry/idempotency/risk/approval) | S2 | P2-01, P2-02, P1-03 | TBD (Backend/Agent) | Not Started | AC-002, AC-006, AC-007, AC-101 |
 | P3-01 | Windows agent service scaffold + runtime channel loop | S2 | P0-01 | TBD (Agent) | Not Started | AC-004 |
 | P3-02 | Bootstrap token to mTLS steady-state auth flow | S2 | P3-01, P2-01 | TBD (Security/Agent) | Not Started | AC-005, AC-102 |
 | P4-01 | Agent local typed pipeline + MSI/EXE adapters | S2 | P3-01 | TBD (Agent) | Not Started | AC-004, AC-006 |
 | P4-02 | Config snapshot/migration/restore + audit linkage | S2 | P4-01, P1-01 | TBD (Agent/Backend) | Not Started | AC-007 |
 | P5-01 | RBAC, artifact trust, audit hash chain, secret hygiene | S3 | P2-01, P3-02, P4-01 | TBD (Security/Backend) | Not Started | AC-102, AC-002 |
+| P5-02 | OTel file export policy + redaction controls | S3 | P5-01 | TBD (Security/Backend) | Not Started | AC-102, AC-103 |
 | P6-01 | UI runtime screens + live step timeline | S3 | P1-02, P2-01 | TBD (Frontend) | Not Started | AC-001, AC-002, AC-103, AC-105 |
 | P6-02 | CLI runtime command surface | S3 | P1-02 | TBD (Platform) | Not Started | AC-104, AC-001, AC-002 |
 | P7-01 | Self-contained single-file orchestrator packaging | S4 | P6-01 | TBD (Platform/DevOps) | Not Started | AC-105 |
@@ -66,11 +73,52 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
   - [x] Contracts project compiles and is referenced by orchestrator and agent projects.
   - [x] Envelope includes `assignmentId`, `leaseId`, `jobId`, `agentId`, `sequence` fields.
 
-### P1-01 - SQL persistence for canonical entities
+### P0-02 - Phase 1 decision closure from PRD addendum
+
+- Owner: `TBD (Product/Arch/Security)`
+- Status: `Done`
+- Objective: Close all open/partial policy decisions listed in `17-poc-phase1-prd-v2-capability-addendum.md`.
+- Target modules:
+  - Modify `docs/distributed-installer/17-poc-phase1-prd-v2-capability-addendum.md`
+  - Modify `docs/distributed-installer/poc-phase1-prd-final.md`
+  - Modify `docs/distributed-installer/18-installation-and-operational-storyboards-canonical.md`
+- Interfaces/contracts impacted: FR-001..FR-006, NFR-001..NFR-005.
+- Test requirements: decision closure review and explicit signoff comments.
+- Verification commands:
+  - `dotnet build DeploymentPoC.sln`
+  - Manual doc review against Q11/Q13/Q15/Q16/Q21/Q22/Q23/Q24/Q26
+- Acceptance links: AC-001..AC-007, AC-101..AC-105
+- Suggested commit boundary: `docs(prd): close phase-1 policy decisions for execution`
+- Checklist:
+  - [x] Q11, Q13, Q15, Q16, Q21, Q22, Q23, Q24, Q26 marked closed with explicit decisions.
+  - [x] Final PRD and canonical storyboard reflect closed decisions.
+
+### P0-03 - Canonical storyboard merge and contradiction fixes
+
+- Owner: `TBD (Architecture)`
+- Status: `Done`
+- Objective: Merge strengths from storyboard drafts and remove contradictory/risky guidance.
+- Target modules:
+  - Modify `docs/distributed-installer/18-installation-and-operational-storyboards-canonical.md`
+  - Modify `docs/distributed-installer/poc-phase1-prd-final.md`
+- Interfaces/contracts impacted: FR-001, FR-002, NFR-001, NFR-002.
+- Test requirements: architecture/security review pass.
+- Verification commands:
+  - Manual checklist from `docs/distributed-installer/sessions/20260413-storyboard-review-output.md` section E
+- Acceptance links: AC-001, AC-002, AC-003, AC-102
+- Suggested commit boundary: `docs(storyboard): publish canonical merged phase-1 flows`
+- Checklist:
+  - [x] Retry contradiction is removed and policy-driven classification is explicit.
+  - [x] Self-update uses staged swap/supervisor pattern as normative.
+  - [x] Signing authority and key-custody minimum standard is documented.
+  - [x] SignalR control-plane and HTTP artifact-plane boundary is explicit.
+  - [x] Package channel taxonomy (`stable`, `canary`, `test`) is documented with immutable/hash-bound identity.
+
+### P1-01 - SQLite persistence for canonical entities
 
 - Owner: `TBD (Backend)`
 - Status: `Not Started`
-- Objective: Replace in-memory state with SQL-backed canonical entities.
+- Objective: Replace in-memory state with SQLite-backed canonical entities.
 - Target modules:
   - Create `src/DeploymentPoC.Orchestrator/Data/InstallerDbContext.cs`
   - Create `src/DeploymentPoC.Orchestrator/Data/Entities/JobEntity.cs`
@@ -85,9 +133,9 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
   - `dotnet ef database update --project src/DeploymentPoC.Orchestrator`
   - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Persistence`
 - Acceptance links: AC-001, AC-002, AC-007, AC-101
-- Suggested commit boundary: `feat(orchestrator): add sql persistence for canonical entities`
+- Suggested commit boundary: `feat(orchestrator): add sqlite persistence for canonical entities`
 - Checklist:
-  - [ ] `Job`, `Node`, `AssignmentLease`, and `ConfigSnapshot` persisted in SQL.
+  - [ ] `Job`, `Node`, `AssignmentLease`, and `ConfigSnapshot` persisted in SQLite.
   - [ ] In-memory-only paths no longer used for runtime state.
 
 ### P1-02 - API contract alignment
@@ -115,11 +163,33 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
   - [ ] `/api/jobs/{jobId}/steps` endpoint implemented.
   - [ ] Cancel endpoint uses `POST /api/jobs/{jobId}/cancel` contract shape.
 
+### P1-03 - Artifact HTTP transport + range/chunk retrieval
+
+- Owner: `TBD (Backend/Agent)`
+- Status: `Not Started`
+- Objective: Implement artifact transfer over HTTP endpoints (including range/chunk retrieval) and explicitly avoid artifact payload transfer over SignalR.
+- Target modules:
+  - Create `src/DeploymentPoC.Orchestrator/Controllers/ArtifactsController.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Services/ArtifactStoreService.cs`
+  - Modify `src/DeploymentPoC.Agent/Steps/AcquireArtifact.cs`
+  - Modify `src/DeploymentPoC.Orchestrator/Program.cs`
+- Interfaces/contracts impacted: FR-001, FR-005, NFR-002.
+- Test requirements: integration tests for artifact upload/download, range requests, and no-SignalR-payload contract.
+- Verification commands:
+  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Artifact`
+  - `dotnet test tests/DeploymentPoC.Agent.IntegrationTests --filter AcquireArtifact`
+- Acceptance links: AC-001, AC-006, AC-102
+- Suggested commit boundary: `feat(artifact): add http artifact transport with range chunk retrieval`
+- Checklist:
+  - [ ] Agent retrieves artifacts through HTTP endpoints only.
+  - [ ] Large artifacts support range/chunk retrieval.
+  - [ ] SignalR messages do not carry artifact payloads.
+
 ### P2-01 - SignalR protocol + idempotency enforcement
 
 - Owner: `TBD (Backend)`
 - Status: `Not Started`
-- Objective: Enforce canonical runtime message sequence and strict idempotency/replay guards.
+- Objective: Enforce canonical runtime message sequence and strict idempotency/replay guards for control/status plane only (no artifact payload transfer over SignalR).
 - Target modules:
   - Create `src/DeploymentPoC.Orchestrator/Hubs/AgentRuntimeHub.cs`
   - Create `src/DeploymentPoC.Orchestrator/Runtime/StepStatusIngestService.cs`
@@ -136,6 +206,30 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
   - [ ] Upsert key is `(jobId, stepId, sequence)`.
   - [ ] Same-key payload mismatch rejects and emits `sequence_payload_conflict`.
   - [ ] Reconnect resumes from `lastAcknowledgedSequence + 1`.
+
+### P2-03 - Policy evaluation engine (retry/idempotency/risk/approval)
+
+- Owner: `TBD (Backend/Agent)`
+- Status: `Not Started`
+- Objective: Implement unified policy evaluation for retryability, idempotency mode, risk level, and approval requirements across install/update/modify/downgrade flows.
+- Target modules:
+  - Create `src/DeploymentPoC.Orchestrator/Runtime/PolicyEvaluationService.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Runtime/ApprovalGateService.cs`
+  - Modify `src/DeploymentPoC.Agent/Pipeline/PipelineExecutor.cs`
+  - Modify `src/DeploymentPoC.Agent/Steps/InstallOrUpgrade.cs`
+- Interfaces/contracts impacted: FR-001, FR-005, FR-006, NFR-001.
+- Test requirements: unit + integration tests for policy branch selection, bounded retry, non-idempotent/high-risk behavior, and downgrade approvals.
+- Verification commands:
+  - `dotnet test tests/DeploymentPoC.Orchestrator.Tests --filter Policy`
+  - `dotnet test tests/DeploymentPoC.Agent.Tests --filter Policy`
+  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Approval`
+- Acceptance links: AC-002, AC-006, AC-007, AC-101
+- Suggested commit boundary: `feat(policy): add unified retry idempotency risk and approval evaluation`
+- Checklist:
+  - [ ] Retry is bounded and policy-driven.
+  - [ ] High-risk/non-idempotent steps never blind auto-retry.
+  - [ ] Downgrade path enforces explicit approval when enabled.
+  - [ ] Channel policy (`stable`, `canary`, `test`) is validated by API/model rules.
 
 ### P2-02 - Lease manager + stale handling
 
@@ -196,7 +290,7 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
   - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Auth`
   - `dotnet test tests/DeploymentPoC.Agent.Tests --filter Enrollment`
 - Acceptance links: AC-005, AC-102
-- Suggested commit boundary: `feat(security): enforce enrollment token flow and mtls steady-state identity`
+- Suggested commit boundary: `feat(security): enforce enrollment token flow and mTLS steady-state identity`
 - Checklist:
   - [ ] Token is consumed once and invalidated.
   - [ ] Reconnect without valid bound cert is rejected.
@@ -387,7 +481,7 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 
 | Phase | Gate command(s) | Exit criterion | Owner | Status |
 |---|---|---|---|---|
-| Phase 0-1 | `dotnet build DeploymentPoC.sln` + persistence/API tests | Contracts + SQL + API compile and pass tests | TBD | Not Started |
+| Phase 0-1 | `dotnet build DeploymentPoC.sln` + persistence/API tests | Contracts + SQLite + API compile and pass tests | TBD | In Progress |
 | Phase 2 | runtime protocol and lease test suites | Sequence, idempotency, stale policy pass | TBD | Not Started |
 | Phase 3-4 | agent unit/integration + migration tests | Agent executes full pipeline; config restore verified | TBD | Not Started |
 | Phase 5 | security test suite | Unsigned block, RBAC deny, secret hygiene pass | TBD | Not Started |
@@ -417,3 +511,23 @@ Source of truth: `08-requirements-contract.md`, `09-security-pack.md`, `10-core-
 - Use one commit per task completion in dependency order.
 - If a task must be split, append suffixes (`P4-01a`, `P4-01b`) and keep AC mapping explicit.
 - Any request that adds Hardening Phase 2 controls must be recorded separately and not block PoC completion.
+### P5-02 - OTel file export policy + redaction controls
+
+- Owner: `TBD (Security/Backend)`
+- Status: `Not Started`
+- Objective: Implement and verify Phase 1 OTel defaults (file-based export with rotation/retention) and denylist-based sensitive data redaction/access controls.
+- Target modules:
+  - Create `src/DeploymentPoC.Orchestrator/Observability/OtelExportPolicy.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Observability/LogRedactionPolicy.cs`
+  - Modify `src/DeploymentPoC.Orchestrator/Program.cs`
+- Interfaces/contracts impacted: NFR-002, NFR-003.
+- Test requirements: integration tests for rotation/retention policy and secret/token redaction behavior.
+- Verification commands:
+  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Otel`
+  - `dotnet test tests/DeploymentPoC.SecurityTests --filter Redaction`
+- Acceptance links: AC-102, AC-103
+- Suggested commit boundary: `feat(observability): enforce otel file export defaults and redaction policy`
+- Checklist:
+  - [ ] File-based OTel export with rotation and retention is enforced.
+  - [ ] Sensitive fields (secrets/tokens/credentials) are redacted in logs.
+  - [ ] Access policy for telemetry endpoints/log files is least-privilege by default.

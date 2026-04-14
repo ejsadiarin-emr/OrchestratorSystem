@@ -1,8 +1,11 @@
 # Installation & Operational Storyboards
 
 Date: 2026-04-13  
-Status: Draft for review  
+Status: Superseded draft (reference only)  
 Scope: All installation, update, and modification flows for Distributed Installer PoC
+
+> Superseded by `docs/distributed-installer/18-installation-and-operational-storyboards-canonical.md` for Phase 1 canonical behavior.
+> Keep this document as historical comparison/reference only.
 
 ## Purpose
 

@@ -88,6 +88,7 @@ can showcase simple Windows to Linux (agent, remote machine) installation
 - in PoC, it is accepted to just run a manual script on the remote machine
 - no need for GPO/SCCM - for docs purposes, note this GPO/SCCM approach as "considered"
 
+---
 what are the trust boundary annotations in Architecture diagram?
 
 keep in mind that that this won't need SCALE as much as to need multiple orchestrators. 

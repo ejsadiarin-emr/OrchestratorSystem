@@ -48,16 +48,16 @@ Step-by-step flows for installation and operations:
 ### Build and Sign Flow
 
 ```
-DevOps CI         Signing Service     Artifact Repo     Operator
-   |                   |                |              |
-   | build/test        |                |              |
-   | dotnet publish --self-contained   |              |
-   |----------------->|                |              |
-   |                  | sign + checksums + manifest   |
-   |<----------------|                |              |
-   | publish media ------------------------->|  EXE/ZIP
-   |                  |                |              |
-   |                  |                | download+verify
+DevOps CI           Signing Service     Artifact Repo       Operator
+   |                      |                  |                |
+   | build/test           |                  |                |
+   | dotnet publish --self-contained        |                |
+   |--------------------->|                  |                |
+   |                      | sign + checksums + manifest       |
+   |<--------------------|                  |                |
+   | publish media ---------------------------->|  EXE/ZIP     |
+   |                      |                  |                |
+   |                      |                  | download+verify
 ```
 
 ### Fresh Orchestrator Install Flow
@@ -78,8 +78,8 @@ Step 1: Acquire Orchestrator Binary
 | - Extracts to target directory                  |
 | - Single EXE + appsettings.json                  |
 +--------------------------------------------------+
-                    |
-                    v
+                     |
+                     v
 Step 2: Initial Configuration
 +--------------------------------------------------+
 | - Run: Orchestrator.exe --init                  |
@@ -188,20 +188,20 @@ Traceability: FR-001, NFR-005, AC-001, AC-105
 ```
 Operator WS        Target Machine (WinRM)     Agent Service     Orchestrator
     |                    |                     |                  |
-    | POST /api/nodes/enroll -------------------------->|
-    |<------------------------- token,nodeId,ttl -----|
+    | POST /api/nodes/enroll ------------------------------------->|
+    |<------------------------------------ token,nodeId,ttl ------|
     | Invoke-Command (WinRM)                                    |
-    |  - download Agent.exe                                    |
-    |  - write config (orchUrl, token, nodeId)                 |
-    |  - sc.exe create service                                |
-    |  - Start-Service                                        |
-    |--------------------->| install/start -------->|         |
-    |                      |                     | Connect(token) ->|
-    |                      |                     |<-- bind cert   |
-    |                      |                     | reconnect(mTLS) ->|
-    |                      |                     |<-- accepted     |
-    | GET /api/nodes/{nodeId} -------------------------->|
-    |<------------------------- status=online,auth=mtls ---|
+    |  - download Agent.exe                                     |
+    |  - write config (orchUrl, token, nodeId)                  |
+    |  - sc.exe create service                                  |
+    |  - Start-Service                                          |
+    |--------------------->|                     |                |
+    |                      | install/start ----->| Connect(token) ->|
+    |                      |                     |<-- bind cert     |
+    |                      |                     |<-- accepted      |
+    |                      |                     |<-- reconnect(mTLS)|
+    | GET /api/nodes/{nodeId} ---------------------------------->|
+    |<-------------------------------- status=online,auth=mtls -|
 ```
 
 ### Bootstrap Script
@@ -297,28 +297,35 @@ Traceability: FR-004, NFR-002, AC-005, AC-102
 
 ## 3. Package Ingestion (Internal-Only Source)
 
-### Policy
+### 3.1 Package Source Decision
 
-- Agents don't fetch from external sources at runtime
-- Upstream binaries ingested into orchestrator artifact store first
-- Artifact records are immutable and hash-bound
+| Challenge                    | Solution                                    |
+| ---------------------------- | ------------------------------------------- |
+| No external NuGet/Chocolatey | **Orchestrator serves as package source**   |
+| Agents need packages         | Agents download from orchestrator endpoint  |
+| Large packages               | Chunked download via `AcquireArtifact` step |
+
+**Architecture**: Orchestrator hosts `/api/artifacts/{packageId}/{version}` endpoint.
+
+> [!NOTE]
+> Artifact records are immutable and hash-bound
 
 ### Ingestion Flow
 
 ```
 Admin                API                  Artifact Store         Audit
   |                  |                         |                  |
-  | POST /api/artifacts/upload                |                  |
+  | POST /api/artifacts/upload                 |                  |
   |----------------->|                         |                  |
   |                  | write artifact -------->|                  |
-  |                  | compute digest         |                  |
-  |                  | verify trust metadata |                  |
-  |                  | create immutable record ---------------->|
+  |                  | compute digest -------->|                  |
+  |                  | verify trust metadata ->|                  |
+  |                  | create immutable record ------------------>|
   |                  | emit ingest event ------------------------>|
-  |<-----------------| 201 Created            |                  |
+  |<-----------------| 201 Created             |                  |
 ```
 
-### Package Manifest
+### Package Manifest (tentative, can be changed)
 
 ```json
 {
@@ -485,10 +492,10 @@ Traceability: FR-005, NFR-002, AC-006, AC-102
 ```
 Sysadmin      UI/CLI       Orch API      SQLite     Hangfire   SignalR Hub    Agent
    |             |             |            |           |            |            |
-   | select + submit          |            |           |            |            |
-   |------------>| POST /jobs ->| validate   |           |            |            |
-   |             |             | persist job -->|           |            |            |
-   |             |             | persist assn -->|          |            |            |
+   | select + submit           |            |           |            |            |
+   |------------>| POST /jobs ->| validate  |           |            |            |
+   |             |             | persist job|           |            |            |
+   |             |             | persist assn|          |            |            |
    |             |             | enqueue dispatch --------->|            |            |
    |             |<------------| 202 jobId  |           |            |            |
    |             |             |            |          | dequeue     |            |
@@ -496,24 +503,24 @@ Sysadmin      UI/CLI       Orch API      SQLite     Hangfire   SignalR Hub    Ag
    |             |             |            |          |            |<-- AckClaim --|
    |             |             | update lease -->|          |            |            |
    |             |             |            |          |            |<-- StepStatus |
-   | timeline <----------------------------- update step/job     |            |            |
+   | timeline <-----------------------------| update step/job     |            |            |
 ```
 
 ### Canonical Protocol Sequence
 
 ```
 Agent                SignalR Hub         Orchestrator
-  |                      |                   |
-  | Connect ----------->|                   |
-  | Register/Auth ----->|                   |
-  |<-- AssignJob -------|                   |
-  | AckClaim ---------->|                   |
-  | LeaseHeartbeat ---->| update lease -->| |
-  | StepStatus(seq=1) ->| upsert step -->| |
-  | StepStatus(seq=2) ->| upsert step -->| |
-  | StepStatus(seq=n) ->| upsert step -->| |
-  | Complete/Fail ----->| terminal ----->| |
-  | LeaseClose -------->| close lease -->| |
+   |                      |                   |
+   | Connect ----------->|                   |
+   | Register/Auth ----->|                   |
+   |<-- AssignJob -------|                   |
+   | AckClaim ---------->|                   |
+   | LeaseHeartbeat ---->| update lease --->|
+   | StepStatus(seq=1) ->| upsert step --->|
+   | StepStatus(seq=2) ->| upsert step --->|
+   | StepStatus(seq=n) ->| upsert step --->|
+   | Complete/Fail ----->| terminal ------->|
+   | LeaseClose -------->| close lease ---->|
 ```
 
 ### Idempotency Rules
@@ -530,14 +537,14 @@ Agent           Hub         StepStatus Ingest      SQLite
   | disconnect   |                |                |
   |------------->|                |                |
   |              | read last ack ->|                |
-  |              |<-- K=2 --------|<---------------| 
+  |              |<-- K=2 --------|<---------------|
   | Connect ---->|                |                |
   | Register --->|                |                |
   |<-- resume(K) |                |                |
   |              |                |                |
   | resend seq=3 ->| upsert ---->|                |
   | resend seq=4 ->| upsert ---->|                |
-  | stale seq=2 -->| reject + audit                |
+  | stale seq=2 -->| reject + audit               |
 ```
 
 **Resume rule**: Agent resumes strictly from `lastAcknowledgedSequence + 1`
@@ -591,26 +598,26 @@ Assigned
 Orchestrator    Hub       LeaseMgr    Hangfire    Agent
     |           |           |           |          |
     | Ping ---->|           |           |          |
-    | (no resp) | mark node posture only          |
+    | (no resp) | mark node posture only           |
     |           |           |           |          |
-    |           |<---------- LeaseHeartbeat       |
-    |           |           | renew ---->|          |
+    |           |<---------- LeaseHeartbeat        |
+    |           |           | renew ---->|         |
     |           |           |           |          |
-    |           |           | missed HB #1       |
-    |           |           |---------->|          |
-    |           |           | missed HB #2       |
-    |           |           |---------->|          |
-    |           |           | missed HB #3       |
-    |           |           | AssignedStale      |
-    |           |           |---------->| reassign |
-    |           |<--------------------------------|
-    |           |<-------------------------------- AckClaim
-    |           |<-------------------------------- LeaseHeartbeat
+    |           |           | missed HB #1          |
+    |           |           |---------->|           |
+    |           |           | missed HB #2          |
+    |           |           |---------->|           |
+    |           |           | missed HB #3          |
+    |           |           | AssignedStale         |
+    |           |           |---------->| reassign  |
+    |           |<---------------------------------|
+    |           |<--------------------------------- AckClaim
+    |           |<--------------------------------- LeaseHeartbeat
     |           |           |           |          |
-    |           |           | bound reached?     |
+    |           |           | bound reached?      |
     |           |           |---------->| AutoFail |
-    |           |<-------------------------------- Fail
-    |           |<-------------------------------- LeaseClose
+    |           |<--------------------------------- Fail
+    |           |<--------------------------------- LeaseClose
 ```
 
 **Guardrail**: Ping loss = dashboard only; LeaseHeartbeat loss = stale/reassign/auto-fail
@@ -659,33 +666,33 @@ Assignment accepted
 
 ```
 SignalR       Channel        BG Worker      ChildProc    Artifact API
-  |              |               |              |            |
-  | AssignJob -->| enqueue       |              |            |
-  |              |-------------->| dequeue       |            |
-  |              |               | PreCheck ------------------------>|
-  |              |               |-------------------------------> StepStatus(seq=1)
-  |              |               |                               |
-  |              |               | AcquireArtifact ------------->| GET
-  |              |               |<------------------------------ bytes
-  |              |               |-------------------------------> StepStatus(seq=2)
-  |              |               |                               |
-  |              |               | ValidateSignatureAndHash      |
-  |              |               |-------------------------------> StepStatus(seq=3)
-  |              |               |                               |
-  |              |               | DetectCurrentState            |
-  |              |               | (skip/proceed decision)       |
-  |              |               |-------------------------------> StepStatus(seq=4)
-  |              |               |                               |
-  |              |               | InstallOrUpgrade -> spawn --->|
-  |              |               |<------------------------------ exit code
-  |              |               |-------------------------------> StepStatus(seq=5)
-  |              |               |                               |
-  |              |               | PostInstallVerify              |
-  |              |               |-------------------------------> StepStatus(seq=6)
-  |              |               |                               |
-  |              |               | EmitFinalization               |
-  | Complete/Fail ------------------------------------------>|
-  | LeaseClose ------------------------------------------>|
+   |              |               |              |            |
+   | AssignJob -->| enqueue       |              |            |
+   |              |-------------->| dequeue       |            |
+   |              |               | PreCheck ------------------------>|
+   |              |               |-------------------------------> StepStatus(seq=1)
+   |              |               |                               |
+   |              |               | AcquireArtifact ------------->| GET
+   |              |               |<------------------------------ bytes
+   |              |               |-------------------------------> StepStatus(seq=2)
+   |              |               |                               |
+   |              |               | ValidateSignatureAndHash       |
+   |              |               |-------------------------------> StepStatus(seq=3)
+   |              |               |                               |
+   |              |               | DetectCurrentState             |
+   |              |               | (skip/proceed decision)        |
+   |              |               |-------------------------------> StepStatus(seq=4)
+   |              |               |                               |
+   |              |               | InstallOrUpgrade -> spawn --->|
+   |              |               |<------------------------------ exit code
+   |              |               |-------------------------------> StepStatus(seq=5)
+   |              |               |                               |
+   |              |               | PostInstallVerify              |
+   |              |               |-------------------------------> StepStatus(seq=6)
+   |              |               |                               |
+   |              |               | EmitFinalization               |
+   | Complete/Fail ------------------------------------------>|
+   | LeaseClose ------------------------------------------>|
 ```
 
 ### Adapter Normalization
@@ -713,22 +720,22 @@ Traceability: FR-003, FR-005, AC-004, AC-006
 
 ```
 UI/CLI        Orch API       Agent Pipeline      Snapshot Store    Installer    Audit
-  |              |                |                 |              |          |
-  | submit (22->24)              |                 |              |          |
-  |------------->| assign job ---->| AckClaim+lease  |              |          |
-  |              |                | DetectCurrentState(22.x)        |          |
-  |              |                | AcquireArtifact |              |          |
-  |              |                |<------------------------------| bytes    |
-  |              |                | ValidateSignatureAndHash       |          |
-  |              |                |---- fail? -------->|           | fail     |
-  |              |                | create snapshot -->|              |          |
-  |              |                |<------------------| snapshotId |          |
-  |              |                | StepStatus(snapshot,id) -------->|          |
-  |              |                | InstallOrUpgrade ------------------------>| run 24  |
-  |              |                |<-------------------------------| exit     |
-  |              |                | PostInstallVerify(expect 24.x)  |          |
-  |              |                |-------------------------------> Complete  |
-  |              |<---------------| final status + linkage         |          |
+   |              |                |                 |              |          |
+   | submit (22->24)              |                 |              |          |
+   |------------->| assign job ---->| AckClaim+lease  |              |          |
+   |              |                | DetectCurrentState(22.x)        |          |
+   |              |                | AcquireArtifact |              |          |
+   |              |                |<-----------------------------| bytes    |
+   |              |                | ValidateSignatureAndHash       |          |
+   |              |                |---- fail? -------->|           | fail     |
+   |              |                | create snapshot -->|              |          |
+   |              |                |<------------------| snapshotId |          |
+   |              |                | StepStatus(snapshot,id) -------->|          |
+   |              |                | InstallOrUpgrade ------------------------>| run 24  |
+   |              |                |<------------------------------| exit     |
+   |              |                | PostInstallVerify(expect 24.x)  |          |
+   |              |                |-------------------------------> Complete  |
+   |              |<---------------| final status + linkage         |          |
 ```
 
 ### Modify and Downgrade
@@ -803,19 +810,19 @@ Traceability: FR-006, AC-002, AC-007, AC-101
 
 ```
 Agent          Policy Eval      Step
-  |                |            |
-  | run step ----->|            |
-  |                | classify   |
-  |                |----- transient? -----|
-  |                |    high-risk/non-idempotent?    |
-  |                |            |
-  | <-- retry allowed (bounded) |
-  | backoff t1/t2/t3            |
-  | rerun step    |            |
-  | ... until success or exhausted           |
-  |                |            |
-  | <-- retry denied           |
-  | Fail(non_retryable_or_exhausted)       |
+   |                |            |
+   | run step ----->|            |
+   |                | classify   |
+   |                |----- transient? -----|
+   |                |    high-risk/non-idempotent?  |
+   |                |            |
+   | <-- retry allowed (bounded)|
+   | backoff t1/t2/t3           |
+   | rerun step    |            |
+   | ... until success or exhausted           |
+   |                |            |
+   | <-- retry denied           |
+   | Fail(non_retryable_or_exhausted)        |
 ```
 
 ### Idempotency Modes
@@ -861,13 +868,13 @@ Traceability: FR-002, NFR-001, AC-003, AC-101
 
 ```
 Operator      API/Orch         Agent         ChildProc
-  |              |               |              |
-  | cancel ---->| mark intent    |              |
-  |              | signal ----->|              |
-  |              |              | graceful stop ->|
-  |              |              | force kill (timeout)
-  |              |              |<-------------|
-  |              |<-------------| emit final     |
+   |              |               |              |
+   | cancel ---->| mark intent    |              |
+   |              | signal ----->|              |
+   |              |              | graceful stop ->|
+   |              |              | force kill (timeout)
+   |              |              |<-------------||
+   |              |<-------------| emit final   |
 ```
 
 ### Rollback Semantics
@@ -1052,13 +1059,13 @@ Every job has:
 
 ```
 Agent Worker      SignalR       StepStatus Ingest    Audit/OTel
-    |                |                |              |
-    | StepStatus --->|--------------->| validate    |
-    |                |                | write event ->|
-    |                |                | emit span ----->|
-    |                |                |              |
-    | Complete/Fail ->|--------------->| set terminal ->|
-    | LeaseClose ---->|--------------->| close event ->|
+     |                |                |              |
+     | StepStatus --->|--------------->| validate    |
+     |                |                | write event ->|
+     |                |                | emit span ----->|
+     |                |                |              |
+     | Complete/Fail ->|--------------->| set terminal ->|
+     | LeaseClose ---->|--------------->| close event ->|
 ```
 
 ### OTel Baseline
@@ -1090,14 +1097,14 @@ Traceability: NFR-003, NFR-002, AC-103, AC-102
 
 ```
 Sysadmin        UI              Orch API         Runtime
-   |              |                |               |
-   | open Install |                |               |
-   | select pkg   |                |               |
-   | submit job -->| POST /jobs --->| validate      |
-   |<-------------| 202 jobId       |               |
-   | open timeline| GET /jobs/{id}/steps --------->|
-   |<-------------| live statuses   |               |
-   | cancel? ---->| POST /jobs/{id}/cancel -------->|
+    |              |                |               |
+    | open Install |                |               |
+    | select pkg   |                |               |
+    | submit job -->| POST /jobs --->| validate      |
+    |<-------------| 202 jobId       |               |
+    | open timeline| GET /jobs/{id}/steps --------->|
+    |<-------------| live statuses   |               |
+    | cancel? ---->| POST /jobs/{id}/cancel -------->|
 ```
 
 ### CLI Commands

@@ -1,7 +1,7 @@
 # PoC Phase 1 PRD and Implementation Tracker
 
 Date: 2026-04-14
-Status: In Progress (3/30 tasks complete)
+Status: In Progress (6/30 tasks complete)
 Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-storyboards-canonical.md`, `08-requirements-contract.md`, `09-security-pack.md`, `10-core-contracts-pack.md`, `11-config-persistence-contract.md`, `12-devops-pipeline-design-pack.md`, and `13-poc-phase1-definition-of-done.md`.
 
 ## Scope guardrails (non-negotiable)
@@ -30,9 +30,9 @@ Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-sto
 | P0-01 | Shared runtime contracts library | S1 | - | TBD (Backend) | Done | AC-003 |
 | P0-02 | Phase 1 decision closure from PRD addendum | S1 | P0-01 | TBD (Product/Arch/Security) | Done | AC-001..AC-007, AC-101..AC-105 |
 | P0-03 | Canonical storyboard merge and contradiction fixes | S1 | P0-02 | TBD (Architecture) | Done | AC-001, AC-002, AC-003, AC-102 |
-| P1-01 | SQLite persistence for canonical entities | S1 | P0-03 | TBD (Backend) | Not Started | AC-001, AC-002, AC-007, AC-101 |
-| P1-02 | API contract alignment (`/api/jobs`, `/steps`, `/cancel`, `/nodes`) | S1 | P1-01 | TBD (Backend) | Not Started | AC-001, AC-002, AC-104 |
-| P1-03 | Artifact HTTP transport + range/chunk retrieval | S1 | P1-02 | TBD (Backend/Agent) | Not Started | AC-001, AC-006, AC-102 |
+| P1-01 | SQLite persistence for canonical entities | S1 | P0-03 | TBD (Backend) | Done | AC-001, AC-002, AC-007, AC-101 |
+| P1-02 | API contract alignment (`/api/jobs`, `/steps`, `/cancel`, `/nodes`) | S1 | P1-01 | TBD (Backend) | Done | AC-001, AC-002, AC-104 |
+| P1-03 | Artifact HTTP transport + range/chunk retrieval | S1 | P1-02 | TBD (Backend/Agent) | Done | AC-001, AC-006, AC-102 |
 | P2-01 | SignalR protocol + sequence/idempotency enforcement | S1 | P1-02 | TBD (Backend) | Not Started | AC-003, AC-101 |
 | P2-02 | Lease manager + `AssignedStale` timeout policy | S1 | P2-01 | TBD (Backend) | Not Started | AC-101 |
 | P2-03 | Policy evaluation engine (retry/idempotency/risk/approval) | S2 | P2-01, P2-02, P1-03 | TBD (Backend/Agent) | Not Started | AC-002, AC-006, AC-007, AC-101 |
@@ -126,7 +126,7 @@ Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-sto
 ### P1-01 - SQLite persistence for canonical entities
 
 - Owner: `TBD (Backend)`
-- Status: `Not Started`
+- Status: `Done`
 - Objective: Replace in-memory state with SQLite-backed canonical entities.
 - Target modules:
   - Create `src/DeploymentPoC.Orchestrator/Data/InstallerDbContext.cs`
@@ -144,13 +144,13 @@ Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-sto
 - Acceptance links: AC-001, AC-002, AC-007, AC-101
 - Suggested commit boundary: `feat(orchestrator): add sqlite persistence for canonical entities`
 - Checklist:
-  - [ ] `Job`, `Node`, `AssignmentLease`, and `ConfigSnapshot` persisted in SQLite.
-  - [ ] In-memory-only paths no longer used for runtime state.
+  - [x] `Job`, `Node`, `AssignmentLease`, and `ConfigSnapshot` persisted in SQLite.
+  - [x] In-memory-only paths no longer used for runtime state.
 
 ### P1-02 - API contract alignment
 
 - Owner: `TBD (Backend)`
-- Status: `Not Started`
+- Status: `Done`
 - Objective: Align API behavior and payloads with API-001..API-005.
 - Target modules:
   - Modify `src/DeploymentPoC.Orchestrator/Controllers/JobsController.cs`
@@ -169,13 +169,13 @@ Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-sto
 - Acceptance links: AC-001, AC-002, AC-104
 - Suggested commit boundary: `feat(api): align job and node endpoints with core contract pack`
 - Checklist:
-  - [ ] `/api/jobs/{jobId}/steps` endpoint implemented.
-  - [ ] Cancel endpoint uses `POST /api/jobs/{jobId}/cancel` contract shape.
+  - [x] `/api/jobs/{jobId}/steps` endpoint implemented.
+  - [x] Cancel endpoint uses `POST /api/jobs/{jobId}/cancel` contract shape.
 
 ### P1-03 - Artifact HTTP transport + range/chunk retrieval
 
 - Owner: `TBD (Backend/Agent)`
-- Status: `Not Started`
+- Status: `Done`
 - Objective: Implement artifact transfer over HTTP endpoints (including range/chunk retrieval) and explicitly avoid artifact payload transfer over SignalR.
 - Target modules:
   - Create `src/DeploymentPoC.Orchestrator/Controllers/ArtifactsController.cs`
@@ -190,9 +190,9 @@ Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-sto
 - Acceptance links: AC-001, AC-006, AC-102
 - Suggested commit boundary: `feat(artifact): add http artifact transport with range chunk retrieval`
 - Checklist:
-  - [ ] Agent retrieves artifacts through HTTP endpoints only.
-  - [ ] Large artifacts support range/chunk retrieval.
-  - [ ] SignalR messages do not carry artifact payloads.
+  - [x] Agent retrieves artifacts through HTTP endpoints only.
+  - [x] Large artifacts support range/chunk retrieval.
+  - [x] SignalR messages do not carry artifact payloads.
 
 ### P2-01 - SignalR protocol + idempotency enforcement
 

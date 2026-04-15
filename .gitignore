@@ -54,9 +54,9 @@ Thumbs.db
 appsettings.*.json
 secrets.json
 
-# Entity Framework migrations (if using EF)
-**/Migrations/*.cs
-**/Migrations/*.Designer.cs
+# Orchestrator runtime SQLite artifacts
+src/DeploymentPoC.Orchestrator/data/
+src/DeploymentPoC.Orchestrator/data/**/*.db*
 
 # Publish outputs
 publish/

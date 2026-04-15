@@ -1,14 +1,18 @@
 using DeploymentPoC.Orchestrator;
+using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Steps;
 using DeploymentPoC.Orchestrator.Store;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.OpenApi;
+using Microsoft.EntityFrameworkCore;
+using System.IO;
 using System.Reflection;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -31,7 +35,19 @@ builder.Services.AddSwaggerGen();
 
 builder.Logging.AddConsole();
 
+// Transition period: keep AppStore for existing controllers while persistence-backed paths are phased in.
 builder.Services.AddSingleton<AppStore>();
+
+var configuredInstallerDb = builder.Configuration.GetConnectionString("InstallerDb");
+var fallbackDataDirectory = Path.Combine(builder.Environment.ContentRootPath, "data");
+Directory.CreateDirectory(fallbackDataDirectory);
+var fallbackDbPath = Path.Combine(fallbackDataDirectory, "deployment-poc.db");
+var connectionString = !string.IsNullOrWhiteSpace(configuredInstallerDb)
+    ? configuredInstallerDb
+    : $"Data Source={fallbackDbPath}";
+
+builder.Services.AddDbContext<InstallerDbContext>(options =>
+    options.UseSqlite(connectionString));
 
 builder.Services.AddTransient<PreConditionCheckStep>();
 builder.Services.AddTransient<CopyFilesStep>();

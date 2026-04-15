@@ -10,8 +10,9 @@ Scope: All installation, update, and modification flows for Distributed Installe
 ## Purpose
 
 This document provides step-by-step storyboards (flows) for all installation and operational scenarios:
+
 - Fresh orchestrator deployment
-- Fresh agent deployment  
+- Fresh agent deployment
 - Agent bootstrap via WinRM
 - Software updates via orchestrator
 - Workload modification (orchestrator self-update, version changes)
@@ -24,14 +25,15 @@ This document provides step-by-step storyboards (flows) for all installation and
 
 ### 1.1 Packaging Decision
 
-| Option | Description | PoC Choice |
-|--------|-------------|------------|
-| ISO image | Bootable installer with all components | Deferred |
-| Standalone EXE | Single self-contained executable | **Selected** |
-| ZIP archive | Extractable archive for scripted deployment | Supported |
-| Drag & drop | Manual file copy | Supported |
+| Option         | Description                                 | PoC Choice   |
+| -------------- | ------------------------------------------- | ------------ |
+| ISO image      | Bootable installer with all components      | Deferred     |
+| Standalone EXE | Single self-contained executable            | **Selected** |
+| ZIP archive    | Extractable archive for scripted deployment | Supported    |
+| Drag & drop    | Manual file copy                            | Supported    |
 
 **PoC Decision**: Orchestrator ships as a single self-contained EXE that embeds:
+
 - ASP.NET Core Kestrel server
 - React UI assets (embedded)
 - SQLite database (local file)
@@ -117,6 +119,7 @@ Sysadmin                    Orchestrator API              Artifact Storage
 ```
 
 **Key Security Points:**
+
 - EXE must be signed by trusted publisher
 - Version floor check prevents downgrade attacks (TH-007B)
 - Backup enables rollback if startup fails
@@ -128,11 +131,11 @@ Sysadmin                    Orchestrator API              Artifact Storage
 
 ### 2.1 Package Decision
 
-| Option | Description | PoC Choice |
-|--------|-------------|------------|
-| ISO/Installer | Traditional MSI/EXE installer | Deferred |
+| Option        | Description                           | PoC Choice   |
+| ------------- | ------------------------------------- | ------------ |
+| ISO/Installer | Traditional MSI/EXE installer         | Deferred     |
 | Single script | One-liner that downloads and installs | **Selected** |
-| Manual steps | Step-by-step operator instructions | Supported |
+| Manual steps  | Step-by-step operator instructions    | Supported    |
 
 **PoC Decision**: Single bootstrap script (PowerShell) run manually on target machine.
 
@@ -184,13 +187,13 @@ Operator Workstation       Target Machine (Remote)       Orchestrator
 
 ### 2.3 Agent Bootstrap Verification
 
-| Step | Verification | Expected Result |
-|------|--------------|-----------------|
-| Connectivity | `Test-NetConnection -Port 5985` | TCP success |
-| Service | `Get-Service "DistributedInstallerAgent"` | Running |
-| Registration | `GET /api/nodes/{nodeId}` | Status: online |
-| SignalR | Agent connects to hub | Hub logs: Agent registered |
-| Heartbeat | Wait 15-30 seconds | LeaseHeartbeat received |
+| Step         | Verification                              | Expected Result            |
+| ------------ | ----------------------------------------- | -------------------------- |
+| Connectivity | `Test-NetConnection -Port 5985`           | TCP success                |
+| Service      | `Get-Service "DistributedInstallerAgent"` | Running                    |
+| Registration | `GET /api/nodes/{nodeId}`                 | Status: online             |
+| SignalR      | Agent connects to hub                     | Hub logs: Agent registered |
+| Heartbeat    | Wait 15-30 seconds                        | LeaseHeartbeat received    |
 
 ### 2.4 Agent Bootstrap (Manual Script Alternative)
 
@@ -227,11 +230,11 @@ Get-Service "DI Agent"
 
 ### 3.1 Package Source Decision
 
-| Challenge | Solution |
-|-----------|----------|
-| No external NuGet/Chocolatey | **Orchestrator serves as package source** |
-| Agents need packages | Agents download from orchestrator endpoint |
-| Large packages | Chunked download via `AcquireArtifact` step |
+| Challenge                    | Solution                                    |
+| ---------------------------- | ------------------------------------------- |
+| No external NuGet/Chocolatey | **Orchestrator serves as package source**   |
+| Agents need packages         | Agents download from orchestrator endpoint  |
+| Large packages               | Chunked download via `AcquireArtifact` step |
 
 **Architecture**: Orchestrator hosts `/api/artifacts/{packageId}/{version}` endpoint.
 
@@ -261,49 +264,49 @@ Admin                    Orchestrator API              Artifact Storage
 
 ```json
 {
-  "packageId": "nodejs",
-  "targetVersion": "22.14.0",
-  "displayName": "Node.js 22.x LTS",
-  "description": "JavaScript runtime for build agents",
-  "artifact": {
-    "source": "/api/artifacts/nodejs/22.14.0",
-    "type": "zip",
-    "sizeBytes": 34567890,
-    "integrity": {
-      "algorithm": "sha256",
-      "hash": "a1b2c3d4e5f6..."
+    "packageId": "nodejs",
+    "targetVersion": "22.14.0",
+    "displayName": "Node.js 22.x LTS",
+    "description": "JavaScript runtime for build agents",
+    "artifact": {
+        "source": "/api/artifacts/nodejs/22.14.0",
+        "type": "zip",
+        "sizeBytes": 34567890,
+        "integrity": {
+            "algorithm": "sha256",
+            "hash": "a1b2c3d4e5f6..."
+        },
+        "signature": "RSA-4096:CN=Emerson-Package-Signing"
     },
-    "signature": "RSA-4096:CN=Emerson-Package-Signing"
-  },
-  "installAdapter": {
-    "type": "executable",
-    "command": "node-installer.exe",
-    "arguments": "/quiet /install",
-    "expectedExitCodes": [0, 3010],
-    "timeoutSeconds": 300
-  },
-  "detection": {
-    "type": "fileVersion",
-    "path": "C:\\Program Files\\NodeJS\\node.exe",
-    "expectedVersion": ">=22.0.0"
-  },
-  "rollback": {
-    "supported": true,
-    "method": "uninstall",
-    "expectedExitCodes": [0]
-  },
-  "retryPolicy": {
-    "retryable": true,
-    "maxAttempts": 3,
-    "backoffSeconds": [30, 60, 120],
-    "retryableReasons": ["network_timeout", "installer_crashed"],
-    "nonRetryableReasons": ["disk_full", "insufficient_privileges"]
-  },
-  "idempotency": {
-    "mode": "detect",
-    "detectionKey": "nodejs-installed",
-    "behavior": "skip_if_present"
-  }
+    "installAdapter": {
+        "type": "executable",
+        "command": "node-installer.exe",
+        "arguments": "/quiet /install",
+        "expectedExitCodes": [0, 3010],
+        "timeoutSeconds": 300
+    },
+    "detection": {
+        "type": "fileVersion",
+        "path": "C:\\Program Files\\NodeJS\\node.exe",
+        "expectedVersion": ">=22.0.0"
+    },
+    "rollback": {
+        "supported": true,
+        "method": "uninstall",
+        "expectedExitCodes": [0]
+    },
+    "retryPolicy": {
+        "retryable": true,
+        "maxAttempts": 3,
+        "backoffSeconds": [30, 60, 120],
+        "retryableReasons": ["network_timeout", "installer_crashed"],
+        "nonRetryableReasons": ["disk_full", "insufficient_privileges"]
+    },
+    "idempotency": {
+        "mode": "detect",
+        "detectionKey": "nodejs-installed",
+        "behavior": "skip_if_present"
+    }
 }
 ```
 
@@ -447,14 +450,15 @@ Downgrades are **non-retryable by default** (high risk operation):
 
 ```json
 {
-  "downgradeAllowed": false,
-  "forceDowngradeRequires": "explicit_approval",
-  "riskLevel": "high",
-  "rollbackGuaranteed": true
+    "downgradeAllowed": false,
+    "forceDowngradeRequires": "explicit_approval",
+    "riskLevel": "high",
+    "rollbackGuaranteed": true
 }
 ```
 
 **Flow for forced downgrade:**
+
 1. Sysadmin must explicitly acknowledge risk
 2. Full config snapshot mandatory
 3. Job marked as non-retryable
@@ -606,23 +610,23 @@ Agent                         Orchestrator
 
 ```json
 {
-  "retryPolicy": {
-    "retryable": true,
-    "maxAttempts": 3,
-    "backoffSeconds": [30, 60, 120],
-    "retryableExitCodes": [0, 3010],
-    "nonRetryableExitCodes": [1, 1602],
-    "retryableErrorPatterns": [
-      "network_timeout",
-      "connection_refused",
-      "temp_file_locked"
-    ],
-    "nonRetryableErrorPatterns": [
-      "disk_full",
-      "insufficient_privileges",
-      "system_not_supported"
-    ]
-  }
+    "retryPolicy": {
+        "retryable": true,
+        "maxAttempts": 3,
+        "backoffSeconds": [30, 60, 120],
+        "retryableExitCodes": [0, 3010],
+        "nonRetryableExitCodes": [1, 1602],
+        "retryableErrorPatterns": [
+            "network_timeout",
+            "connection_refused",
+            "temp_file_locked"
+        ],
+        "nonRetryableErrorPatterns": [
+            "disk_full",
+            "insufficient_privileges",
+            "system_not_supported"
+        ]
+    }
 }
 ```
 
@@ -655,21 +659,21 @@ JobExecution                 Agent Pipeline
 
 ```json
 {
-  "idempotency": {
-    "mode": "detect",
-    "detectionKey": "nodejs-v22.14.0",
-    "behavior": "skip_if_present",
-    "forceReinstall": false
-  }
+    "idempotency": {
+        "mode": "detect",
+        "detectionKey": "nodejs-v22.14.0",
+        "behavior": "skip_if_present",
+        "forceReinstall": false
+    }
 }
 ```
 
-| Mode | Behavior | Use Case |
-|------|----------|----------|
-| `detect` | Skip if already satisfied | Standard installs |
-| `always` | Always execute | Configuration changes |
-| `never` | Fail if exists | Mutually exclusive installs |
-| `version_check` | Upgrade/downgrade if version differs | Versioned packages |
+| Mode            | Behavior                             | Use Case                    |
+| --------------- | ------------------------------------ | --------------------------- |
+| `detect`        | Skip if already satisfied            | Standard installs           |
+| `always`        | Always execute                       | Configuration changes       |
+| `never`         | Fail if exists                       | Mutually exclusive installs |
+| `version_check` | Upgrade/downgrade if version differs | Versioned packages          |
 
 ### 7.4 Idempotency Flow
 
@@ -776,6 +780,7 @@ Agent Service                    Child Process (Job)
 ```
 
 **Security controls on child process:**
+
 - Run as non-elevated user where possible
 - Restricted token with minimal privileges
 - No network access (outbound blocked)
@@ -844,25 +849,25 @@ Orchestrator
 
 **Answer**: SQLite can store logs directly via EF Core, but for OTel we recommend:
 
-| Option | Description | PoC Choice |
-|--------|-------------|------------|
-| SQLite via OTel exporter | Write to SQLite table | **Supported** |
-| File-based (OTLP JSON) | Write to rotating log files | **Recommended** |
-| PostgreSQL | External database | Deferred |
-| OTel Collector | Forward to collector | Supported |
+| Option                   | Description                 | PoC Choice      |
+| ------------------------ | --------------------------- | --------------- |
+| SQLite via OTel exporter | Write to SQLite table       | **Supported**   |
+| File-based (OTLP JSON)   | Write to rotating log files | **Recommended** |
+| PostgreSQL               | External database           | Deferred        |
+| OTel Collector           | Forward to collector        | Supported       |
 
 **Recommended OTel Storage for PoC:**
 
 ```json
 {
-  "Otel": {
-    "Exporter": "otlp-file",
-    "FilePath": "C:\\ProgramData\\DistributedInstaller\\otel\\logs",
-    "Rotation": {
-      "MaxSizeMB": 100,
-      "MaxFiles": 10
+    "Otel": {
+        "Exporter": "otlp-file",
+        "FilePath": "C:\\ProgramData\\DistributedInstaller\\otel\\logs",
+        "Rotation": {
+            "MaxSizeMB": 100,
+            "MaxFiles": 10
+        }
     }
-  }
 }
 ```
 
@@ -892,14 +897,14 @@ CREATE INDEX idx_logs_jobid ON OtelLogs(JobId);
 
 ### 10.1 Trust Boundary Definitions
 
-| ID | Boundary Name | Components | Data Flow | Threats | Mitigations |
-|----|---------------|------------|-----------|---------|-------------|
-| TB-01 | Admin → Orchestrator | Sysadmin/UI → REST API | Job commands, auth context | Spoofing, privilege abuse | RBAC, audit logging |
-| TB-02 | Agent → Orchestrator Hub | Agent → SignalR Hub | Assign/Ack/Lease/Status | Agent spoofing, replay | mTLS, enrollment token, sequence |
-| TB-03 | Orchestrator → Artifact Store | API → Local storage | Package upload/download | Tampering, substitution | Signature verification, hash check |
-| TB-04 | Agent → Orchestrator (Packages) | Agent → Artifact endpoint | Artifact download | MITM, tampering | HTTPS, hash verification |
-| TB-05 | Orchestrator → SQLite | DB operations | Job state, audit events | Data tampering | File ACLs, SQLite integrity |
-| TB-06 | Agent → Child Process | Job execution | Process spawn, IPC | Privilege escalation | Constrained token, Job Object |
+| ID    | Boundary Name                   | Components                | Data Flow                  | Threats                   | Mitigations                        |
+| ----- | ------------------------------- | ------------------------- | -------------------------- | ------------------------- | ---------------------------------- |
+| TB-01 | Admin → Orchestrator            | Sysadmin/UI → REST API    | Job commands, auth context | Spoofing, privilege abuse | RBAC, audit logging                |
+| TB-02 | Agent → Orchestrator Hub        | Agent → SignalR Hub       | Assign/Ack/Lease/Status    | Agent spoofing, replay    | mTLS, enrollment token, sequence   |
+| TB-03 | Orchestrator → Artifact Store   | API → Local storage       | Package upload/download    | Tampering, substitution   | Signature verification, hash check |
+| TB-04 | Agent → Orchestrator (Packages) | Agent → Artifact endpoint | Artifact download          | MITM, tampering           | HTTPS, hash verification           |
+| TB-05 | Orchestrator → SQLite           | DB operations             | Job state, audit events    | Data tampering            | File ACLs, SQLite integrity        |
+| TB-06 | Agent → Child Process           | Job execution             | Process spawn, IPC         | Privilege escalation      | Constrained token, Job Object      |
 
 ### 10.2 Trust Boundary Diagram (Extended)
 
@@ -963,6 +968,7 @@ Cross-platform considerations:
 ## 12. Verification Checklist
 
 ### Orchestrator Deployment
+
 - [ ] EXE launches without .NET installed
 - [ ] Health endpoint returns 200
 - [ ] UI accessible at root URL
@@ -970,6 +976,7 @@ Cross-platform considerations:
 - [ ] Enrollment token generated
 
 ### Agent Bootstrap
+
 - [ ] WinRM connectivity confirmed
 - [ ] Service installed and running
 - [ ] Agent registered in orchestrator
@@ -977,6 +984,7 @@ Cross-platform considerations:
 - [ ] LeaseHeartbeat received
 
 ### Installation Job
+
 - [ ] Package uploaded to orchestrator
 - [ ] Job submitted via API
 - [ ] Job queued and dispatched
@@ -987,6 +995,7 @@ Cross-platform considerations:
 - [ ] SQLite records match job state
 
 ### Update Job
+
 - [ ] Version change detected
 - [ ] Config snapshot created
 - [ ] Upgrade executes
@@ -994,6 +1003,7 @@ Cross-platform considerations:
 - [ ] New version confirmed on node
 
 ### Security
+
 - [ ] mTLS certificate validated
 - [ ] Enrollment token single-use
 - [ ] Package signature verified

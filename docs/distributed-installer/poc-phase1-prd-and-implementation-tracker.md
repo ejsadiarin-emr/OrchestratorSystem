@@ -1,7 +1,7 @@
 # PoC Phase 1 PRD and Implementation Tracker
 
 Date: 2026-04-14
-Status: In Progress (3/20 tasks complete)
+Status: In Progress (3/30 tasks complete)
 Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-storyboards-canonical.md`, `08-requirements-contract.md`, `09-security-pack.md`, `10-core-contracts-pack.md`, `11-config-persistence-contract.md`, `12-devops-pipeline-design-pack.md`, and `13-poc-phase1-definition-of-done.md`.
 
 ## Scope guardrails (non-negotiable)
@@ -39,14 +39,23 @@ Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-sto
 | P3-01 | Windows agent service scaffold + runtime channel loop | S2 | P0-01 | TBD (Agent) | Not Started | AC-004 |
 | P3-02 | Bootstrap token to mTLS steady-state auth flow | S2 | P3-01, P2-01 | TBD (Security/Agent) | Not Started | AC-005, AC-102 |
 | P4-01 | Agent local typed pipeline + MSI/EXE adapters | S2 | P3-01 | TBD (Agent) | Not Started | AC-004, AC-006 |
+| P4-01a | Pipeline interfaces + step ordering | S2 | P4-01 | TBD (Agent) | Not Started | AC-004 |
+| P4-01b | MSI/EXE adapters + normalization integration | S2 | P4-01a | TBD (Agent) | Not Started | AC-006 |
 | P4-02 | Config snapshot/migration/restore + audit linkage | S2 | P4-01, P1-01 | TBD (Agent/Backend) | Not Started | AC-007 |
 | P5-01 | RBAC, artifact trust, audit hash chain, secret hygiene | S3 | P2-01, P3-02, P4-01 | TBD (Security/Backend) | Not Started | AC-102, AC-002 |
+| P5-01a | RBAC enforcement | S3 | P5-01 | TBD (Security/Backend) | Not Started | AC-002, AC-102 |
+| P5-01b | Artifact trust fail-closed controls | S3 | P5-01a | TBD (Security/Backend) | Not Started | AC-102 |
+| P5-01c | Audit tamper-evidence/hash chain | S3 | P5-01b | TBD (Security/Backend) | Not Started | AC-002 |
+| P5-01d | Secret hygiene and plaintext prevention | S3 | P5-01c | TBD (Security/Backend) | Not Started | AC-102 |
 | P5-02 | OTel file export policy + redaction controls | S3 | P5-01 | TBD (Security/Backend) | Not Started | AC-102, AC-103 |
 | P6-01 | UI runtime screens + live step timeline | S3 | P1-02, P2-01 | TBD (Frontend) | Not Started | AC-001, AC-002, AC-103, AC-105 |
 | P6-02 | CLI runtime command surface | S3 | P1-02 | TBD (Platform) | Not Started | AC-104, AC-001, AC-002 |
 | P7-01 | Self-contained single-file orchestrator packaging | S4 | P6-01 | TBD (Platform/DevOps) | Not Started | AC-105 |
 | P7-02 | CI/CD policy gates and orchestrator-only deploy boundary | S4 | P7-01, P6-02 | TBD (DevOps) | Not Started | AC-104, AC-105 |
 | P8-01 | Integration/E2E/chaos acceptance suite and evidence | S4 | P1-01..P7-02 | TBD (QA/All) | Not Started | AC-001..AC-007, AC-101..AC-105 |
+| P8-01a | Integration acceptance matrix | S4 | P8-01 | TBD (QA/All) | Not Started | AC-001..AC-007 |
+| P8-01b | Security/reliability acceptance matrix | S4 | P8-01a | TBD (QA/All) | Not Started | AC-101..AC-103 |
+| P8-01c | Operability/deploy acceptance matrix | S4 | P8-01b | TBD (QA/All) | Not Started | AC-104..AC-105 |
 
 ## Task details checklist
 
@@ -207,6 +216,26 @@ Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-sto
   - [ ] Same-key payload mismatch rejects and emits `sequence_payload_conflict`.
   - [ ] Reconnect resumes from `lastAcknowledgedSequence + 1`.
 
+### P2-02 - Lease manager + stale handling
+
+- Owner: `TBD (Backend)`
+- Status: `Not Started`
+- Objective: Enforce lease TTL, heartbeat interval, stale threshold, and stale timeout bounds.
+- Target modules:
+  - Create `src/DeploymentPoC.Orchestrator/Runtime/LeaseManager.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Runtime/LeaseTimeoutWorker.cs`
+  - Modify `src/DeploymentPoC.Orchestrator/Data/Entities/AssignmentLeaseEntity.cs`
+- Interfaces/contracts impacted: FR-002, NFR-001.
+- Test requirements: integration + chaos tests for heartbeat loss and stale timeout behavior.
+- Verification commands:
+  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Lease`
+  - `dotnet test tests/DeploymentPoC.Orchestrator.ChaosTests --filter AssignedStale`
+- Acceptance links: AC-101
+- Suggested commit boundary: `feat(reliability): add lease ttl heartbeat and assignedstale timeout policy`
+- Checklist:
+  - [ ] TTL is `90s`, heartbeat interval `15s`, stale threshold `3` missed.
+  - [ ] Auto-fail bound is 2 reassignment attempts or 15 minutes stale duration.
+
 ### P2-03 - Policy evaluation engine (retry/idempotency/risk/approval)
 
 - Owner: `TBD (Backend/Agent)`
@@ -230,26 +259,6 @@ Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-sto
   - [ ] High-risk/non-idempotent steps never blind auto-retry.
   - [ ] Downgrade path enforces explicit approval when enabled.
   - [ ] Channel policy (`stable`, `canary`, `test`) is validated by API/model rules.
-
-### P2-02 - Lease manager + stale handling
-
-- Owner: `TBD (Backend)`
-- Status: `Not Started`
-- Objective: Enforce lease TTL, heartbeat interval, stale threshold, and stale timeout bounds.
-- Target modules:
-  - Create `src/DeploymentPoC.Orchestrator/Runtime/LeaseManager.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Runtime/LeaseTimeoutWorker.cs`
-  - Modify `src/DeploymentPoC.Orchestrator/Data/Entities/AssignmentLeaseEntity.cs`
-- Interfaces/contracts impacted: FR-002, NFR-001.
-- Test requirements: integration + chaos tests for heartbeat loss and stale timeout behavior.
-- Verification commands:
-  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Lease`
-  - `dotnet test tests/DeploymentPoC.Orchestrator.ChaosTests --filter AssignedStale`
-- Acceptance links: AC-101
-- Suggested commit boundary: `feat(reliability): add lease ttl heartbeat and assignedstale timeout policy`
-- Checklist:
-  - [ ] TTL is `90s`, heartbeat interval `15s`, stale threshold `3` missed.
-  - [ ] Auto-fail bound is 2 reassignment attempts or 15 minutes stale duration.
 
 ### P3-01 - Windows agent service scaffold
 
@@ -323,6 +332,8 @@ Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-sto
 - Checklist:
   - [ ] Agent executes full job pipeline without orchestrator step-by-step dispatch.
   - [ ] MSI and EXE paths emit normalized status/telemetry.
+  - [ ] **Execution split P4-01a (AC-004):** implement pipeline interfaces + step ordering with unit tests (`PipelineExecutor`, step contracts).
+  - [ ] **Execution split P4-01b (AC-006):** implement MSI/EXE adapters + integration tests + normalized reason/status mapping.
 
 ### P4-02 - Config snapshot/migration/restore contract implementation
 
@@ -369,6 +380,31 @@ Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-sto
   - [ ] Unsigned or tampered artifacts fail closed.
   - [ ] Unauthorized role cannot trigger runtime install actions.
   - [ ] Sensitive values are not written to logs or config in plaintext.
+  - [ ] **Execution split P5-01a (AC-002, AC-102):** RBAC enforcement.
+  - [ ] **Execution split P5-01b (AC-102):** artifact trust enforcement (signature/hash fail-closed).
+  - [ ] **Execution split P5-01c (AC-002):** audit tamper-evidence/hash chain.
+  - [ ] **Execution split P5-01d (AC-102):** secret hygiene + plaintext-prevention verification.
+
+### P5-02 - OTel file export policy + redaction controls
+
+- Owner: `TBD (Security/Backend)`
+- Status: `Not Started`
+- Objective: Implement and verify Phase 1 OTel defaults (file-based export with rotation/retention) and denylist-based sensitive data redaction/access controls.
+- Target modules:
+  - Create `src/DeploymentPoC.Orchestrator/Observability/OtelExportPolicy.cs`
+  - Create `src/DeploymentPoC.Orchestrator/Observability/LogRedactionPolicy.cs`
+  - Modify `src/DeploymentPoC.Orchestrator/Program.cs`
+- Interfaces/contracts impacted: NFR-002, NFR-003.
+- Test requirements: integration tests for rotation/retention policy and secret/token redaction behavior.
+- Verification commands:
+  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Otel`
+  - `dotnet test tests/DeploymentPoC.SecurityTests --filter Redaction`
+- Acceptance links: AC-102, AC-103
+- Suggested commit boundary: `feat(observability): enforce otel file export defaults and redaction policy`
+- Checklist:
+  - [ ] File-based OTel export with rotation and retention is enforced.
+  - [ ] Sensitive fields (secrets/tokens/credentials) are redacted in logs.
+  - [ ] Access policy for telemetry endpoints/log files is least-privilege by default.
 
 ### P6-01 - UI runtime screens and live timeline
 
@@ -464,18 +500,21 @@ Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-sto
   - Create `tests/DeploymentPoC.Orchestrator.IntegrationTests/*`
   - Create `tests/DeploymentPoC.Agent.IntegrationTests/*`
   - Create `tests/DeploymentPoC.E2E/*`
-  - Create `tests/DeploymentPoC.ChaosTests/*`
+  - Create `tests/DeploymentPoC.Orchestrator.ChaosTests/*`
 - Interfaces/contracts impacted: All FR/NFR acceptance criteria.
 - Test requirements: unit, integration, e2e, and chaos scenarios.
 - Verification commands:
   - `dotnet test DeploymentPoC.sln`
   - `pnpm --dir web run test:e2e`
-  - `dotnet test tests/DeploymentPoC.ChaosTests`
+  - `dotnet test tests/DeploymentPoC.Orchestrator.ChaosTests`
 - Acceptance links: AC-001..AC-007, AC-101..AC-105
 - Suggested commit boundary: `test(poc): add full acceptance matrix for phase-1 contracts`
 - Checklist:
   - [ ] Evidence artifact is captured for each AC.
   - [ ] No Hardening Phase 2-only checks are required for PoC completion.
+  - [ ] **Execution split P8-01a (AC-001..AC-007):** integration acceptance matrix.
+  - [ ] **Execution split P8-01b (AC-101..AC-103):** security/reliability acceptance matrix.
+  - [ ] **Execution split P8-01c (AC-104..AC-105):** operability/deploy acceptance matrix.
 
 ## Phase verification gates
 
@@ -511,23 +550,3 @@ Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-sto
 - Use one commit per task completion in dependency order.
 - If a task must be split, append suffixes (`P4-01a`, `P4-01b`) and keep AC mapping explicit.
 - Any request that adds Hardening Phase 2 controls must be recorded separately and not block PoC completion.
-### P5-02 - OTel file export policy + redaction controls
-
-- Owner: `TBD (Security/Backend)`
-- Status: `Not Started`
-- Objective: Implement and verify Phase 1 OTel defaults (file-based export with rotation/retention) and denylist-based sensitive data redaction/access controls.
-- Target modules:
-  - Create `src/DeploymentPoC.Orchestrator/Observability/OtelExportPolicy.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Observability/LogRedactionPolicy.cs`
-  - Modify `src/DeploymentPoC.Orchestrator/Program.cs`
-- Interfaces/contracts impacted: NFR-002, NFR-003.
-- Test requirements: integration tests for rotation/retention policy and secret/token redaction behavior.
-- Verification commands:
-  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Otel`
-  - `dotnet test tests/DeploymentPoC.SecurityTests --filter Redaction`
-- Acceptance links: AC-102, AC-103
-- Suggested commit boundary: `feat(observability): enforce otel file export defaults and redaction policy`
-- Checklist:
-  - [ ] File-based OTel export with rotation and retention is enforced.
-  - [ ] Sensitive fields (secrets/tokens/credentials) are redacted in logs.
-  - [ ] Access policy for telemetry endpoints/log files is least-privilege by default.

@@ -4,17 +4,6 @@ Date: 2026-04-15
 Status: Canonical execution storyboards for PoC Phase 1
 Scope: Windows-first, single-orchestrator distributed installer runtime
 
-Derived from:
-
-- `docs/distributed-installer/poc-phase1-prd-final.md`
-- `docs/distributed-installer/poc-phase1-prd-and-implementation-tracker.md`
-- `docs/distributed-installer/08-requirements-contract.md`
-- `docs/distributed-installer/09-security-pack.md`
-- `docs/distributed-installer/10-core-contracts-pack.md`
-- `docs/distributed-installer/11-config-persistence-contract.md`
-- `docs/distributed-installer/12-devops-pipeline-design-pack.md`
-- `docs/distributed-installer/13-poc-phase1-definition-of-done.md`
-
 ---
 
 ## Purpose
@@ -116,16 +105,16 @@ When documents conflict, use this order:
                      +-----------------------------+
 ```
 
-### Trust boundaries
+### Security per flow
 
-| Boundary | From          | To               | Primary risk           | Required controls                 |
-| -------- | ------------- | ---------------- | ---------------------- | --------------------------------- |
-| TB-01    | Admin         | Orchestrator API | Privilege abuse/spoof  | RBAC, authN/authZ, audit          |
-| TB-02    | Agent         | SignalR Hub      | Replay/spoofing        | enrollment->mTLS, sequence checks |
-| TB-03    | Orch API      | Artifact store   | tamper/substitution    | immutable digest metadata, ACL    |
-| TB-04    | Agent         | Artifact API     | MITM/tamper            | TLS, hash+signature validation    |
-| TB-05    | Orch          | SQLite           | state integrity        | app-level validation + host ACL   |
-| TB-06    | Agent service | Child process    | escalation/unsafe args | constrained spawn policy          |
+| From          | To               | Primary risk           | Required controls                 |
+| ------------- | ---------------- | ---------------------- | --------------------------------- |
+| Admin         | Orchestrator API | Privilege abuse/spoof  | RBAC, authN/authZ, audit          |
+| Agent         | SignalR Hub (Orch)      | Replay/spoofing        | enrollment->mTLS, sequence checks |
+| Orch API      | Artifact store   | tamper/substitution    | immutable digest metadata, ACL    |
+| Agent         | Artifact API     | MITM/tamper            | TLS, hash+signature validation    |
+| Orch          | SQLite           | state integrity        | app-level validation + host ACL   |
+| Agent service | Child process    | escalation/unsafe args | constrained spawn policy          |
 
 ### Global invariants
 
@@ -145,6 +134,7 @@ When documents conflict, use this order:
 | Fresh orchestrator install | Bring up API/UI/Hub/persistence deterministically |
 | Agent install via WinRM | Enroll node and bind identity (`token -> mTLS`) |
 | Package lifecycle | Ingest -> submit -> assign -> execute -> observe |
+| Job submission | fill here |
 | Modify workload | Update/downgrade/self-update with policy gates |
 
 ---
@@ -163,24 +153,22 @@ When documents conflict, use this order:
 
 ```text
 DevOps CI             Signing Service         Artifact Repo         Operator
-   |                         |                    |                  |
-   | build/test              |                    |                  |
-   | dotnet publish (single-file, self-contained) |                  |
-   |------------------------>|                    |                  |
+   |                         |                     |                   |
+   | build/test              |                     |                   |
+   | dotnet publish (single-file, self-contained)  |                   |
+   |------------------------>|                     |                   |
    |                         | sign exe + checksums + manifest         |
-   |<------------------------|                    |                  |
-   | publish media -----------------------------------------------> |
-   |  - Orchestrator.exe      |                    |                  |
-   |  - Orchestrator.zip      |                    |                  |
-   |                         |                    | operator download |
+   |<------------------------|                     |                   |
+   | publish media --------------------------------------------------> |
+   |  - Orchestrator.exe      |                    |                   |
+   |  - Orchestrator.zip      |                    |                   |
+   |                          |                    | operator download |
 ```
 
 ### Verification gates
 
 - Signer/hash verification succeeds.
 - Package launches on clean host without .NET/IIS preinstall.
-
-Traceability: AC-105, NFR-005
 
 ---
 
@@ -191,11 +179,11 @@ Traceability: AC-105, NFR-005
 1. Admin stages `Orchestrator.exe` (or extracts ZIP).
 2. Admin runs initialization (interactive or scripted config).
 3. Config captures:
-   - listen URL/port
-   - admin bootstrap auth settings
-   - SQLite path
-   - artifact storage path
-   - telemetry export mode
+   - listen URL/port (default :5000)
+   - initial admin credentials
+   - SQLite database path
+   - artifact storage path (local UNC or folder)
+   - OTel exporter endpoint/export mode
 4. Orchestrator starts API, Hub, persistence, embedded UI host.
 5. Startup checks run; bootstrap audit event is emitted.
 
@@ -215,9 +203,21 @@ Admin                     Orchestrator Process                 Host Resources
   |                               | start API/UI/Hub                 |
   | GET /health                   |                                  |
   |------------------------------>|                                  |
-  |<------------------------------| 200 healthy                       |
+  |<------------------------------| 200 healthy                      |
 ```
 
+- example:
+```md
+Run: Orchestrator.exe                  
+Health check: GET http://localhost:5000/health
+Expected: {"status":"healthy","version":"1.0"}
+
+- UI verification: http://localhost:5000 
+- Expected: React dashboard loads        
+
+- API verification: GET /api/nodes       
+- Expected: [] (no agents registered yet) 
+```
 ### Verification gates
 
 - `GET /health` returns healthy.
@@ -226,7 +226,6 @@ Admin                     Orchestrator Process                 Host Resources
 - SQLite file/schema initialize.
 - Artifact path is writable and access-controlled.
 
-Traceability: FR-001, AC-001, AC-105
 
 ---
 
@@ -238,7 +237,7 @@ Traceability: FR-001, AC-001, AC-105
 | --- | --- | --- | --- |
 | Manual PowerShell script | Fast and practical | Operator variance | Selected |
 | WinRM remoting script | Remote convenience | Environment prerequisites | Supported |
-| GPO/SCCM enterprise distribution | Fleet scale | Outside PoC scope | Deferred |
+| GPO/SCCM enterprise distribution | Fleet scale | Outside PoC scope | Considered, but not selected |
 
 ### Main flow
 
@@ -251,26 +250,41 @@ Traceability: FR-001, AC-001, AC-105
 7. Agent reconnects with bound certificate.
 8. Enrollment token is invalidated.
 
-### Sequence
+### Sequence diagram
 
 ```text
-Operator WS              Target Machine (Remote)         Agent Service            Orchestrator
+System Admin              Target Machine (Remote)         Agent Service            Orchestrator
     |                            |                            |                         |
+    | Step 1: connectivity check |                            |                         |
+    | Test-NetConnection -Port 5985   |                            |                         |
+    |<-------------------------->|                            |                         |
+    |                            |                            |                         |
+    | Step 2: request enrollment token                                                  |
     | POST /api/nodes/enroll ---------------------------------------------------------->|
+    | {hostname,nodeMetadata}                                                           |
     |<------------------------------------------------------- {token,nodeId,ttl} -------|
+    |                            |                            |                         |
+    | Step 3: Run bootstrap script (WinRM)                                                      |
     | Invoke-Command ------------------------------------------------------------------>|
     |  - download Agent.exe from orchestrator                                           |
     |  - write config with orchestratorUrl + token + nodeId                             |
-    |  - create/start service                                                            |
+    |  - sc.exe create service                                                          |
+    |  - Start-Service                                                                  |
     |--------------------------->| install files/config/service |                       |
-    |                            |----------------------------->| Connect(token) -------->|
-    |                            |                            |<--------- bind cert -------
-    |                            |                            | Reconnect(mTLS cert) ---->|
+    |                            |--------------------------->|                         |
+    |                            |                            | Connect(token) -------->|
+    |                            |                            |                         |
+    |                            |                            |<--------- token valid / bind identity
+    |                            |                            |<--------- cert material issued
+    |                            |                            | disconnect               |
+    |                            |                            | Reconnect(mTLS cert) --->|
     |                            |                            |<--------------- accepted |
+    |                            |                            | LeaseHeartbeat --------->|
+    |                            |                            |                          |
+    | Step 4: verify registration/status                                                 |
     | GET /api/nodes/{nodeId} ---------------------------------------------------------->|
     |<----------------------------------------------------- {status:"online",auth:"mtls"}|
 ```
-
 ### Bootstrap failure cleanup (transactional)
 
 Cleanup order (reverse application order):
@@ -282,6 +296,16 @@ Cleanup order (reverse application order):
 5. Revoke/expire token state
 6. Emit cleanup audit event
 
+```text
+Install files -> Create service -> Write config -> Start service
+        |
+        +-- failure at any step
+                |
+                v
+      Reverse cleanup: Stop -> Remove service -> Delete config
+                       -> Delete files -> Invalidate token -> Audit
+```
+
 ### Verification gates
 
 - Windows service exists/running.
@@ -291,17 +315,13 @@ Cleanup order (reverse application order):
 - Invalid/unbound cert reconnect is rejected.
 - Cleanup branch leaves no partial residue.
 
-Traceability: FR-004, AC-005, AC-102
+
 
 ---
 
-## Artifact Ingestion Storyboard (Internal-Only Source)
+## Package/Artifact Ingestion Storyboard
 
-### Policy baseline
-
-- Agents do not fetch runtime artifacts from internet/vendor at execution time.
-- Upstream binaries are ingested into orchestrator artifact store first.
-- Artifact version records are immutable and digest-bound.
+**Upload packages/artifacts to artifact store**
 
 ### Ingestion flow
 
@@ -310,6 +330,18 @@ Traceability: FR-004, AC-005, AC-102
 3. Orchestrator validates trust evidence (signature/checksum metadata).
 4. Orchestrator writes immutable package version record.
 5. Optional org attestation signs metadata envelope (not vendor binary).
+
+```text
+Admin                    API                    Artifact Store           Policy/Audit
+  |                      |                           |                        |
+  | upload package ----->|                           |                        |
+  |                      | write artifact ---------->|                        |
+  |                      | compute digest            |                        |
+  |                      | verify trust metadata     |                        |
+  |                      | create immutable record -------------------------->|
+  |                      | emit ingest audit event -------------------------->|
+  |<---------------------| 201 created                                        |
+```
 
 ### Manifest model (Phase 1 minimum)
 
@@ -360,7 +392,7 @@ Traceability: FR-004, AC-005, AC-102
     "mode": "version_check",
     "behavior": "skip_if_present"
   },
-  "provenance": {
+  "originMetadata": {
     "source": "vendor-repo-or-internal-mirror",
     "publisher": "vendor-if-known",
     "ingestedBy": "operator-or-process-id",
@@ -376,30 +408,54 @@ Traceability: FR-004, AC-005, AC-102
 }
 ```
 
+### Policy
+
+- Agents - only get artifacts from orchestrator API (own artifact store), not internet.
+- Orchestrator - upstream binaries are ingested into artifact store.
+- Artifact version records are immutable and digest-bound.
+
 ### Verification gates
 
-- Ingest audit event exists with provenance fields.
-- Digest is stored and immutable for package version record.
+- Ingest audit event exists with origin metadata fields.
+- Digest value is stored and immutable for version record.
 - Channel is one of `stable|canary|test`.
-- Invalid trust evidence is blocked.
-
-Traceability: FR-005, AC-006, AC-102
+- Package with invalid trust evidence is blocked.
 
 ---
 
 ## Artifact Delivery Storyboard (HTTP + Range/Chunk)
 
+**How Agents install artifacts**
+- From receiving job assignment via SignalR (from Orchestrator)
+
+### Flow
+1. Agent receives assignment with artifact reference via SignalR.
+2. Agent requests artifact bytes via HTTPS endpoint.
+3. For large payloads, agent uses range requests.
+4. Agent assembles local cache file and validates digest.
+5. Pipeline proceeds only on pass.
+
 ### Transport decision
 
-| Path | Purpose | Selected |
-| --- | --- | --- |
-| SignalR payload transfer | artifact bytes | No |
-| HTTP GET/HEAD artifact endpoints | artifact bytes | Yes |
-| Range/chunk retrieval | large payload reliability | Yes |
+- **SignalR payload (from Orchestrator)** - only has **artifactReference**:
 
-### Rule
+```text
+Assignment message (SignalR):
+{
+  "jobId": "...",
+  "artifactReference": {
+    "url": "/api/artifacts/nodejs/24.0.0",
+    "digest": "sha256:..."
+  }
+}
+```
 
-SignalR MUST NOT carry artifact payload bytes.
+- **HTTP GET/HEAD with chunking for large payloads** - actual artifact payload
+```
+Artifact bytes (HTTP):
+GET /api/artifacts/nodejs/24.0.0
+-> Binary payload via HTTP
+```
 
 ### Range/chunk sequence
 
@@ -425,7 +481,7 @@ Agent                                               Artifact API
 - Range requests are accepted for large payload retrieval.
 - Digest verification blocks corrupted/incomplete downloads.
 
-Traceability: FR-005, AC-006, AC-102
+
 
 ---
 
@@ -449,42 +505,40 @@ System Admin     UI/CLI        Orchestrator API      SQLite DB       Hangfire Qu
     |              |                  |                   |                 |                  |                |                   |                  |                |
     | submit job   |                  |                   |                 |                  |                |                   |                  |                |
     |------------->| POST /api/jobs   |                   |                 |                  |                |                   |                  |                |
-    |              |----------------->| validate auth/schema/policy          |                  |                |                   |                  |                |
-    |              |                  | persist Job ------>|                 |                  |                |                   |                  |                |
-    |              |                  | persist Assignment>|                 |                  |                |                   |                  |                |
-    |              |                  | enqueue dispatch ------------------->|                  |                |                   |                  |                |
-    |              |<-----------------| 202 Accepted + jobId                 |                  |                |                   |                  |                |
+    |              |----------------->| validate auth/schema/policy         |                  |                |                   |                  |                |
+    |              |                  | persist Job ------>|                |                  |                |                   |                  |                |
+    |              |                  | persist Assignment>|                |                  |                |                   |                  |                |
+    |              |                  | enqueue dispatch ------------------>|                  |                |                   |                  |                |
+    |              |<-----------------| 202 Accepted + jobId                |                  |                |                   |                  |                |
     | open timeline| GET /api/jobs/{id}, /steps                             |                  |                |                   |                  |                |
-    |<-------------|<-----------------| read timeline ---->|                 |                  |                |                   |                  |                |
-    |              |                  |                   |                  | dequeue dispatch  |                |                   |                  |                |
-    |              |                  |                   |                  |----------------->| AssignJob      |                   |                  |                |
-    |              |                  |                   |                  |                  |--------------->| AckClaim          |                  |                |
-    |              |                  | update lease row ->|                 |                  |<---------------|                   |                  |                |
-    |              |                  |                   |                  |                  |<---------------| LeaseHeartbeat    |                  |                |
-    |              |                  |                   |                  |                  |                | enqueue assignment|                  |                |
-    |              |                  |                   |                  |                  |                |------------------>| run pipeline      |                |
-    |              |                  |                   |                  |                  |                |                   | spawn ----------->|                |
-    |              |                  |                   |                  |                  |                |                   | GET/HEAD(+Range) ------------------->|
-    |              |                  |                   |                  |                  |                |                   |<-------------------------------------|
-    |              |                  |                   |                  |                  |<---------------| StepStatus(seq*)  |                  |                |
-    |              |                  | upsert step row -->|                 |                  |                |                   |                  |                |
-    |              |                  |                   |                  |                  |<---------------| Complete/Fail     |                  |                |
-    |              |                  | set terminal row ->|                 |                  |                |                   |                  |                |
-    |              |                  |                   |                  |                  |<---------------| LeaseClose        |                  |                |
-
-Important:
-- Orchestrator persists `Job` and `Assignment` rows before enqueueing dispatch.
-- SignalR carries control/status messages only (AssignJob, AckClaim, LeaseHeartbeat, StepStatus, Complete/Fail, LeaseClose).
-- Artifact payload bytes are transferred only through HTTP artifact endpoints.
+    |<-------------|<-----------------| read timeline ---->|                |                  |                |                   |                  |                |
+    |              |                  |                   |                 | dequeue dispatch |                |                   |                  |                |
+    |              |                  |                   |                 |----------------->| AssignJob      |                   |                  |                |
+    |              |                  |                   |                 |                  |--------------->| AckClaim          |                  |                |
+    |              |                  | update lease row ->|                |                  |<---------------|                   |                  |                |
+    |              |                  |                   |                 |                  |<---------------| LeaseHeartbeat    |                  |                |
+    |              |                  |                   |                 |                  |                | enqueue assignment|                  |                |
+    |              |                  |                   |                 |                  |                |------------------>| run pipeline     |                |
+    |              |                  |                   |                 |                  |                |                   | spawn ---------->|                |
+    |              |                  |                   |                 |                  |                |                   | GET/HEAD(+Range) ---------------->|
+    |              |                  |                   |                 |                  |                |                   |<----------------------------------|
+    |              |                  |                   |                 |                  |<---------------| StepStatus(seq*)  |                  |                |
+    |              |                  | upsert step row -->|                |                  |                |                   |                  |                |
+    |              |                  |                   |                 |                  |<---------------| Complete/Fail     |                  |                |
+    |              |                  | set terminal row ->|                |                  |                |                   |                  |                |
+    |              |                  |                   |                 |                  |<---------------| LeaseClose        |                  |                |
 ```
+
+> [!IMPORTANT]
+> Orchestrator persists `Job` and `Assignment` rows before enqueueing dispatch.
+> SignalR carries control/status messages only (AssignJob, AckClaim, LeaseHeartbeat, StepStatus, Complete/Fail, LeaseClose).
+> Artifact payload bytes are transferred only through HTTP artifact endpoints.
 
 ### Verification gates
 
 - Request rejected for invalid/missing policy fields.
 - Assignment emitted only after persistence success.
 - `AckClaim` includes assignment/lease identifiers.
-
-Traceability: FR-001, FR-002, AC-001, AC-003
 
 ---
 
@@ -523,7 +577,7 @@ Connect
 - Payload conflict is rejected and audited.
 - Resume behavior is deterministic.
 
-Traceability: FR-002, NFR-001, AC-003, AC-101
+
 
 ---
 
@@ -562,7 +616,7 @@ Assigned
 - Missing LeaseHeartbeat drives stale transitions.
 - Reassign/fail behavior follows configured bounds.
 
-Traceability: NFR-001, AC-101
+
 
 ---
 
@@ -597,7 +651,7 @@ Ordered steps:
 - Each step emits status with required correlation fields.
 - Adapter outputs are normalized consistently.
 
-Traceability: FR-003, FR-005, AC-004, AC-006
+
 
 ---
 
@@ -617,7 +671,7 @@ Traceability: FR-003, FR-005, AC-004, AC-006
 - Job terminal state matches final step outcome.
 - Reasons are auditable.
 
-Traceability: FR-001, FR-003, AC-001, AC-002, AC-004
+
 
 ---
 
@@ -659,7 +713,7 @@ B) Mutation-stage failure
 - Missing migration path is explicit (`migration_path_missing`).
 - Restore attempt/outcome is auditable and linked.
 
-Traceability: FR-006, AC-007
+
 
 ---
 
@@ -704,7 +758,7 @@ Evaluate policy tags + requested direction
 - Rejection reason is explicit when approval is missing.
 - Snapshot readiness checked before high-risk mutation.
 
-Traceability: FR-001, FR-006, AC-002, AC-007, AC-101
+
 
 ---
 
@@ -722,7 +776,7 @@ Traceability: FR-001, FR-006, AC-002, AC-007, AC-101
 - Replay with equal payload is safe.
 - Replay with mismatched payload is rejected and audited.
 
-Traceability: FR-002, NFR-001, AC-003, AC-101
+
 
 ---
 
@@ -746,7 +800,7 @@ Traceability: FR-002, NFR-001, AC-003, AC-101
 - Child-process termination policy is followed.
 - Reason codes distinguish cancel from execution failure.
 
-Traceability: FR-001, AC-002, NFR-002
+
 
 ---
 
@@ -770,7 +824,7 @@ Agent step requests installer execution
 - Timeout/resource limit violations are observable.
 - Exit reason mapping is deterministic and auditable.
 
-Traceability: NFR-002, AC-102
+
 
 ---
 
@@ -790,7 +844,7 @@ Traceability: NFR-002, AC-102
 - Invalid signature evidence always blocks execution.
 - Trust evidence is recorded in audit/log context.
 
-Traceability: NFR-002, AC-102
+
 
 ---
 
@@ -829,7 +883,7 @@ Reconnect attempt
 - mTLS binding is required for reconnect.
 - Invalid cert reconnect is rejected.
 
-Traceability: FR-004, AC-005, AC-102
+
 
 ---
 
@@ -864,7 +918,7 @@ Runtime events -> Telemetry pipeline -> Redaction policy -> File exporter
 - Sensitive fields are redacted by policy.
 - Rotation/retention settings are enforced.
 
-Traceability: NFR-003, AC-103, AC-102
+
 
 ---
 
@@ -895,7 +949,7 @@ di artifacts upload --file .\nodejs.zip --manifest .\nodejs.manifest.json
 - UI timeline reflects live status transitions.
 - CLI maps 1:1 to API behavior.
 
-Traceability: NFR-004, AC-104, FR-001, AC-001, AC-002
+
 
 ---
 
@@ -947,7 +1001,7 @@ Idle
 - Startup health check must pass for completion.
 - Failed startup triggers rollback and linked audit events.
 
-Traceability: NFR-005, AC-105
+
 
 ---
 
@@ -969,7 +1023,7 @@ Do not dispatch assignment before durable persistence success.
 - Runtime state is not dependent on in-memory-only stores.
 - Entity transitions remain queryable for evidence/audit reconstruction.
 
-Traceability: FR-001, FR-006, NFR-001, AC-001, AC-007, AC-101
+
 
 ---
 
@@ -987,7 +1041,7 @@ Traceability: FR-001, FR-006, NFR-001, AC-001, AC-007, AC-101
 - Clean-host launch validation passes.
 - Runtime node actions are auditable from orchestrator surfaces.
 
-Traceability: NFR-004, NFR-005, AC-104, AC-105
+
 
 ---
 
@@ -1022,7 +1076,7 @@ node-001 success, node-002 failure
 - Per-node states are independently visible.
 - Aggregated job outcome logic is deterministic and auditable.
 
-Traceability: FR-001, AC-001, AC-002, NFR-003
+
 
 ---
 
@@ -1052,7 +1106,6 @@ Traceability: FR-001, AC-001, AC-002, NFR-003
 - No silent failures.
 - Evidence is reconstructable from logs/events/state.
 
-Traceability: AC-101, AC-102, AC-103
 
 ---
 

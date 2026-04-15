@@ -8,11 +8,15 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeploymentPoC.Orchestrator", "src\DeploymentPoC.Orchestrator\DeploymentPoC.Orchestrator.csproj", "{A1B2C3D4-E5F6-7890-1234-56789ABCDEF0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeploymentPoC.Agent", "src\DeploymentPoC.Agent\DeploymentPoC.Agent.csproj", "{8C4DB695-4ED9-4758-B44F-B5A74B59561E}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeploymentPoC.Orchestrator.Tests", "tests\DeploymentPoC.Orchestrator.Tests\DeploymentPoC.Orchestrator.Tests.csproj", "{BD4C27EE-B7C9-6D28-2C75-45D0E9164700}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeploymentPoC.Contracts", "src\DeploymentPoC.Contracts\DeploymentPoC.Contracts.csproj", "{C5D6E7F8-1234-4ABC-9DEF-0123456789AB}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeploymentPoC.Orchestrator.IntegrationTests", "tests\DeploymentPoC.Orchestrator.IntegrationTests\DeploymentPoC.Orchestrator.IntegrationTests.csproj", "{E1F2A3B4-C5D6-47E8-9A0B-1C2D3E4F5A6B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeploymentPoC.Agent.IntegrationTests", "tests\DeploymentPoC.Agent.IntegrationTests\DeploymentPoC.Agent.IntegrationTests.csproj", "{2FF790C3-D0C8-4EBE-96C2-2A865D91D518}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -24,6 +28,10 @@ Global
 		{A1B2C3D4-E5F6-7890-1234-56789ABCDEF0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A1B2C3D4-E5F6-7890-1234-56789ABCDEF0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A1B2C3D4-E5F6-7890-1234-56789ABCDEF0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8C4DB695-4ED9-4758-B44F-B5A74B59561E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8C4DB695-4ED9-4758-B44F-B5A74B59561E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8C4DB695-4ED9-4758-B44F-B5A74B59561E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8C4DB695-4ED9-4758-B44F-B5A74B59561E}.Release|Any CPU.Build.0 = Release|Any CPU
 		{BD4C27EE-B7C9-6D28-2C75-45D0E9164700}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{BD4C27EE-B7C9-6D28-2C75-45D0E9164700}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BD4C27EE-B7C9-6D28-2C75-45D0E9164700}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -36,15 +44,21 @@ Global
 		{E1F2A3B4-C5D6-47E8-9A0B-1C2D3E4F5A6B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E1F2A3B4-C5D6-47E8-9A0B-1C2D3E4F5A6B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E1F2A3B4-C5D6-47E8-9A0B-1C2D3E4F5A6B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2FF790C3-D0C8-4EBE-96C2-2A865D91D518}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2FF790C3-D0C8-4EBE-96C2-2A865D91D518}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2FF790C3-D0C8-4EBE-96C2-2A865D91D518}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2FF790C3-D0C8-4EBE-96C2-2A865D91D518}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{A1B2C3D4-E5F6-7890-1234-56789ABCDEF0} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{8C4DB695-4ED9-4758-B44F-B5A74B59561E} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{C5D6E7F8-1234-4ABC-9DEF-0123456789AB} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{BD4C27EE-B7C9-6D28-2C75-45D0E9164700} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{E1F2A3B4-C5D6-47E8-9A0B-1C2D3E4F5A6B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{2FF790C3-D0C8-4EBE-96C2-2A865D91D518} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {32A6F7D6-BCC2-43D5-BA27-916A49BF31B9}

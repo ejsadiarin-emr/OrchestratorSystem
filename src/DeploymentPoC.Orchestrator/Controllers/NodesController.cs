@@ -1,3 +1,4 @@
+using DeploymentPoC.Orchestrator.Contracts.Api;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
@@ -9,7 +10,7 @@ using DeploymentPoC.Orchestrator.Models;
 namespace DeploymentPoC.Orchestrator.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/nodes")]
 public class NodesController : ControllerBase
 {
     private readonly InstallerDbContext _db;
@@ -22,22 +23,20 @@ public class NodesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Node>>> GetAll()
+    public async Task<ActionResult<NodeListResponse>> GetAll()
     {
         var nodes = await _db.Nodes
             .OrderBy(n => n.Hostname)
-            .Select(n => new Node
+            .Select(n => new NodeSummaryDto
             {
-                Id = n.NodeId,
+                NodeId = n.NodeId,
                 Hostname = n.Hostname,
-                IpAddress = n.IpAddress,
-                Description = n.Description,
                 Status = n.Status,
-                LastSeenAt = n.LastSeenUtc
+                LastSeenUtc = n.LastSeenUtc
             })
             .ToListAsync();
 
-        return Ok(nodes);
+        return Ok(new NodeListResponse { Nodes = nodes });
     }
 
     [HttpGet("{id:guid}")]

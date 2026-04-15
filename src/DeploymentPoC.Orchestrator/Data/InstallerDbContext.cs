@@ -26,6 +26,11 @@ public sealed class InstallerDbContext : DbContext
             entity.Property(x => x.ManifestPackageId).HasMaxLength(128);
             entity.Property(x => x.ManifestTargetVersion).HasMaxLength(64);
             entity.Property(x => x.TargetNodeIdsCsv).HasMaxLength(2048);
+            entity.Property(x => x.IdempotencyKey).HasMaxLength(128);
+            entity.Property(x => x.IdempotencyRequestHash).HasMaxLength(64);
+            entity.Property(x => x.CancelReason).HasMaxLength(512);
+            entity.HasIndex(x => x.IdempotencyKey)
+                .IsUnique();
             entity.ToTable(t =>
             {
                 t.HasCheckConstraint("CK_Jobs_Mode", "\"Mode\" IN ('install','upgrade','rollback','modify','cancel')");

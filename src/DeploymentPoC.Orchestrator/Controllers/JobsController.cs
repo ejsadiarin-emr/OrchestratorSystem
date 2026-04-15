@@ -1,14 +1,18 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
-using Microsoft.EntityFrameworkCore;
+using DeploymentPoC.Orchestrator.Contracts.Api;
 using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Data.Entities;
-using DeploymentPoC.Orchestrator.Models;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Linq.Expressions;
 
 namespace DeploymentPoC.Orchestrator.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/jobs")]
 public class JobsController : ControllerBase
 {
     private readonly InstallerDbContext _db;
@@ -21,249 +25,296 @@ public class JobsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<InstallJob>>> GetAll([FromQuery] string? status = null)
+    public async Task<ActionResult<IEnumerable<JobDetailResponse>>> GetAll([FromQuery] string? state = null)
     {
-        var query = _db.Jobs
-            .Include(j => j.Steps)
-            .AsQueryable();
+        IQueryable<JobEntity> query = _db.Jobs.AsNoTracking();
 
-        if (!string.IsNullOrWhiteSpace(status))
+        if (!string.IsNullOrWhiteSpace(state))
         {
-            var normalizedStatus = status.Trim();
-            query = query.Where(j => EF.Functions.Collate(j.State, "NOCASE") == normalizedStatus);
+            var normalizedState = state.Trim();
+            query = query.Where(j => EF.Functions.Collate(j.State, "NOCASE") == normalizedState);
         }
 
-        var jobEntities = await query
+        var jobs = await query
             .OrderByDescending(j => j.CreatedAtUtc)
+            .Select(MapJobDetailResponseExpression)
             .ToListAsync();
-
-        var packageNameById = await ResolvePackageNamesAsync(jobEntities);
-        var nodeHostnameById = await ResolveNodeHostnamesAsync(jobEntities);
-
-        var jobs = jobEntities.Select(j => MapJob(j, packageNameById, nodeHostnameById)).ToList();
 
         return Ok(jobs);
     }
 
-    [HttpGet("{id:guid}")]
-    public async Task<ActionResult<InstallJob>> GetById(Guid id)
+    [HttpGet("{jobId:guid}")]
+    public async Task<ActionResult<JobDetailResponse>> GetById(Guid jobId)
     {
-        var entity = await _db.Jobs
-            .Include(j => j.Steps)
-            .SingleOrDefaultAsync(j => j.JobId == id);
+        var entity = await _db.Jobs.AsNoTracking().SingleOrDefaultAsync(j => j.JobId == jobId);
 
         if (entity is null)
         {
-            return NotFound(new { message = $"Job {id} not found" });
+            return NotFound(new { message = $"Job {jobId} not found" });
         }
 
-        var packageNameById = await ResolvePackageNamesAsync(entity);
-        var nodeHostnameById = await ResolveNodeHostnamesAsync(entity);
-
-        return Ok(MapJob(entity, packageNameById, nodeHostnameById));
+        return Ok(MapJobDetailResponse(entity));
     }
 
     [HttpPost]
-    public async Task<ActionResult<InstallJob>> Create([FromBody] CreateJobRequest request)
+    public async Task<ActionResult<CreateJobResponse>> Create([FromBody] CreateJobRequest request)
     {
-        if (request.PackageId == Guid.Empty)
+        if (!ModelState.IsValid)
         {
-            return BadRequest(new { message = "PackageId must be a non-empty GUID" });
+            return ValidationProblem(ModelState);
         }
 
-        if (request.TargetNodeId == Guid.Empty)
+        if (!TryNormalizeMode(request.ExecutionMode, out var normalizedMode))
         {
-            return BadRequest(new { message = "TargetNodeId must be a non-empty GUID" });
+            return BadRequest(new { message = "ExecutionMode must be one of: install, upgrade, rollback, modify, cancel" });
         }
 
-        var package = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == request.PackageId);
-        if (package is null)
+        var normalizedPackageId = request.PackageId.Trim();
+        var normalizedTargetVersion = request.TargetVersion.Trim();
+        var normalizedIdempotencyKey = request.IdempotencyKey.Trim();
+        var targetIds = request.Targets.Distinct().OrderBy(x => x).ToList();
+
+        var packageIdParsed = Guid.TryParse(normalizedPackageId, out var parsedPackageId);
+        var packageExists = packageIdParsed
+            ? await _db.Packages.AnyAsync(p =>
+                p.PackageId == parsedPackageId ||
+                EF.Functions.Collate(p.Name, "NOCASE") == normalizedPackageId)
+            : await _db.Packages.AnyAsync(p => EF.Functions.Collate(p.Name, "NOCASE") == normalizedPackageId);
+        if (!packageExists)
         {
-            return BadRequest(new { message = $"Package {request.PackageId} not found" });
+            return BadRequest(new { message = $"Package '{normalizedPackageId}' was not found" });
         }
 
-        var node = await _db.Nodes.SingleOrDefaultAsync(n => n.NodeId == request.TargetNodeId);
-        if (node is null)
+        var existingTargetCount = await _db.Nodes.CountAsync(n => targetIds.Contains(n.NodeId));
+        if (existingTargetCount != targetIds.Count)
         {
-            return BadRequest(new { message = $"Node {request.TargetNodeId} not found" });
+            return BadRequest(new { message = "One or more target nodes were not found" });
         }
+
+        var requestHash = ComputeIdempotencyRequestHash(
+            normalizedPackageId,
+            normalizedTargetVersion,
+            normalizedMode,
+            targetIds);
+
+        var existingByIdempotencyKey = await _db.Jobs.AsNoTracking()
+            .SingleOrDefaultAsync(j => j.IdempotencyKey == normalizedIdempotencyKey);
+        if (existingByIdempotencyKey is not null)
+        {
+            if (!string.Equals(existingByIdempotencyKey.IdempotencyRequestHash, requestHash, StringComparison.Ordinal))
+            {
+                return Conflict(new { message = "IdempotencyKey was already used with a different request payload" });
+            }
+
+            return Ok(new CreateJobResponse
+            {
+                JobId = existingByIdempotencyKey.JobId,
+                State = existingByIdempotencyKey.State
+            });
+        }
+
+        var now = DateTime.UtcNow;
 
         var jobEntity = new JobEntity
         {
             JobId = Guid.NewGuid(),
-            Mode = "install",
-            State = "Running",
-            CreatedAtUtc = DateTime.UtcNow,
-            UpdatedAtUtc = DateTime.UtcNow,
-            ManifestPackageId = request.PackageId.ToString(),
-            ManifestTargetVersion = string.Empty,
-            TargetNodeIdsCsv = node.NodeId.ToString(),
+            Mode = normalizedMode,
+            State = "Queued",
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now,
+            ManifestPackageId = normalizedPackageId,
+            ManifestTargetVersion = normalizedTargetVersion,
+            TargetNodeIdsCsv = string.Join(',', targetIds),
+            IdempotencyKey = normalizedIdempotencyKey,
+            IdempotencyRequestHash = requestHash,
             Steps = new List<JobStepEntity>
             {
-                new() { Name = "PreConditionCheck", Status = "Running", Sequence = 1, StepId = "precondition-check", StartedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow },
-                new() { Name = "CopyFiles", Status = "Pending", Sequence = 2, StepId = "copy-files", StartedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow }
+                new()
+                {
+                    Name = "PreConditionCheck",
+                    StepId = "precondition-check",
+                    Status = "Pending",
+                    Sequence = 1,
+                    StartedAtUtc = now,
+                    UpdatedAtUtc = now
+                },
+                new()
+                {
+                    Name = "CopyFiles",
+                    StepId = "copy-files",
+                    Status = "Pending",
+                    Sequence = 2,
+                    StartedAtUtc = now,
+                    UpdatedAtUtc = now
+                }
             }
         };
 
         _db.Jobs.Add(jobEntity);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            var existingAfterConflict = await _db.Jobs.AsNoTracking()
+                .SingleOrDefaultAsync(j => j.IdempotencyKey == normalizedIdempotencyKey);
+            if (existingAfterConflict is not null)
+            {
+                if (!string.Equals(existingAfterConflict.IdempotencyRequestHash, requestHash, StringComparison.Ordinal))
+                {
+                    return Conflict(new { message = "IdempotencyKey was already used with a different request payload" });
+                }
 
-        _logger.LogInformation("Created job {JobId} for package {Package} on node {Node}",
-            jobEntity.JobId, request.PackageId, node.Hostname);
+                return Ok(new CreateJobResponse
+                {
+                    JobId = existingAfterConflict.JobId,
+                    State = existingAfterConflict.State
+                });
+            }
 
-        var job = MapJob(
-            jobEntity,
-            new Dictionary<Guid, string> { [package.PackageId] = package.Name },
-            new Dictionary<Guid, string> { [node.NodeId] = node.Hostname });
+            throw;
+        }
 
-        return CreatedAtAction(nameof(GetById), new { id = job.Id }, job);
+        _logger.LogInformation(
+            "Created job {JobId} for package {PackageId} on {TargetCount} target nodes",
+            jobEntity.JobId,
+            normalizedPackageId,
+            targetIds.Count);
+
+        var response = new CreateJobResponse
+        {
+            JobId = jobEntity.JobId,
+            State = jobEntity.State
+        };
+
+        return CreatedAtAction(nameof(GetById), new { jobId = jobEntity.JobId }, response);
     }
 
-    [HttpDelete("{id:guid}")]
-    public async Task<ActionResult> Cancel(Guid id)
+    [HttpGet("{jobId:guid}/steps")]
+    public async Task<ActionResult<JobStepListResponse>> GetSteps(Guid jobId)
+    {
+        var exists = await _db.Jobs.AnyAsync(j => j.JobId == jobId);
+        if (!exists)
+        {
+            return NotFound(new { message = $"Job {jobId} not found" });
+        }
+
+        var steps = await _db.JobSteps.AsNoTracking()
+            .Where(s => s.JobId == jobId)
+            .OrderBy(s => s.Sequence)
+            .Select(s => new JobStepDto
+            {
+                StepId = s.StepId,
+                Name = s.Name,
+                Status = s.Status,
+                Sequence = s.Sequence,
+                ReasonCode = s.ReasonCode,
+                TelemetryRef = s.TelemetryRef
+            })
+            .ToListAsync();
+
+        return Ok(new JobStepListResponse { Steps = steps });
+    }
+
+    [HttpPost("{jobId:guid}/cancel")]
+    public async Task<ActionResult<CancelJobResponse>> Cancel(Guid jobId, [FromBody] CancelJobRequest request)
     {
         var job = await _db.Jobs
             .Include(j => j.Steps)
-            .SingleOrDefaultAsync(j => j.JobId == id);
+            .SingleOrDefaultAsync(j => j.JobId == jobId);
 
         if (job is null)
         {
-            return NotFound(new { message = $"Job {id} not found" });
+            return NotFound(new { message = $"Job {jobId} not found" });
         }
 
-        if (job.State is "Completed" or "Failed")
+        if (job.State is "Completed" or "Failed" or "Cancelled")
         {
-            return BadRequest(new { message = "Cannot cancel completed or failed job" });
+            return Ok(new CancelJobResponse
+            {
+                JobId = job.JobId,
+                State = job.State,
+                CancelledAtUtc = job.CompletedAtUtc ?? job.UpdatedAtUtc
+            });
         }
 
+        var now = DateTime.UtcNow;
         job.State = "Cancelled";
-        job.CompletedAtUtc = DateTime.UtcNow;
-        job.UpdatedAtUtc = DateTime.UtcNow;
+        job.CompletedAtUtc = now;
+        job.UpdatedAtUtc = now;
+        job.CancelReason = request.Reason.Trim();
+
         foreach (var step in job.Steps.Where(s => s.Status == "Running" || s.Status == "Pending"))
         {
             step.Status = "Cancelled";
-            step.CompletedAtUtc = DateTime.UtcNow;
-            step.UpdatedAtUtc = DateTime.UtcNow;
+            step.CompletedAtUtc = now;
+            step.UpdatedAtUtc = now;
         }
 
         await _db.SaveChangesAsync();
 
-        _logger.LogInformation("Cancelled job {JobId}", id);
+        _logger.LogInformation("Cancelled job {JobId}", jobId);
 
-        var packageNameById = await ResolvePackageNamesAsync(job);
-        var nodeHostnameById = await ResolveNodeHostnamesAsync(job);
-
-        return Ok(MapJob(job, packageNameById, nodeHostnameById));
+        return Ok(new CancelJobResponse
+        {
+            JobId = job.JobId,
+            State = job.State,
+            CancelledAtUtc = now
+        });
     }
 
-    private static InstallJob MapJob(
-        JobEntity jobEntity,
-        IReadOnlyDictionary<Guid, string> packageNameById,
-        IReadOnlyDictionary<Guid, string> nodeHostnameById)
+    private static readonly Expression<Func<JobEntity, JobDetailResponse>> MapJobDetailResponseExpression = job => new()
     {
-        var orderedSteps = jobEntity.Steps.OrderBy(s => s.Sequence).ToList();
-        var parsedPackageId = ParseGuidOrEmpty(jobEntity.ManifestPackageId);
-        var parsedTargetNodeId = GetPrimaryTargetNodeId(jobEntity.TargetNodeIdsCsv);
+        JobId = job.JobId,
+        State = job.State,
+        Mode = job.Mode,
+        ReasonCode = job.ReasonCode,
+        CreatedAtUtc = job.CreatedAtUtc,
+        UpdatedAtUtc = job.UpdatedAtUtc,
+        CompletedAtUtc = job.CompletedAtUtc
+    };
 
-        var packageName = ResolveDisplayName(packageNameById, parsedPackageId);
-        var targetNodeHostname = ResolveDisplayName(nodeHostnameById, parsedTargetNodeId);
-
-        return new InstallJob
+    private static JobDetailResponse MapJobDetailResponse(JobEntity entity)
+    {
+        return new JobDetailResponse
         {
-            Id = jobEntity.JobId,
-            PackageId = parsedPackageId,
-            PackageName = packageName,
-            TargetNodeId = parsedTargetNodeId,
-            TargetNodeHostname = targetNodeHostname,
-            Status = jobEntity.State,
-            CurrentStep = orderedSteps.Count(s => s.Status == "Completed") + (orderedSteps.Any(s => s.Status == "Running") ? 1 : 0),
-            TotalSteps = orderedSteps.Count,
-            StartedAt = jobEntity.CreatedAtUtc,
-            CompletedAt = jobEntity.CompletedAtUtc,
-            Steps = orderedSteps.Select(s => new JobStep
-            {
-                Name = s.Name,
-                Status = s.Status,
-                Duration = s.CompletedAtUtc.HasValue ? $"{(s.CompletedAtUtc.Value - s.StartedAtUtc).TotalSeconds:0.0}s" : null
-            }).ToList()
+            JobId = entity.JobId,
+            State = entity.State,
+            Mode = entity.Mode,
+            ReasonCode = entity.ReasonCode,
+            CreatedAtUtc = entity.CreatedAtUtc,
+            UpdatedAtUtc = entity.UpdatedAtUtc,
+            CompletedAtUtc = entity.CompletedAtUtc
         };
     }
 
-    private async Task<Dictionary<Guid, string>> ResolvePackageNamesAsync(IEnumerable<JobEntity> jobs)
+    private static bool TryNormalizeMode(string? mode, out string normalized)
     {
-        var packageIds = jobs
-            .Select(j => ParseGuidOrEmpty(j.ManifestPackageId))
-            .Where(id => id != Guid.Empty)
-            .Distinct()
-            .ToList();
-
-        return await ResolvePackageNamesByIdsAsync(packageIds);
-    }
-
-    private Task<Dictionary<Guid, string>> ResolvePackageNamesAsync(JobEntity job)
-    {
-        var packageId = ParseGuidOrEmpty(job.ManifestPackageId);
-        return ResolvePackageNamesByIdsAsync(packageId == Guid.Empty ? [] : [packageId]);
-    }
-
-    private async Task<Dictionary<Guid, string>> ResolveNodeHostnamesAsync(IEnumerable<JobEntity> jobs)
-    {
-        var nodeIds = jobs
-            .Select(j => GetPrimaryTargetNodeId(j.TargetNodeIdsCsv))
-            .Where(id => id != Guid.Empty)
-            .Distinct()
-            .ToList();
-
-        return await ResolveNodeHostnamesByIdsAsync(nodeIds);
-    }
-
-    private Task<Dictionary<Guid, string>> ResolveNodeHostnamesAsync(JobEntity job)
-    {
-        var nodeId = GetPrimaryTargetNodeId(job.TargetNodeIdsCsv);
-        return ResolveNodeHostnamesByIdsAsync(nodeId == Guid.Empty ? [] : [nodeId]);
-    }
-
-    private async Task<Dictionary<Guid, string>> ResolvePackageNamesByIdsAsync(List<Guid> packageIds)
-    {
-        if (packageIds.Count == 0)
+        normalized = (mode ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch
         {
-            return new Dictionary<Guid, string>();
-        }
-
-        return await _db.Packages
-            .Where(p => packageIds.Contains(p.PackageId))
-            .Select(p => new { Id = p.PackageId, p.Name })
-            .ToDictionaryAsync(p => p.Id, p => p.Name);
+            "install" or "upgrade" or "rollback" or "modify" or "cancel" => true,
+            _ => false
+        };
     }
 
-    private async Task<Dictionary<Guid, string>> ResolveNodeHostnamesByIdsAsync(List<Guid> nodeIds)
+    private static string ComputeIdempotencyRequestHash(
+        string packageId,
+        string targetVersion,
+        string executionMode,
+        List<Guid> targetIds)
     {
-        if (nodeIds.Count == 0)
+        var canonical = JsonSerializer.Serialize(new
         {
-            return new Dictionary<Guid, string>();
-        }
+            packageId,
+            targetVersion,
+            executionMode,
+            targets = targetIds
+        });
 
-        return await _db.Nodes
-            .Where(n => nodeIds.Contains(n.NodeId))
-            .Select(n => new { Id = n.NodeId, n.Hostname })
-            .ToDictionaryAsync(n => n.Id, n => n.Hostname);
-    }
-
-    private static Guid ParseGuidOrEmpty(string? value)
-    {
-        return Guid.TryParse(value, out var parsed) ? parsed : Guid.Empty;
-    }
-
-    private static Guid GetPrimaryTargetNodeId(string? targetNodeIdsCsv)
-    {
-        var firstTargetNodeId = targetNodeIdsCsv?
-            .Split(',', StringSplitOptions.RemoveEmptyEntries)
-            .FirstOrDefault();
-        return ParseGuidOrEmpty(firstTargetNodeId);
-    }
-
-    private static string ResolveDisplayName(IReadOnlyDictionary<Guid, string> map, Guid id)
-    {
-        return map.TryGetValue(id, out var value) ? value : string.Empty;
+        var bytes = Encoding.UTF8.GetBytes(canonical);
+        var hash = SHA256.HashData(bytes);
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 }

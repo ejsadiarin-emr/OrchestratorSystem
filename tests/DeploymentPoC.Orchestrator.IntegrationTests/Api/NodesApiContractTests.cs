@@ -1,0 +1,48 @@
+using System.Net;
+using System.Net.Http.Json;
+using DeploymentPoC.Orchestrator.IntegrationTests.Infrastructure;
+using NUnit.Framework;
+
+namespace DeploymentPoC.Orchestrator.IntegrationTests.Api;
+
+public class NodesApiContractTests
+{
+    [Test]
+    public async Task NodesApi_Implements_NodeListContract()
+    {
+        await using var factory = new CustomWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var createNodeResponse = await client.PostAsJsonAsync("/api/nodes", new
+        {
+            hostname = "NODE-API-01",
+            ipAddress = "10.0.0.11",
+            description = "api-contract"
+        });
+        createNodeResponse.EnsureSuccessStatusCode();
+
+        var listResponse = await client.GetAsync("/api/nodes");
+        Assert.That(listResponse.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+
+        var body = await listResponse.Content.ReadFromJsonAsync<NodeListResponse>();
+        Assert.That(body, Is.Not.Null);
+        var node = body!.Nodes.SingleOrDefault(n => n.Hostname == "NODE-API-01");
+        Assert.That(node, Is.Not.Null);
+        Assert.That(node!.NodeId, Is.Not.EqualTo(Guid.Empty));
+        Assert.That(node.Status, Is.Not.Null.And.Not.Empty);
+        Assert.That(node.LastSeenUtc, Is.Not.EqualTo(default(DateTime)));
+    }
+
+    private sealed class NodeListResponse
+    {
+        public List<NodeSummaryResponse> Nodes { get; set; } = new();
+    }
+
+    private sealed class NodeSummaryResponse
+    {
+        public Guid NodeId { get; set; }
+        public string Hostname { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public DateTime LastSeenUtc { get; set; }
+    }
+}

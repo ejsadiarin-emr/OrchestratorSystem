@@ -1,5 +1,6 @@
 using DeploymentPoC.Orchestrator;
 using DeploymentPoC.Orchestrator.Data;
+using DeploymentPoC.Orchestrator.Services;
 using DeploymentPoC.Orchestrator.Steps;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -44,6 +45,8 @@ var connectionString = !string.IsNullOrWhiteSpace(configuredInstallerDb)
 
 builder.Services.AddDbContext<InstallerDbContext>(options =>
     options.UseSqlite(connectionString));
+
+builder.Services.AddSingleton<ArtifactStoreService>();
 
 builder.Services.AddTransient<PreConditionCheckStep>();
 builder.Services.AddTransient<CopyFilesStep>();

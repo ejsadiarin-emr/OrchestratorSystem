@@ -27,12 +27,11 @@ public class PersistenceTests
 
         var listResponse = await client.GetAsync("/api/nodes");
         listResponse.EnsureSuccessStatusCode();
-        var listNodes = await listResponse.Content.ReadFromJsonAsync<List<NodeResponse>>();
+        var listNodes = await listResponse.Content.ReadFromJsonAsync<NodeListResponse>();
 
         Assert.That(listNodes, Is.Not.Null);
-        var persistedFromList = listNodes!.Single(n => n.Hostname == "NODE-PERSIST-01");
-        Assert.That(persistedFromList.IpAddress, Is.EqualTo("10.10.10.1"));
-        Assert.That(persistedFromList.Description, Is.EqualTo("persistence-check"));
+        var persistedFromList = listNodes!.Nodes.Single(n => n.Hostname == "NODE-PERSIST-01");
+        Assert.That(persistedFromList.NodeId, Is.EqualTo(createdNode!.Id));
 
         var getResponse = await client.GetAsync($"/api/nodes/{createdNode!.Id}");
         getResponse.EnsureSuccessStatusCode();
@@ -82,7 +81,7 @@ public class PersistenceTests
     }
 
     [Test]
-    public async Task Jobs_CreateAndGet_MapsPackageAndNodeFields()
+    public async Task Jobs_CreateAndGetAndList_AreDurableAcrossRequests()
     {
         await using var factory = new CustomWebApplicationFactory();
         using var client = factory.CreateClient();
@@ -109,31 +108,33 @@ public class PersistenceTests
         var node = await nodeCreate.Content.ReadFromJsonAsync<NodeResponse>();
         Assert.That(node, Is.Not.Null);
 
+        var idempotencyKey = $"idem-{Guid.NewGuid():N}";
         var jobCreate = await client.PostAsJsonAsync("/api/jobs", new
         {
-            packageId = package!.Id,
-            targetNodeId = node!.Id
+            packageId = package!.Id.ToString(),
+            targetVersion = package.Version,
+            executionMode = "install",
+            idempotencyKey,
+            targets = new[] { node!.Id }
         });
         jobCreate.EnsureSuccessStatusCode();
-        var createdJob = await jobCreate.Content.ReadFromJsonAsync<JobResponse>();
+        var createdJob = await jobCreate.Content.ReadFromJsonAsync<CreateJobResponse>();
         Assert.That(createdJob, Is.Not.Null);
-        Assert.That(createdJob!.PackageId, Is.EqualTo(package.Id));
-        Assert.That(createdJob.PackageName, Is.EqualTo("svc-core"));
-        Assert.That(createdJob.TargetNodeId, Is.EqualTo(node.Id));
-        Assert.That(createdJob.TargetNodeHostname, Is.EqualTo("NODE-MAP-01"));
+        Assert.That(createdJob!.State, Is.EqualTo("Queued"));
 
-        var getJobResponse = await client.GetAsync($"/api/jobs/{createdJob.Id}");
+        var getJobResponse = await client.GetAsync($"/api/jobs/{createdJob.JobId}");
         getJobResponse.EnsureSuccessStatusCode();
-        var getJob = await getJobResponse.Content.ReadFromJsonAsync<JobResponse>();
+        var getJob = await getJobResponse.Content.ReadFromJsonAsync<JobDetailResponse>();
         Assert.That(getJob, Is.Not.Null);
-        Assert.That(getJob!.PackageName, Is.EqualTo("svc-core"));
-        Assert.That(getJob.TargetNodeHostname, Is.EqualTo("NODE-MAP-01"));
+        Assert.That(getJob!.JobId, Is.EqualTo(createdJob.JobId));
+        Assert.That(getJob.Mode, Is.EqualTo("install"));
+        Assert.That(getJob.State, Is.EqualTo("Queued"));
 
-        var listResponse = await client.GetAsync("/api/jobs?status=running");
+        var listResponse = await client.GetAsync("/api/jobs?state=queued");
         listResponse.EnsureSuccessStatusCode();
-        var listJobs = await listResponse.Content.ReadFromJsonAsync<List<JobResponse>>();
+        var listJobs = await listResponse.Content.ReadFromJsonAsync<List<JobDetailResponse>>();
         Assert.That(listJobs, Is.Not.Null);
-        Assert.That(listJobs!.Any(j => j.Id == createdJob.Id), Is.True);
+        Assert.That(listJobs!.Any(j => j.JobId == createdJob.JobId), Is.True);
     }
 
     [Test]
@@ -192,12 +193,27 @@ public class PersistenceTests
         public string Version { get; set; } = string.Empty;
     }
 
-    private sealed class JobResponse
+    private sealed class NodeListResponse
     {
-        public Guid Id { get; set; }
-        public Guid PackageId { get; set; }
-        public string PackageName { get; set; } = string.Empty;
-        public Guid TargetNodeId { get; set; }
-        public string TargetNodeHostname { get; set; } = string.Empty;
+        public List<NodeSummaryResponse> Nodes { get; set; } = new();
+    }
+
+    private sealed class NodeSummaryResponse
+    {
+        public Guid NodeId { get; set; }
+        public string Hostname { get; set; } = string.Empty;
+    }
+
+    private sealed class CreateJobResponse
+    {
+        public Guid JobId { get; set; }
+        public string State { get; set; } = string.Empty;
+    }
+
+    private sealed class JobDetailResponse
+    {
+        public Guid JobId { get; set; }
+        public string State { get; set; } = string.Empty;
+        public string Mode { get; set; } = string.Empty;
     }
 }

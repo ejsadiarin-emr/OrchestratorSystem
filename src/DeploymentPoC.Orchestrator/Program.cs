@@ -1,7 +1,6 @@
 using DeploymentPoC.Orchestrator;
 using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Steps;
-using DeploymentPoC.Orchestrator.Store;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.StaticFiles;
@@ -35,9 +34,6 @@ builder.Services.AddSwaggerGen();
 
 builder.Logging.AddConsole();
 
-// Transition period: keep AppStore for existing controllers while persistence-backed paths are phased in.
-builder.Services.AddSingleton<AppStore>();
-
 var configuredInstallerDb = builder.Configuration.GetConnectionString("InstallerDb");
 var fallbackDataDirectory = Path.Combine(builder.Environment.ContentRootPath, "data");
 Directory.CreateDirectory(fallbackDataDirectory);
@@ -64,6 +60,12 @@ builder.Services.AddTransient<IPipeline<InstallContext>>(sp =>
 });
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<InstallerDbContext>();
+    await db.Database.MigrateAsync();
+}
 
 if (app.Environment.IsDevelopment())
 {

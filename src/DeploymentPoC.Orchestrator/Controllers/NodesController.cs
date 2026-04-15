@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
+using DeploymentPoC.Orchestrator.Data;
+using DeploymentPoC.Orchestrator.Data.Entities;
 using DeploymentPoC.Orchestrator.Models;
-using DeploymentPoC.Orchestrator.Store;
 
 namespace DeploymentPoC.Orchestrator.Controllers;
 
@@ -9,60 +12,123 @@ namespace DeploymentPoC.Orchestrator.Controllers;
 [Route("api/[controller]")]
 public class NodesController : ControllerBase
 {
-    private readonly AppStore _store;
+    private readonly InstallerDbContext _db;
     private readonly ILogger<NodesController> _logger;
 
-    public NodesController(AppStore store, ILogger<NodesController> logger)
+    public NodesController(InstallerDbContext db, ILogger<NodesController> logger)
     {
-        _store = store;
+        _db = db;
         _logger = logger;
     }
 
     [HttpGet]
-    public ActionResult<IEnumerable<Node>> GetAll()
+    public async Task<ActionResult<IEnumerable<Node>>> GetAll()
     {
-        return Ok(_store.Nodes.Values.ToList());
+        var nodes = await _db.Nodes
+            .OrderBy(n => n.Hostname)
+            .Select(n => new Node
+            {
+                Id = n.NodeId,
+                Hostname = n.Hostname,
+                IpAddress = n.IpAddress,
+                Description = n.Description,
+                Status = n.Status,
+                LastSeenAt = n.LastSeenUtc
+            })
+            .ToListAsync();
+
+        return Ok(nodes);
     }
 
     [HttpGet("{id:guid}")]
-    public ActionResult<Node> GetById(Guid id)
+    public async Task<ActionResult<Node>> GetById(Guid id)
     {
-        if (_store.Nodes.TryGetValue(id, out var node))
+        var entity = await _db.Nodes.SingleOrDefaultAsync(n => n.NodeId == id);
+        if (entity is null)
         {
-            return Ok(node);
+            return NotFound(new { message = $"Node {id} not found" });
         }
-        return NotFound(new { message = $"Node {id} not found" });
+
+        return Ok(new Node
+        {
+            Id = entity.NodeId,
+            Hostname = entity.Hostname,
+            IpAddress = entity.IpAddress,
+            Description = entity.Description,
+            Status = entity.Status,
+            LastSeenAt = entity.LastSeenUtc
+        });
     }
 
     [HttpPost]
-    public ActionResult<Node> Create([FromBody] CreateNodeRequest request)
+    public async Task<ActionResult<Node>> Create([FromBody] CreateNodeRequest request)
     {
-        var node = new Node
+        var entity = new NodeEntity
         {
+            NodeId = Guid.NewGuid(),
             Hostname = request.Hostname,
             IpAddress = request.IpAddress,
             Description = request.Description,
             Status = "Online",
-            LastSeenAt = DateTime.UtcNow
+            LastSeenUtc = DateTime.UtcNow
         };
 
-        _store.Nodes[node.Id] = node;
+        _db.Nodes.Add(entity);
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsDuplicateHostnameConstraintViolation(ex))
+        {
+            return Conflict(new { message = $"A node with hostname '{request.Hostname}' already exists" });
+        }
+
+        var node = new Node
+        {
+            Id = entity.NodeId,
+            Hostname = entity.Hostname,
+            IpAddress = request.IpAddress,
+            Description = request.Description,
+            Status = entity.Status,
+            LastSeenAt = entity.LastSeenUtc
+        };
+
         _logger.LogInformation("Registered node {Hostname} ({IpAddress})", node.Hostname, node.IpAddress);
         
         return CreatedAtAction(nameof(GetById), new { id = node.Id }, node);
     }
 
     [HttpPut("{id:guid}")]
-    public ActionResult<Node> Update(Guid id, [FromBody] UpdateNodeRequest request)
+    public async Task<ActionResult<Node>> Update(Guid id, [FromBody] UpdateNodeRequest request)
     {
-        if (!_store.Nodes.TryGetValue(id, out var node))
+        var entity = await _db.Nodes.SingleOrDefaultAsync(n => n.NodeId == id);
+        if (entity is null)
         {
             return NotFound(new { message = $"Node {id} not found" });
         }
 
-        node.Hostname = request.Hostname;
-        node.IpAddress = request.IpAddress;
-        node.Description = request.Description;
+        entity.Hostname = request.Hostname;
+        entity.IpAddress = request.IpAddress;
+        entity.Description = request.Description;
+        entity.LastSeenUtc = DateTime.UtcNow;
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsDuplicateHostnameConstraintViolation(ex))
+        {
+            return Conflict(new { message = $"A node with hostname '{request.Hostname}' already exists" });
+        }
+
+        var node = new Node
+        {
+            Id = entity.NodeId,
+            Hostname = entity.Hostname,
+            IpAddress = request.IpAddress,
+            Description = request.Description,
+            Status = entity.Status,
+            LastSeenAt = entity.LastSeenUtc
+        };
 
         _logger.LogInformation("Updated node {Hostname}", node.Hostname);
         
@@ -70,13 +136,25 @@ public class NodesController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    public ActionResult Delete(Guid id)
+    public async Task<ActionResult> Delete(Guid id)
     {
-        if (_store.Nodes.Remove(id))
+        var entity = await _db.Nodes.SingleOrDefaultAsync(n => n.NodeId == id);
+        if (entity is null)
         {
-            _logger.LogInformation("Deleted node {Id}", id);
-            return NoContent();
+            return NotFound(new { message = $"Node {id} not found" });
         }
-        return NotFound(new { message = $"Node {id} not found" });
+
+        _db.Nodes.Remove(entity);
+        await _db.SaveChangesAsync();
+
+        _logger.LogInformation("Deleted node {Id}", id);
+        return NoContent();
+    }
+
+    private static bool IsDuplicateHostnameConstraintViolation(DbUpdateException exception)
+    {
+        return exception.InnerException is SqliteException sqliteEx
+            && sqliteEx.SqliteErrorCode == 19
+            && sqliteEx.Message.Contains("UNIQUE constraint failed: Nodes.Hostname", StringComparison.Ordinal);
     }
 }

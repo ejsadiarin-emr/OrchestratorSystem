@@ -12,6 +12,7 @@ public sealed class InstallerDbContext : DbContext
     public DbSet<JobEntity> Jobs => Set<JobEntity>();
     public DbSet<JobStepEntity> JobSteps => Set<JobStepEntity>();
     public DbSet<NodeEntity> Nodes => Set<NodeEntity>();
+    public DbSet<PackageEntity> Packages => Set<PackageEntity>();
     public DbSet<AssignmentLeaseEntity> AssignmentLeases => Set<AssignmentLeaseEntity>();
     public DbSet<ConfigSnapshotEntity> ConfigSnapshots => Set<ConfigSnapshotEntity>();
 
@@ -58,12 +59,24 @@ public sealed class InstallerDbContext : DbContext
             entity.HasIndex(x => x.Hostname).IsUnique();
             entity.Property(x => x.AgentId).HasMaxLength(128);
             entity.Property(x => x.Hostname).HasMaxLength(255);
+            entity.Property(x => x.IpAddress).HasMaxLength(64);
+            entity.Property(x => x.Description).HasMaxLength(512);
             entity.Property(x => x.AgentVersion).HasMaxLength(64);
             entity.Property(x => x.Status).HasMaxLength(64);
             entity.ToTable(t =>
             {
                 t.HasCheckConstraint("CK_Nodes_Status", "\"Status\" IN ('Offline','Online')");
             });
+        });
+
+        modelBuilder.Entity<PackageEntity>(entity =>
+        {
+            entity.HasKey(x => x.PackageId);
+            entity.Property(x => x.Name).HasMaxLength(255);
+            entity.Property(x => x.Version).HasMaxLength(64);
+            entity.Property(x => x.SourcePath).HasMaxLength(1024);
+            entity.Property(x => x.InstallType).HasMaxLength(64);
+            entity.Property(x => x.InstallArgs).HasMaxLength(2048);
         });
 
         modelBuilder.Entity<AssignmentLeaseEntity>(entity =>

@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using DeploymentPoC.Orchestrator.Data;
+using DeploymentPoC.Orchestrator.Data.Entities;
 using DeploymentPoC.Orchestrator.Models;
-using DeploymentPoC.Orchestrator.Store;
 using Microsoft.Extensions.Logging;
 
 namespace DeploymentPoC.Orchestrator.Controllers;
@@ -9,57 +11,105 @@ namespace DeploymentPoC.Orchestrator.Controllers;
 [Route("api/[controller]")]
 public class PackagesController : ControllerBase
 {
-    private readonly AppStore _store;
+    private readonly InstallerDbContext _db;
     private readonly ILogger<PackagesController> _logger;
 
-    public PackagesController(AppStore store, ILogger<PackagesController> logger)
+    public PackagesController(InstallerDbContext db, ILogger<PackagesController> logger)
     {
-        _store = store;
+        _db = db;
         _logger = logger;
     }
 
     [HttpGet]
-    public ActionResult<IEnumerable<Package>> GetAll()
+    public async Task<ActionResult<IEnumerable<Package>>> GetAll()
     {
-        return Ok(_store.Packages.Values.ToList());
+        var packages = await _db.Packages
+            .OrderByDescending(p => p.CreatedAtUtc)
+            .Select(p => new Package
+            {
+                Id = p.PackageId,
+                Name = p.Name,
+                Version = p.Version,
+                SourcePath = p.SourcePath,
+                InstallType = p.InstallType,
+                InstallArgs = p.InstallArgs,
+                CreatedAt = p.CreatedAtUtc
+            })
+            .ToListAsync();
+
+        return Ok(packages);
     }
 
     [HttpGet("{id:guid}")]
-    public ActionResult<Package> GetById(Guid id)
+    public async Task<ActionResult<Package>> GetById(Guid id)
     {
-        if (_store.Packages.TryGetValue(id, out var package))
+        var package = await _db.Packages
+            .Where(p => p.PackageId == id)
+            .Select(p => new Package
+            {
+                Id = p.PackageId,
+                Name = p.Name,
+                Version = p.Version,
+                SourcePath = p.SourcePath,
+                InstallType = p.InstallType,
+                InstallArgs = p.InstallArgs,
+                CreatedAt = p.CreatedAtUtc
+            })
+            .SingleOrDefaultAsync();
+
+        if (package is not null)
         {
             return Ok(package);
         }
+
         return NotFound(new { message = $"Package {id} not found" });
     }
 
     [HttpPost]
-    public ActionResult<Package> Create([FromBody] CreatePackageRequest request)
+    public async Task<ActionResult<Package>> Create([FromBody] CreatePackageRequest request)
     {
-        var package = new Package
+        var entity = new PackageEntity
         {
+            PackageId = Guid.NewGuid(),
             Name = request.Name,
             Version = request.Version,
             SourcePath = request.SourcePath,
             InstallType = request.InstallType,
-            InstallArgs = request.InstallArgs
+            InstallArgs = request.InstallArgs,
+            CreatedAtUtc = DateTime.UtcNow
         };
 
-        _store.Packages[package.Id] = package;
+        _db.Packages.Add(entity);
+        await _db.SaveChangesAsync();
+
+        var package = new Package
+        {
+            Id = entity.PackageId,
+            Name = request.Name,
+            Version = request.Version,
+            SourcePath = request.SourcePath,
+            InstallType = request.InstallType,
+            InstallArgs = request.InstallArgs,
+            CreatedAt = entity.CreatedAtUtc
+        };
+
         _logger.LogInformation("Created package {Name} v{Version}", package.Name, package.Version);
         
         return CreatedAtAction(nameof(GetById), new { id = package.Id }, package);
     }
 
     [HttpDelete("{id:guid}")]
-    public ActionResult Delete(Guid id)
+    public async Task<ActionResult> Delete(Guid id)
     {
-        if (_store.Packages.Remove(id))
+        var entity = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == id);
+        if (entity is not null)
         {
+            _db.Packages.Remove(entity);
+            await _db.SaveChangesAsync();
             _logger.LogInformation("Deleted package {Id}", id);
             return NoContent();
         }
+
         return NotFound(new { message = $"Package {id} not found" });
     }
 }

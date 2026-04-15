@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace DeploymentPoC.Orchestrator.Models;
 
 public class Node
@@ -12,14 +14,28 @@ public class Node
 
 public class CreateNodeRequest
 {
+    [Required]
+    [StringLength(255, MinimumLength = 1)]
     public string Hostname { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(64, MinimumLength = 1)]
     public string IpAddress { get; set; } = string.Empty;
+
+    [StringLength(512)]
     public string Description { get; set; } = string.Empty;
 }
 
 public class UpdateNodeRequest
 {
+    [Required]
+    [StringLength(255, MinimumLength = 1)]
     public string Hostname { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(64, MinimumLength = 1)]
     public string IpAddress { get; set; } = string.Empty;
+
+    [StringLength(512)]
     public string Description { get; set; } = string.Empty;
 }

@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace DeploymentPoC.Orchestrator.Models;
 
 public class InstallJob
@@ -25,6 +27,9 @@ public class JobStep
 
 public class CreateJobRequest
 {
+    [Required]
     public Guid PackageId { get; set; }
+
+    [Required]
     public Guid TargetNodeId { get; set; }
 }

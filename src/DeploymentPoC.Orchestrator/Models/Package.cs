@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace DeploymentPoC.Orchestrator.Models;
 
 public class Package
@@ -13,9 +15,22 @@ public class Package
 
 public class CreatePackageRequest
 {
+    [Required]
+    [StringLength(255, MinimumLength = 1)]
     public string Name { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(64, MinimumLength = 1)]
     public string Version { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(1024, MinimumLength = 1)]
     public string SourcePath { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(64, MinimumLength = 1)]
     public string InstallType { get; set; } = string.Empty;
+
+    [StringLength(2048)]
     public string InstallArgs { get; set; } = string.Empty;
 }

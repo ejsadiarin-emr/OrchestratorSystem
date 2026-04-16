@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Package, CreatePackageRequest } from '../types'
+import { listArtifacts } from '../services/api'
 
 export default function Packages() {
   const [packages, setPackages] = useState<Package[]>([])
@@ -10,10 +11,18 @@ export default function Packages() {
   })
 
   const fetchPackages = () => {
-    fetch('/api/packages')
-      .then(r => r.json())
+    listArtifacts()
       .then(data => {
-        setPackages(data)
+        const mapped = data.map<Package>(artifact => ({
+          id: artifact.id,
+          name: artifact.manifest.name,
+          version: artifact.manifest.version,
+          sourcePath: artifact.manifest.originMetadata.sourceUrl,
+          installType: artifact.manifest.installType,
+          installArgs: artifact.manifest.installArgs,
+          createdAt: artifact.createdAt,
+        }))
+        setPackages(mapped)
         setLoading(false)
       })
   }
@@ -22,20 +31,25 @@ export default function Packages() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    await fetch('/api/packages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form)
-    })
+    setPackages(current => [
+      {
+        id: `pkg-local-${Date.now()}`,
+        name: form.name,
+        version: form.version,
+        sourcePath: form.sourcePath,
+        installType: form.installType,
+        installArgs: form.installArgs,
+        createdAt: new Date().toISOString(),
+      },
+      ...current,
+    ])
     setForm({ name: '', version: '', sourcePath: '', installType: 'msi', installArgs: '' })
     setShowForm(false)
-    fetchPackages()
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this package?')) return
-    await fetch(`/api/packages/${id}`, { method: 'DELETE' })
-    fetchPackages()
+    setPackages(current => current.filter(pkg => pkg.id !== id))
   }
 
   if (loading) return <div className="text-center py-8">Loading...</div>

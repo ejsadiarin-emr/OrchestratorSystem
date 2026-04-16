@@ -498,6 +498,9 @@ Part 3 (optional): detachedSignature
 7. Certificate material is issued for steady-state mTLS.
 8. Agent reconnects with bound certificate and begins lease heartbeat.
 
+> [!NOTE]
+> Enrollment token issuance remains `POST /api/nodes/enroll` (not GET) because token creation is a state-changing operation that returns a one-time secret and must avoid cacheable URL semantics.
+
 Example bootstrap script invocation:
 
 ```powershell
@@ -590,6 +593,23 @@ Install files -> Create service -> Write config -> Start service
 3. For large payloads, agent uses range requests.
 4. Agent assembles local cache file and validates digest.
 5. Pipeline proceeds only on pass.
+
+### End-to-end delivery sequence
+
+```text
+Orchestrator API/Hub                Agent Service                     Artifact API
+        |                                |                                |
+        | AssignJob(artifactReference) ->|                                |
+        |                                | HEAD /api/artifacts/{pkg}/{ver}|
+        |                                |------------------------------->|
+        |                                |<--- 200 + length + etag -------|
+        |                                | GET + Range chunk loop -------->|
+        |                                |<--- 206 chunk n ---------------|
+        |                                | assemble local artifact cache   |
+        |                                | validate digest/signature       |
+        |<----------- StepStatus --------|                                |
+        |<----------- Complete/Fail -----|                                |
+```
 
 ### Transport decision
 

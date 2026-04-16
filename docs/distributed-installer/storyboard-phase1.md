@@ -351,6 +351,8 @@ Use multipart upload with binary bytes and manifest metadata:
 
 Fields the system admin must provide/confirm before ingest:
 
+<separate out required/optional - minimal>
+
 - `manifest.packageId`
 - `manifest.displayName`
 - `manifest.version`
@@ -378,7 +380,7 @@ Content-Type: multipart/form-data
 Part 1 (required): file
 - binary installer media bytes
 
-Part 2 (required): manifest (application/json)
+Part 2 (required): manifest (application/json) - json schema validator
 {
   "packageId": "dotnet-runtime",
   "displayName": "Microsoft .NET Runtime 8.0.4",
@@ -425,6 +427,7 @@ Part 3 (optional): detachedSignature
 
 **What is stored for each package/artifact**
 
+lesser - make bare minimum needed fields
 ```json
 {
     "artifact": {
@@ -513,15 +516,15 @@ Invoke-Command -ComputerName <target-host> -ScriptBlock {
 ### Sequence diagram
 
 ```text
-System Admin              Target Machine (Remote)         Agent Service            Orchestrator
+System Admin              Target Machine (Remote)         Agent Service                      Orchestrator
     |                            |                            |                                   |
     | Step 1: request enrollment token                        |                                   |
-    | POST /api/nodes/enroll ---------------------------------------------------------->          |
+    | POST /api/nodes/enroll -------------------------------------------------------------------->|
     | {scope,ttl}                                                                                 |
     |<------------------------------------------------------- {token,ttl} ---------------------   |
     |                                                                                             |
     | Step 2: Run bootstrap script with URL + token                                               |
-    | Invoke-Command ------------------------------------------------------------------>          |
+    | Invoke-Command ---------------------------------------------------------------------------->|
     |  - Install-Agent.ps1 -OrchestratorUrl ... -EnrollmentToken ...                              |
     |  - download Agent.exe from orchestrator                                                     |
     |  - write config with orchestratorUrl + token                                                |
@@ -544,6 +547,15 @@ System Admin              Target Machine (Remote)         Agent Service         
     | GET /api/nodes/{nodeId} ------------------------------------------------------------------->|
     |<------------------------------------------------------------- {status:"online",auth:"mtls"} |
 ```
+
+<update agent>
+- orch - bg svc + web ui
+- agent - bg svc + web ui
+
+workload - predefined pkgs beforehand
+    - install/update modes - predefined initialization steps
+    - ex. poc - 2-3 pkgs in one workload
+
 
 ### Bootstrap failure cleanup
 

@@ -498,7 +498,7 @@ Part 3 (optional): detachedSignature
 7. Certificate material is issued for steady-state mTLS.
 8. Agent reconnects with bound certificate and begins lease heartbeat.
 
-Example bootstrap script invocation:
+- Example running bootstrap script:
 
 ```powershell
 # Local install on target machine
@@ -514,35 +514,35 @@ Invoke-Command -ComputerName <target-host> -ScriptBlock {
 
 ```text
 System Admin              Target Machine (Remote)         Agent Service            Orchestrator
-    |                            |                            |                         |
-    | Step 1: request enrollment token                                                   |
-    | POST /api/nodes/enroll ---------------------------------------------------------->|
-    | {scope,ttl}                                                                        |
-    |<------------------------------------------------------- {token,ttl} --------------|
-    |                                                                                   |
-    | Step 2: Run bootstrap script with URL + token                                     |
-    | Invoke-Command ------------------------------------------------------------------>|
-    |  - Install-Agent.ps1 -OrchestratorUrl ... -EnrollmentToken ...                    |
-    |  - download Agent.exe from orchestrator                                            |
-    |  - write config with orchestratorUrl + token                                       |
-    |  - sc.exe create service                                                           |
-    |  - Start-Service                                                                   |
-    |--------------------------->| install files/config/service                         |
-    |                            |--------------------------->|                         |
-    |                            |                            | collect hostname/node metadata
+    |                            |                            |                                   |
+    | Step 1: request enrollment token                        |                                   |
+    | POST /api/nodes/enroll ---------------------------------------------------------->          |
+    | {scope,ttl}                                                                                 |
+    |<------------------------------------------------------- {token,ttl} ---------------------   |
+    |                                                                                             |
+    | Step 2: Run bootstrap script with URL + token                                               |
+    | Invoke-Command ------------------------------------------------------------------>          |
+    |  - Install-Agent.ps1 -OrchestratorUrl ... -EnrollmentToken ...                              |
+    |  - download Agent.exe from orchestrator                                                     |
+    |  - write config with orchestratorUrl + token                                                |
+    |  - sc.exe create service                                                                    |
+    |  - Start-Service                                                                            |
+    |--------------------------->| install files/config/service                                   |
+    |                            |--------------------------->|                                   |
+    |                            |                            | collect hostname/node metadata    |
     |                            |                            | Connect(token,autoMetadata) ----->|
-    |                            |                            |                         |
+    |                            |                            |                                   |
     |                            |                            |<--------- token valid / register+bind identity
     |                            |                            |<--------- token invalidated
     |                            |                            |<--------- cert material issued
-    |                            |                            | disconnect               |
-    |                            |                            | Reconnect(mTLS cert) --->|
-    |                            |                            |<--------------- accepted |
-    |                            |                            | LeaseHeartbeat --------->|
-    |                            |                            |                          |
-    | Step 4: verify registration/status                                                 |
-    | GET /api/nodes/{nodeId} ---------------------------------------------------------->|
-    |<----------------------------------------------------- {status:"online",auth:"mtls"}|
+    |                            |                            | disconnect                        |
+    |                            |                            | Reconnect(mTLS cert) ------------>|
+    |                            |                            |<--------------- accepted          |
+    |                            |                            | LeaseHeartbeat ------------------>|
+    |                            |                            |                                   |
+    | Step 4: verify registration/status                                                          |
+    | GET /api/nodes/{nodeId} ------------------------------------------------------------------->|
+    |<------------------------------------------------------------- {status:"online",auth:"mtls"} |
 ```
 
 ### Bootstrap failure cleanup
@@ -651,7 +651,7 @@ Agent                                               Artifact API
 5. Orchestrator persists job + assignments.
 6. Orchestrator enqueues dispatch.
 7. Hub sends `AssignJob`, agent returns `AckClaim`, lease tracking starts.
-8. UI/CLI opens timeline view.
+8. UI/CLI opens timeline/log view for the job.
 
 ### End-to-end sequence diagram
 

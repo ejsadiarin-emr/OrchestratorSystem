@@ -137,7 +137,7 @@ The following assumptions must hold for PoC success:
   - Orchestrator/operator may acquire installer media from official vendor sources, then ingest into artifact store before runtime execution.
   - Upstream/vendor binaries are ingested into the orchestrator artifact store as immutable package artifacts (for example `.exe`, `.msi`, `.zip`, `.tar.gz`), with metadata and policy attached.
   - Installer media are file artifacts (single file per upload request), not folders.
-  - Large media uploads use streaming `multipart/form-data` to `POST /api/artifacts`; agent retrieval uses `GET/HEAD` + `Range` for chunked download.
+  - Large media uploads use one streaming `multipart/form-data` request to `POST /api/artifacts` with parts: required `file` (binary bytes), required `manifest` (`application/json`), optional `detachedSignature`; agent retrieval uses `GET/HEAD` + `Range` for chunked download.
   - Resumable/chunked upload sessions are deferred to Phase 2 unless explicitly added as a separate endpoint.
   - Artifact storage backend for Phase 1 is local filesystem on the orchestrator host; object storage is a Phase 2 migration option.
 
@@ -171,6 +171,7 @@ Example ingest response (API contract shape):
 
 - **Package and job policy model**
   - Package/job manifests include integrity metadata and execution policy tags.
+  - `manifest.channel` must be one of `stable`, `canary`, or `test`.
   - Package channel taxonomy for Phase 1 is explicit: `stable`, `canary`, `test` with immutable version identity and hash-bound metadata.
   - Downgrade is high risk by default and must require explicit approval policy.
   - Unknown package risk posture defaults to high-risk.

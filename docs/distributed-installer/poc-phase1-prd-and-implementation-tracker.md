@@ -196,7 +196,7 @@ Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-sto
 
 Implementation note (API contract guidance):
 
-- For package ingestion into orchestrator artifact store, Phase 1 API shape should use `POST /api/artifacts` with `multipart/form-data` (`file` binary part + `manifest` JSON part).
+- For package ingestion into orchestrator artifact store, Phase 1 API shape should use one `POST /api/artifacts` request with `multipart/form-data` parts (`file` binary part + `manifest` JSON part, optional `detachedSignature`).
 - Request payload must carry binary bytes and metadata; do not use workstation file path pointers in API body.
 - Embedded UI upload (drag-and-drop from Orchestrator hosted React UI) is recommended as an operator surface, but should call the same API endpoint used by CLI/API clients.
 - Add ingest metadata pipeline implementation:
@@ -215,6 +215,7 @@ Implementation note (API contract guidance):
 - Large files are uploaded as streaming multipart HTTP request body to `POST /api/artifacts`.
 - Download side supports range/chunk (`GET/HEAD + Range`) for agents.
 - Resumable/chunked upload sessions are deferred to Phase 2 unless explicitly added as a separate endpoint.
+- `manifest.channel` validation must allow only `stable|canary|test`.
 
 Example response:
 

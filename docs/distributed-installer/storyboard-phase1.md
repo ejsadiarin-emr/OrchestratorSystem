@@ -340,6 +340,7 @@ Use multipart upload with binary bytes and manifest metadata:
 - Required part `file`: installer media binary bytes
 - Required part `manifest`: JSON manifest/policy metadata
 - Optional part `detachedSignature`: separate company signature file (not vendor signature), used for manual/automated verification
+- Upload is one `POST /api/artifacts` request with a multipart body that contains these parts (not two separate API requests).
 
 - System admin/client request shape to send:
 
@@ -370,40 +371,46 @@ Fields the system admin must provide/confirm before ingest:
 - `manifest.policyTags.riskLevel`
 - `manifest.policyTags.approvalRequired`
 
-```json
+```text
+POST /api/artifacts
+Content-Type: multipart/form-data
+
+Part 1 (required): file
+- binary installer media bytes
+
+Part 2 (required): manifest (application/json)
 {
-    "file": "<installer-media-bytes>",
-    "manifest": {
-        "packageId": "dotnet-runtime",
-        "displayName": "Microsoft .NET Runtime 8.0.4",
-        "version": "8.0.4",
-        "channel": "stable",
-        "artifactType": "exe",
-        "installAdapter": {
-            "type": "exe",
-            "command": "artifact.bin",
-            "arguments": "/quiet /norestart",
-            "expectedExitCodes": [0, 3010],
-            "timeoutSeconds": 1800
-        },
-        "detection": {
-            "type": "registry",
-            "path": "HKLM\\SOFTWARE\\dotnet\\Setup\\InstalledVersions\\x64\\sharedfx\\Microsoft.NETCore.App",
-            "expectedVersion": ">=8.0.4"
-        },
-        "originMetadata": {
-            "source": "vendor-mirror",
-            "publisher": "Microsoft"
-        },
-        "policyTags": {
-            "retryabilityClass": "transient_only",
-            "idempotencyMode": "version_check",
-            "riskLevel": "medium",
-            "approvalRequired": false
-        }
-    },
-    "detachedSignature": "<optional-signature-bytes>"
+  "packageId": "dotnet-runtime",
+  "displayName": "Microsoft .NET Runtime 8.0.4",
+  "version": "8.0.4",
+  "channel": "stable",
+  "artifactType": "exe",
+  "installAdapter": {
+    "type": "exe",
+    "command": "artifact.bin",
+    "arguments": "/quiet /norestart",
+    "expectedExitCodes": [0, 3010],
+    "timeoutSeconds": 1800
+  },
+  "detection": {
+    "type": "registry",
+    "path": "HKLM\\SOFTWARE\\dotnet\\Setup\\InstalledVersions\\x64\\sharedfx\\Microsoft.NETCore.App",
+    "expectedVersion": ">=8.0.4"
+  },
+  "originMetadata": {
+    "source": "vendor-mirror",
+    "publisher": "Microsoft"
+  },
+  "policyTags": {
+    "retryabilityClass": "transient_only",
+    "idempotencyMode": "version_check",
+    "riskLevel": "medium",
+    "approvalRequired": false
+  }
 }
+
+Part 3 (optional): detachedSignature
+- company signature bytes
 ```
 
 ### UI upload
@@ -460,7 +467,7 @@ Fields the system admin must provide/confirm before ingest:
 
 - Ingest audit event exists with origin metadata fields.
 - Digest value is stored and immutable for version record.
-- Channel is one of `stable|canary|test`.
+- `manifest.channel` is one of `stable|canary|test`.
 - Package with invalid trust evidence is blocked.
 
 ---

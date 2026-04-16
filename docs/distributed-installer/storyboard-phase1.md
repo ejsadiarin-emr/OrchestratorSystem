@@ -489,40 +489,51 @@ Part 3 (optional): detachedSignature
 
 ### Main flow
 
-1. Admin requests enrollment token for target node.
-2. Admin runs bootstrap script on target machine.
-3. Script installs agent executable/service config.
-4. Agent connects with one-time token.
-5. Orchestrator validates token and binds node identity.
-6. Certificate material is issued for steady-state mTLS.
-7. Agent reconnects with bound certificate.
-8. Enrollment token is invalidated.
+1. Admin requests short-lived enrollment token from orchestrator.
+2. Admin runs bootstrap script with only orchestrator URL + token.
+3. Script installs agent executable/service config and starts service.
+4. Agent auto-collects hostname/node metadata on first startup.
+5. Agent connects with token + auto-collected metadata.
+6. Orchestrator validates token, registers/binds node identity, and invalidates token.
+7. Certificate material is issued for steady-state mTLS.
+8. Agent reconnects with bound certificate and begins lease heartbeat.
+
+Example bootstrap script invocation:
+
+```powershell
+# Local install on target machine
+.\Install-Agent.ps1 -OrchestratorUrl "https://orchestrator:5001" -EnrollmentToken "<token>"
+
+# Remote install via WinRM
+Invoke-Command -ComputerName <target-host> -ScriptBlock {
+  & "C:\Temp\Install-Agent.ps1" -OrchestratorUrl "https://orchestrator:5001" -EnrollmentToken "<token>"
+}
+```
 
 ### Sequence diagram
 
 ```text
 System Admin              Target Machine (Remote)         Agent Service            Orchestrator
     |                            |                            |                         |
-    | Step 1: connectivity check |                            |                         |
-    | Test-NetConnection -Port 5985                           |                         |
-    |<-------------------------->|                            |                         |
-    |                            |                            |                         |
-    | Step 2: request enrollment token                                                  |
+    | Step 1: request enrollment token                                                   |
     | POST /api/nodes/enroll ---------------------------------------------------------->|
-    | {hostname,nodeMetadata}                                                           |
-    |<------------------------------------------------------- {token,nodeId,ttl} -------|
+    | {scope,ttl}                                                                        |
+    |<------------------------------------------------------- {token,ttl} --------------|
     |                                                                                   |
-    | Step 3: Run bootstrap script (WinRM)                                              |
+    | Step 2: Run bootstrap script with URL + token                                     |
     | Invoke-Command ------------------------------------------------------------------>|
-    |  - download Agent.exe from orchestrator                                           |
-    |  - write config with orchestratorUrl + token + nodeId                             |
-    |  - sc.exe create service                                                          |
-    |  - Start-Service                                                                  |
+    |  - Install-Agent.ps1 -OrchestratorUrl ... -EnrollmentToken ...                    |
+    |  - download Agent.exe from orchestrator                                            |
+    |  - write config with orchestratorUrl + token                                       |
+    |  - sc.exe create service                                                           |
+    |  - Start-Service                                                                   |
     |--------------------------->| install files/config/service                         |
     |                            |--------------------------->|                         |
-    |                            |                            | Connect(token) -------->|
+    |                            |                            | collect hostname/node metadata
+    |                            |                            | Connect(token,autoMetadata) ----->|
     |                            |                            |                         |
-    |                            |                            |<--------- token valid / bind identity
+    |                            |                            |<--------- token valid / register+bind identity
+    |                            |                            |<--------- token invalidated
     |                            |                            |<--------- cert material issued
     |                            |                            | disconnect               |
     |                            |                            | Reconnect(mTLS cert) --->|
@@ -560,7 +571,7 @@ Install files -> Create service -> Write config -> Start service
 - Windows service exists/running.
 - Node appears online.
 - Lease heartbeat observed.
-- Token cannot be reused.
+- Token cannot be reused after first successful registration.
 - Invalid/unbound cert reconnect is rejected.
 - Cleanup branch leaves no partial state
 

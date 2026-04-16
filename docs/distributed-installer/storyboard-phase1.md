@@ -313,7 +313,7 @@ Installer media file types:
 4. Admin reviews suggested values and fills required metadata gaps.
 5. Admin submits final manifest (+ optional company signature file).
 6. Orchestrator checks file hash/signature/metadata trust evidence.
-7. Orchestrator stores file, locks immutable version record, and emits ingest audit event.
+7. Orchestrator stores file, locks immutable version record, and sends ingest audit event.
 
 ```text
 System Admin/UI          Orchestrator API       Vendor Source           Artifact Store      Policy/Audit (orchestrator)
@@ -324,10 +324,10 @@ System Admin/UI          Orchestrator API       Vendor Source           Artifact
   |                            | 2) run binary analyzer                       |                    |
   |<---------------------------| 3) return prefilled metadata                 |                    |
   | 4) fill gaps + confirm     |                                              |                    |
-  |--------------------------->| 5) submit final manifest (+ optional company signature)         |
+  |--------------------------->| 5) submit final manifest (+ optional company signature)           |
   |                            | 6) check hash/signature/metadata             |                    |
   |                            | 7) store file + lock record ---------------->|                    |
-  |                            | 7) send ingest audit event ------------------------------------->|
+  |                            | 7) send ingest audit event -------------------------------------->|
   |<---------------------------| 201 created                                                       |
 ```
 

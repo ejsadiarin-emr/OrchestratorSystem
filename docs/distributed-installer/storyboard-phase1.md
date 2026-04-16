@@ -307,24 +307,27 @@ Installer media file types:
 
 ### Upload/Ingestion flow
 
-1. Admin uploads package/bundle + metadata.
-2. Orchestrator computes canonical digest.
-3. Orchestrator validates trust evidence (signature/checksum metadata).
-4. Orchestrator writes immutable package version record.
-5. Optional org attestation signs metadata envelope (not vendor binary).
+1. Admin uploads installer media file (or requests vendor import).
+2. Orchestrator fetches vendor metadata (if available) and runs binary analyzer.
+3. Orchestrator returns prefilled manifest suggestions to UI/API client.
+4. Admin reviews suggested values and fills required metadata gaps.
+5. Admin submits final manifest (+ optional company signature file).
+6. Orchestrator checks file hash/signature/metadata trust evidence.
+7. Orchestrator stores file, locks immutable version record, and emits ingest audit event.
 
 ```text
 System Admin/UI          Orchestrator API       Vendor Source           Artifact Store      Policy/Audit (orchestrator)
   |                            |                     |                        |                    |
-  | (optional) import request  |                     |                        |                    |
-  |--------------------------->| GET installer + vendor metadata ------------>|                    |
+  | 1) upload media OR import  |                     |                        |                    |
+  |--------------------------->| 2) get vendor metadata --------------------->|                    |
   |                            |<---------------------------------------------|                    |
-  | upload media + manifest -->|                                              |                    |
-  |                            | run binary analyzer                          |                    |
-  |                            | check file hash/signature/metadata           |                    |
-  |                            | store file + lock record ------------------->|                    |
-  |                            | optional company approval signature -------->|                    |
-  |                            | send ingest audit event ----------------------------------------->|
+  |                            | 2) run binary analyzer                       |                    |
+  |<---------------------------| 3) return prefilled metadata                 |                    |
+  | 4) fill gaps + confirm     |                                              |                    |
+  |--------------------------->| 5) submit final manifest (+ optional company signature)         |
+  |                            | 6) check hash/signature/metadata             |                    |
+  |                            | 7) store file + lock record ---------------->|                    |
+  |                            | 7) send ingest audit event ------------------------------------->|
   |<---------------------------| 201 created                                                       |
 ```
 
@@ -342,6 +345,30 @@ Use multipart upload with binary bytes and manifest metadata:
 
 > [!NOTE]
 > Manifest/Metadata fields may be prefilled from vendor metadata and/or binary analysis service, but admin review is still required and orchestrator remains final verifier
+
+### Admin-entered metadata fields
+
+Fields the system admin must provide/confirm before ingest:
+
+- `manifest.packageId`
+- `manifest.displayName`
+- `manifest.version`
+- `manifest.channel` (`stable|canary|test`)
+- `manifest.artifactType`
+- `manifest.installAdapter.type`
+- `manifest.installAdapter.command`
+- `manifest.installAdapter.arguments`
+- `manifest.installAdapter.expectedExitCodes`
+- `manifest.installAdapter.timeoutSeconds`
+- `manifest.detection.type`
+- `manifest.detection.path`
+- `manifest.detection.expectedVersion`
+- `manifest.originMetadata.source`
+- `manifest.originMetadata.publisher`
+- `manifest.policyTags.retryabilityClass`
+- `manifest.policyTags.idempotencyMode`
+- `manifest.policyTags.riskLevel`
+- `manifest.policyTags.approvalRequired`
 
 ```json
 {

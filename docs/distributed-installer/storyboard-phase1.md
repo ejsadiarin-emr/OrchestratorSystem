@@ -11,6 +11,7 @@ Scope: Windows-first, single-orchestrator distributed installer runtime
 This document defines end-to-end operational behavior for PoC Phase 1.
 
 It specifies storyboard flows for:
+
 - DevOps Pipeline to build and package the Orchestrator binaries
 
 ---
@@ -101,28 +102,27 @@ When documents conflict, use this order:
 
 ### Security per flow
 
-| From          | To               | Primary risk           | Required controls                 |
-| ------------- | ---------------- | ---------------------- | --------------------------------- |
-| Admin         | Orchestrator API | Privilege abuse/spoof  | RBAC, authN/authZ, audit          |
-| Agent         | SignalR Hub (Orch)      | Replay/spoofing        | enrollment->mTLS, sequence checks |
-| Orch API      | Artifact store   | tamper/substitution    | immutable digest metadata, ACL    |
-| Agent         | Artifact API     | MITM/tamper            | TLS, hash+signature validation    |
-| Orch          | SQLite           | state integrity        | app-level validation + host ACL   |
-| Agent service | Child process    | escalation/unsafe args | constrained spawn policy          |
-
+| From          | To                 | Primary risk           | Required controls                 |
+| ------------- | ------------------ | ---------------------- | --------------------------------- |
+| Admin         | Orchestrator API   | Privilege abuse/spoof  | RBAC, authN/authZ, audit          |
+| Agent         | SignalR Hub (Orch) | Replay/spoofing        | enrollment->mTLS, sequence checks |
+| Orch API      | Artifact store     | tamper/substitution    | immutable digest metadata, ACL    |
+| Agent         | Artifact API       | MITM/tamper            | TLS, hash+signature validation    |
+| Orch          | SQLite             | state integrity        | app-level validation + host ACL   |
+| Agent service | Child process      | escalation/unsafe args | constrained spawn policy          |
 
 ---
 
 ## Core Storyboard Map
 
-| Storyboard | Purpose |
-| --- | --- |
-| Media packaging | Build/sign/publish orchestrator package |
+| Storyboard                 | Purpose                                           |
+| -------------------------- | ------------------------------------------------- |
+| Media packaging            | Build/sign/publish orchestrator package           |
 | Fresh orchestrator install | Bring up API/UI/Hub/persistence deterministically |
-| Agent install via WinRM | Enroll node and bind identity (`token -> mTLS`) |
-| Package lifecycle | Ingest -> submit -> assign -> execute -> observe |
-| Job submission | fill here |
-| Modify workload | Update/downgrade/self-update with policy gates |
+| Agent install via WinRM    | Enroll node and bind identity (`token -> mTLS`)   |
+| Package lifecycle          | Ingest -> submit -> assign -> execute -> observe  |
+| Job submission             | fill here                                         |
+| Modify workload            | Update/downgrade/self-update with policy gates    |
 
 ---
 
@@ -130,11 +130,11 @@ When documents conflict, use this order:
 
 ### Packaging posture
 
-| Option | What it gives | Phase 1 decision |
-| --- | --- | --- |
+| Option             | What it gives                            | Phase 1 decision   |
+| ------------------ | ---------------------------------------- | ------------------ |
 | Self-contained EXE | Clean-host startup, simple operator path | Selected (primary) |
-| ZIP bundle | Easy transfer and scripted unpack | Supported |
-| ISO media | Offline distribution pattern | Deferred |
+| ZIP bundle         | Easy transfer and scripted unpack        | Supported          |
+| ISO media          | Offline distribution pattern             | Deferred           |
 
 ### Sequence
 
@@ -166,11 +166,11 @@ DevOps CI             Signing Service         Artifact Repo         Operator
 1. Admin stages `Orchestrator.exe` (or extracts ZIP).
 2. Admin runs initialization (interactive or scripted config).
 3. Config captures:
-   - listen URL/port (default :5000)
-   - initial admin credentials
-   - SQLite database path
-   - artifact storage path (local UNC or folder)
-   - OTel exporter endpoint/export mode
+    - listen URL/port (default :5000)
+    - initial admin credentials
+    - SQLite database path
+    - artifact storage path (local UNC or folder)
+    - OTel exporter endpoint/export mode
 4. Orchestrator starts API, Hub, persistence, embedded UI host.
 5. Startup checks run; bootstrap audit event is emitted.
 
@@ -194,17 +194,54 @@ Admin                     Orchestrator Process                 Host Resources
 ```
 
 - example:
-```md
-Run: Orchestrator.exe                  
-Health check: GET http://localhost:5000/health
-Expected: {"status":"healthy","version":"1.0"}
 
-- UI verification: http://localhost:5000 
-- Expected: React dashboard loads        
-
-- API verification: GET /api/nodes       
-- Expected: [] (no agents registered yet) 
 ```
+Step 1: Acquire Orchestrator Binary
++--------------------------------------------------+
+| Source Option A: Drag & Drop                     |
+| - Sysadmin copies Orchestrator.exe from USB/Repo |
+| - Placed in C:\Program Files\DistributedInstaller|
+|                                                  |
+| Source Option B: Download Endpoint                |
+| - POST /api/bootstrap/orchestrator-download     |
+| - Returns self-contained EXE as binary stream   |
+| - Requires pre-shared enrollment token          |
+|                                                  |
+| Source Option C: ZIP Extract                     |
+| - Extracts to target directory                  |
+| - Single EXE + appsettings.json                  |
++--------------------------------------------------+
+                    |
+                    v
+Step 2: Initial Configuration
++--------------------------------------------------+
+| - Run: Orchestrator.exe --init                  |
+| - Prompts for:                                   |
+|   * Orchestrator display name                    |
+|   * Listen port (default: 5000)                 |
+|   * Artifact storage path (local UNC or folder) |
+|   * Initial admin credentials                    |
+|   * OTel exporter endpoint (optional)            |
+|   * SQLite database path                         |
+|                                                  |
+| Output: appsettings.json, enrollment token       |
++--------------------------------------------------+
+                    |
+                    v
+Step 3: Verify Orchestrator Startup
++--------------------------------------------------+
+| - Run: Orchestrator.exe                         |
+| - Health check: GET http://localhost:5000/health |
+| - Expected: {"status":"healthy","version":"1.0"}|
+|                                                  |
+| - UI verification: http://localhost:5000         |
+| - Expected: React dashboard loads                |
+|                                                  |
+| - API verification: GET /api/nodes               |
+| - Expected: [] (no agents registered yet)       |
++--------------------------------------------------+
+```
+
 ### Verification gates
 
 - `GET /health` returns healthy.
@@ -214,6 +251,10 @@ Expected: {"status":"healthy","version":"1.0"}
 - Artifact path is writable and access-controlled.
 
 ### Orchestrator self-update
+
+**Modeled after Desktop apps (ex. Discord) but simpler**
+
+- Self-checks itself (version) then auto-updates when needed/instructed
 
 ```
 Sysadmin                    Orchestrator API              Artifact Storage
@@ -249,7 +290,22 @@ Sysadmin                    Orchestrator API              Artifact Storage
 
 **Upload packages/artifacts to artifact store from Orchestrator**
 
-### Ingestion flow
+Installer media file types:
+
+- `.exe` (Windows installer/bootstrapper)
+- `.msi` (Windows Installer package)
+- `.zip` (portable/pre-expanded bundle)
+- `.tar.gz` (allowed for mirrored upstream assets; execution still follows Windows adapter policy)
+
+- Examples:
+
+| Package family                        | What to upload as installer media                                                            |
+| ------------------------------------- | -------------------------------------------------------------------------------------------- |
+| .NET runtime / ASP.NET hosting bundle | Vendor installer `.exe` for target runtime/version                                           |
+| PostgreSQL                            | Vendor Windows installer `.exe` (or approved bundled installer)                              |
+| SQL Server (future realism target)    | SQL Server setup installer media package (vendor setup executable/bundle staged as artifact) |
+
+### Upload/Ingestion flow
 
 1. Admin uploads package/bundle + metadata.
 2. Orchestrator computes canonical digest.
@@ -258,79 +314,112 @@ Sysadmin                    Orchestrator API              Artifact Storage
 5. Optional org attestation signs metadata envelope (not vendor binary).
 
 ```text
-Admin                    API                    Artifact Store           Policy/Audit
-  |                      |                           |                        |
-  | upload package ----->|                           |                        |
-  |                      | write artifact ---------->|                        |
-  |                      | compute digest            |                        |
-  |                      | verify trust metadata     |                        |
-  |                      | create immutable record -------------------------->|
-  |                      | emit ingest audit event -------------------------->|
-  |<---------------------| 201 created                                        |
+System Admin/UI          Orchestrator API       Vendor Source           Artifact Store      Policy/Audit (orchestrator)
+  |                            |                     |                        |                    |
+  | (optional) import request  |                     |                        |                    |
+  |--------------------------->| GET installer + vendor metadata ------------>|                    |
+  |                            |<---------------------------------------------|                    |
+  | upload media + manifest -->|                                              |                    |
+  |                            | run binary analyzer                          |                    |
+  |                            | check file hash/signature/metadata           |                    |
+  |                            | store file + lock record ------------------->|                    |
+  |                            | optional company approval signature -------->|                    |
+  |                            | send ingest audit event ----------------------------------------->|
+  |<---------------------------| 201 created                                                       |
 ```
 
-### Manifest model (Phase 1 minimum)
+### API request/response shape
+
+Use multipart upload with binary bytes and manifest metadata:
+
+- Endpoint: `POST /api/artifacts`
+- Content-Type: `multipart/form-data`
+- Required part `file`: installer media binary bytes
+- Required part `manifest`: JSON manifest/policy metadata
+- Optional part `detachedSignature`: separate company signature file (not vendor signature), used for manual/automated verification
+
+- System admin/client request shape to send:
+
+> [!NOTE]
+> Manifest/Metadata fields may be prefilled from vendor metadata and/or binary analysis service, but admin review is still required and orchestrator remains final verifier
 
 ```json
 {
-  "packageId": "nodejs",
-  "displayName": "Node.js 24 LTS",
-  "version": "24.0.0",
-  "channel": "stable",
-  "artifact": {
-    "source": "/api/artifacts/nodejs/24.0.0",
-    "type": "zip",
-    "sizeBytes": 34567890,
-    "digest": {
-      "algorithm": "sha256",
-      "value": "<immutable-content-hash>"
+    "file": "<installer-media-bytes>",
+    "manifest": {
+        "packageId": "dotnet-runtime",
+        "displayName": "Microsoft .NET Runtime 8.0.4",
+        "version": "8.0.4",
+        "channel": "stable",
+        "artifactType": "exe",
+        "installAdapter": {
+            "type": "exe",
+            "command": "artifact.bin",
+            "arguments": "/quiet /norestart",
+            "expectedExitCodes": [0, 3010],
+            "timeoutSeconds": 1800
+        },
+        "detection": {
+            "type": "registry",
+            "path": "HKLM\\SOFTWARE\\dotnet\\Setup\\InstalledVersions\\x64\\sharedfx\\Microsoft.NETCore.App",
+            "expectedVersion": ">=8.0.4"
+        },
+        "originMetadata": {
+            "source": "vendor-mirror",
+            "publisher": "Microsoft"
+        },
+        "policyTags": {
+            "retryabilityClass": "transient_only",
+            "idempotencyMode": "version_check",
+            "riskLevel": "medium",
+            "approvalRequired": false
+        }
     },
-    "signature": {
-      "type": "authenticode-or-detached",
-      "publisher": "CN=VendorOrInternalSigning",
-      "verification": "pass|warn|fail"
+    "detachedSignature": "<optional-signature-bytes>"
+}
+```
+
+### UI upload
+
+**Support package upload through embedded UI (`Orchestrator.exe` -> React UI) with drag-and-drop.**
+
+- UI should call the same `POST /api/artifacts` endpoint as CLI/API clients.
+- Keep API as source of truth; UI is an operator convenience surface.
+- UI should expose progress, digest/verification outcome, and final artifact URL.
+
+### Stored manifest record (post-ingest)
+
+**What is stored for each package/artifact**
+
+```json
+{
+    "artifact": {
+        "source": "/api/artifacts/nodejs/24.0.0",
+        "type": "zip",
+        "sizeBytes": 34567890,
+        "digest": {
+            "algorithm": "sha256",
+            "value": "<immutable-content-hash>"
+        },
+        "signature": {
+            "type": "authenticode-or-detached",
+            "publisher": "CN=VendorOrInternalSigning",
+            "verification": "pass|warn|fail"
+        }
+    },
+    "originMetadata": {
+        "source": "vendor-repo-or-internal-mirror",
+        "publisher": "vendor-if-known",
+        "ingestedBy": "operator-or-process-id",
+        "ingestedAtUtc": "timestamp",
+        "verificationResult": "pass|warn|fail"
+    },
+    "policyTags": {
+        "retryabilityClass": "transient_only",
+        "idempotencyMode": "version_check",
+        "riskLevel": "medium",
+        "approvalRequired": false
     }
-  },
-  "installAdapter": {
-    "type": "exe|msi|scripted",
-    "command": "node-installer.exe",
-    "arguments": "/quiet /install",
-    "expectedExitCodes": [0, 3010],
-    "timeoutSeconds": 900
-  },
-  "detection": {
-    "type": "fileVersion|registry|custom",
-    "path": "C:\\Program Files\\nodejs\\node.exe",
-    "expectedVersion": ">=24.0.0"
-  },
-  "rollback": {
-    "supported": true,
-    "method": "uninstall|restore_snapshot",
-    "expectedExitCodes": [0]
-  },
-  "retryPolicy": {
-    "maxAttempts": 3,
-    "backoffSeconds": [30, 60, 120],
-    "retryableReasons": ["network_timeout", "connection_reset"],
-    "nonRetryableReasons": ["disk_full", "insufficient_privileges"]
-  },
-  "idempotency": {
-    "mode": "version_check",
-    "behavior": "skip_if_present"
-  },
-  "originMetadata": {
-    "source": "vendor-repo-or-internal-mirror",
-    "publisher": "vendor-if-known",
-    "ingestedBy": "operator-or-process-id",
-    "ingestedAtUtc": "timestamp",
-    "verificationResult": "pass|warn|fail"
-  },
-  "policyTags": {
-    "retryabilityClass": "transient_only",
-    "idempotencyMode": "version_check",
-    "riskLevel": "medium",
-    "approvalRequired": false
-  }
 }
 ```
 
@@ -338,7 +427,7 @@ Admin                    API                    Artifact Store           Policy/
 
 - Agents - only get artifacts from orchestrator API (own artifact store), not internet.
 - Orchestrator - upstream binaries are ingested into artifact store.
-- Artifact version records are immutable and digest-bound.
+- Artifact version records are immutable/locked and checked.
 
 ### Verification gates
 
@@ -358,11 +447,11 @@ Admin                    API                    Artifact Store           Policy/
 
 ### Bootstrap options
 
-| Method | Benefit | Limitations | Phase 1 |
-| --- | --- | --- | --- |
-| Manual PowerShell script | Fast and practical | Operator variance | Selected |
-| WinRM remoting script | Remote convenience | Environment prerequisites | Supported |
-| GPO/SCCM enterprise distribution | Fleet scale | Outside PoC scope | Considered, but not selected |
+| Method                           | Benefit            | Limitations               | Phase 1                      |
+| -------------------------------- | ------------------ | ------------------------- | ---------------------------- |
+| Manual PowerShell script         | Fast and practical | Operator variance         | Selected                     |
+| WinRM remoting script            | Remote convenience | Environment prerequisites | Supported                    |
+| GPO/SCCM enterprise distribution | Fleet scale        | Outside PoC scope         | Considered, but not selected |
 
 ### Main flow
 
@@ -410,6 +499,7 @@ System Admin              Target Machine (Remote)         Agent Service         
     | GET /api/nodes/{nodeId} ---------------------------------------------------------->|
     |<----------------------------------------------------- {status:"online",auth:"mtls"}|
 ```
+
 ### Bootstrap failure cleanup
 
 Cleanup order:
@@ -440,15 +530,16 @@ Install files -> Create service -> Write config -> Start service
 - Invalid/unbound cert reconnect is rejected.
 - Cleanup branch leaves no partial state
 
-
 ---
 
 ## Artifact Delivery Storyboard (HTTP + Range/Chunk)
 
 **How Agents install artifacts**
+
 - From receiving job assignment via SignalR (from Orchestrator)
 
 ### Flow
+
 1. Agent receives assignment with artifact reference via SignalR.
 2. Agent requests artifact bytes via HTTPS endpoint.
 3. For large payloads, agent uses range requests.
@@ -471,6 +562,7 @@ Assignment message (SignalR):
 ```
 
 - **HTTP GET/HEAD with chunking for large payloads** - actual artifact payload
+
 ```
 Artifact bytes (HTTP):
 GET /api/artifacts/nodejs/24.0.0
@@ -500,8 +592,6 @@ Agent                                               Artifact API
 - Artifact bytes never flow over SignalR.
 - Range requests are accepted for large payload retrieval.
 - Digest verification blocks corrupted/incomplete downloads.
-
-
 
 ---
 
@@ -603,8 +693,6 @@ System Admin     UI/CLI        Orchestrator API      SQLite DB       Hangfire Qu
 - Missing migration path is explicit (`migration_path_missing`).
 - Restore attempt/outcome is auditable and linked.
 
-
-
 ---
 
 ## Modify and Downgrade Storyboard
@@ -647,8 +735,6 @@ Evaluate policy tags + requested direction
 - Approval event exists for high-risk path.
 - Rejection reason is explicit when approval is missing.
 - Snapshot readiness checked before high-risk mutation.
-
-
 
 ---
 

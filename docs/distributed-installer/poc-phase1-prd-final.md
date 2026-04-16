@@ -134,15 +134,40 @@ The following assumptions must hold for PoC success:
 - **Artifact source and ingestion policy (Phase 1)**
   - Agents install runtime/software packages from the orchestrator artifact store only.
   - Direct external runtime download from agents at execution time is not allowed.
+  - Orchestrator/operator may acquire installer media from official vendor sources, then ingest into artifact store before runtime execution.
   - Upstream/vendor binaries are ingested into the orchestrator artifact store as immutable package artifacts (for example `.exe`, `.msi`, `.zip`, `.tar.gz`), with metadata and policy attached.
+  - Installer media are file artifacts (single file per upload request), not folders.
+  - Large media uploads use streaming `multipart/form-data` to `POST /api/artifacts`; agent retrieval uses `GET/HEAD` + `Range` for chunked download.
+  - Resumable/chunked upload sessions are deferred to Phase 2 unless explicitly added as a separate endpoint.
   - Artifact storage backend for Phase 1 is local filesystem on the orchestrator host; object storage is a Phase 2 migration option.
 
-- **Package trust, provenance, and attestation policy**
+- **Package trust, origin metadata, and attestation policy**
   - Vendor binaries are not re-signed as vendor binaries.
-  - At ingest time, orchestrator verifies available vendor trust evidence (signature/checksum), computes canonical digest, and records provenance metadata.
+  - At ingest time, orchestrator verifies available vendor trust evidence (signature/checksum), computes canonical digest, and records origin metadata.
+  - Manifest metadata may originate from admin-declared values, vendor metadata sources, and/or binary-derived extraction; ingest pipeline records source-confidence semantics (`declared`, `derived`, `verified`) where applicable.
   - Immutable digest means a stored content hash that cannot be changed for a given package version record.
   - Provenance means origin metadata (source URL/repository, vendor/publisher identity if available, ingest time, operator/process identity, and verification result).
   - Optional org attestation signs manifest/bundle metadata (not the vendor binary) using organization-controlled key material, so agents verify organizational approval in addition to binary integrity.
+
+Example ingest response (API contract shape):
+
+```json
+{
+    "artifactId": "a2b7d5e4-3e02-4dca-b2f2-20c630913e19",
+    "packageId": "dotnet-runtime",
+    "version": "8.0.4",
+    "channel": "stable",
+    "artifactUrl": "/api/artifacts/dotnet-runtime/8.0.4",
+    "artifactType": "exe",
+    "sizeBytes": 123456789,
+    "digest": {
+        "algorithm": "sha256",
+        "value": "<immutable-content-hash>"
+    },
+    "signatureVerification": "pass",
+    "createdAtUtc": "2026-04-16T09:30:00Z"
+}
+```
 
 - **Package and job policy model**
   - Package/job manifests include integrity metadata and execution policy tags.

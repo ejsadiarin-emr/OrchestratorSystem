@@ -194,6 +194,48 @@ Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-sto
   - [x] Large artifacts support range/chunk retrieval.
   - [x] SignalR messages do not carry artifact payloads.
 
+Implementation note (API contract guidance):
+
+- For package ingestion into orchestrator artifact store, Phase 1 API shape should use `POST /api/artifacts` with `multipart/form-data` (`file` binary part + `manifest` JSON part).
+- Request payload must carry binary bytes and metadata; do not use workstation file path pointers in API body.
+- Embedded UI upload (drag-and-drop from Orchestrator hosted React UI) is recommended as an operator surface, but should call the same API endpoint used by CLI/API clients.
+- Add ingest metadata pipeline implementation:
+  - `VendorMetadataProvider` (official vendor metadata/checksum retrieval),
+  - `BinaryAnalyzerService` (extract file/product/version/signer/type metadata),
+  - `ArtifactVerificationService` (digest/signature/origin metadata verification + confidence tagging).
+- Persist origin metadata/confidence per field where applicable (`declared|derived|verified`) and emit audit evidence for source + verification outcome.
+- Keep vendor-binary handling policy fail-safe:
+  - vendor installers may be acquired from official sources,
+  - vendor binaries are not re-signed as vendor,
+  - optional org attestation applies to metadata envelope/manifest only.
+
+### Large payload upload behavior (Phase 1)
+
+- Installer media are files only (single file per upload request), not folders.
+- Large files are uploaded as streaming multipart HTTP request body to `POST /api/artifacts`.
+- Download side supports range/chunk (`GET/HEAD + Range`) for agents.
+- Resumable/chunked upload sessions are deferred to Phase 2 unless explicitly added as a separate endpoint.
+
+Example response:
+
+```json
+{
+    "artifactId": "a2b7d5e4-3e02-4dca-b2f2-20c630913e19",
+    "packageId": "dotnet-runtime",
+    "version": "8.0.4",
+    "channel": "stable",
+    "artifactUrl": "/api/artifacts/dotnet-runtime/8.0.4",
+    "artifactType": "exe",
+    "sizeBytes": 123456789,
+    "digest": {
+        "algorithm": "sha256",
+        "value": "<immutable-content-hash>"
+    },
+    "signatureVerification": "pass",
+    "createdAtUtc": "2026-04-16T09:30:00Z"
+}
+```
+
 ### P2-01 - SignalR protocol + idempotency enforcement
 
 - Owner: `TBD (Backend)`

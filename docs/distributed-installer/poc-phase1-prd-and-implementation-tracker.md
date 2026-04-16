@@ -347,6 +347,12 @@ Example response:
   - [ ] Token is consumed once and invalidated.
   - [ ] Reconnect without valid bound cert is rejected.
 
+Implementation note (enrollment endpoint semantics):
+
+- Keep enrollment token issuance as `POST /api/nodes/enroll` (not GET).
+- Reason: token creation is state-changing and returns a one-time secret; GET semantics are cache/prerender/prefetch prone and inappropriate for secret issuance.
+- Agent bootstrap should require only `OrchestratorUrl` + short-lived token; hostname/node metadata should be auto-collected on first agent startup/connect.
+
 ### P4-01 - Agent local typed pipeline + adapters
 
 - Owner: `TBD (Agent)`

@@ -176,6 +176,12 @@ Example ingest response (API contract shape):
   - Downgrade is high risk by default and must require explicit approval policy.
   - Unknown package risk posture defaults to high-risk.
 
+- **Enrollment token issuance semantics (Phase 1)**
+  - Enrollment token issuance is `POST /api/nodes/enroll`.
+  - GET is not used for token issuance because this operation creates one-time secrets and changes server state.
+  - Bootstrap input remains minimal: `OrchestratorUrl` + short-lived enrollment token.
+  - Agent hostname/node metadata is auto-collected on first connect and sent in registration handshake.
+
 - **Security and trust boundaries**
   - Artifact trust checks and RBAC are mandatory runtime gates.
   - Child process invocation must run under constrained policy with auditable outcomes.

@@ -47,6 +47,7 @@ builder.Services.AddDbContext<InstallerDbContext>(options =>
     options.UseSqlite(connectionString));
 
 builder.Services.AddSingleton<ArtifactStoreService>();
+builder.Services.AddSingleton<ArtifactIngestService>();
 
 builder.Services.AddTransient<PreConditionCheckStep>();
 builder.Services.AddTransient<CopyFilesStep>();

@@ -37,6 +37,53 @@ public class InstallerDbContextShapeTests
         Assert.That(dbSetNames, Does.Contain("Nodes"));
         Assert.That(dbSetNames, Does.Contain("AssignmentLeases"));
         Assert.That(dbSetNames, Does.Contain("ConfigSnapshots"));
+        Assert.That(dbSetNames, Does.Contain("WorkloadDefinitions"));
+        Assert.That(dbSetNames, Does.Contain("WorkloadRevisions"));
+        Assert.That(dbSetNames, Does.Contain("WorkloadPackages"));
+        Assert.That(dbSetNames, Does.Contain("WorkloadRuns"));
+        Assert.That(dbSetNames, Does.Contain("NodeWorkloadStates"));
+    }
+
+    [Test]
+    public void InstallerDbContext_SqliteSchema_ContainsWorkloadDomainTables()
+    {
+        var (context, connection) = CreateSqliteInMemoryContext();
+        using var _ = connection;
+        using var __ = context;
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table';";
+        using var reader = command.ExecuteReader();
+
+        var tableNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        while (reader.Read())
+        {
+            tableNames.Add(reader.GetString(0));
+        }
+
+        Assert.That(tableNames, Does.Contain("WorkloadDefinitions"));
+        Assert.That(tableNames, Does.Contain("WorkloadRevisions"));
+        Assert.That(tableNames, Does.Contain("WorkloadPackages"));
+        Assert.That(tableNames, Does.Contain("WorkloadRuns"));
+        Assert.That(tableNames, Does.Contain("NodeWorkloadStates"));
+    }
+
+    [Test]
+    public void InstallerDbContext_SqliteSchema_ContainsUniqueActiveRunIndex()
+    {
+        var (context, connection) = CreateSqliteInMemoryContext();
+        using var _ = connection;
+        using var __ = context;
+
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'IX_WorkloadRuns_NodeId_WorkloadId_Active';";
+        var sql = command.ExecuteScalar() as string;
+
+        Assert.That(sql, Is.Not.Null.And.Not.Empty);
+        Assert.That(sql, Does.Contain("UNIQUE"));
+        Assert.That(sql, Does.Contain("NodeId"));
+        Assert.That(sql, Does.Contain("WorkloadId"));
+        Assert.That(sql, Does.Contain("State"));
     }
 
     [Test]

@@ -1,6 +1,7 @@
 using DeploymentPoC.Orchestrator.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 namespace DeploymentPoC.Orchestrator.Controllers;
 
@@ -9,10 +10,113 @@ namespace DeploymentPoC.Orchestrator.Controllers;
 public sealed class ArtifactsController : ControllerBase
 {
     private readonly ArtifactStoreService _artifactStore;
+    private readonly ArtifactIngestService _artifactIngest;
 
-    public ArtifactsController(ArtifactStoreService artifactStore)
+    public ArtifactsController(ArtifactStoreService artifactStore, ArtifactIngestService artifactIngest)
     {
         _artifactStore = artifactStore;
+        _artifactIngest = artifactIngest;
+    }
+
+    [HttpPost]
+    [RequestSizeLimit(2L * 1024 * 1024 * 1024)]
+    public async Task<IActionResult> Ingest()
+    {
+        if (!Request.HasFormContentType)
+        {
+            return BadRequest(new Contracts.Api.ValidationErrorResponse
+            {
+                Errors = new List<Contracts.Api.ValidationFieldError>
+                {
+                    new()
+                    {
+                        Field = "request",
+                        Error = "multipart/form-data is required"
+                    }
+                }
+            });
+        }
+
+        var form = await Request.ReadFormAsync();
+        var file = form.Files.GetFile("file");
+        var manifestText = form["manifest"].FirstOrDefault();
+
+        if (file is null)
+        {
+            return BadRequest(new Contracts.Api.ValidationErrorResponse
+            {
+                Errors = new List<Contracts.Api.ValidationFieldError>
+                {
+                    new()
+                    {
+                        Field = "file",
+                        Error = "file is required"
+                    }
+                }
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(manifestText))
+        {
+            return BadRequest(new Contracts.Api.ValidationErrorResponse
+            {
+                Errors = new List<Contracts.Api.ValidationFieldError>
+                {
+                    new()
+                    {
+                        Field = "manifest",
+                        Error = "manifest is required"
+                    }
+                }
+            });
+        }
+
+        ArtifactIngestManifest manifest;
+        try
+        {
+            manifest = JsonSerializer.Deserialize<ArtifactIngestManifest>(manifestText, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            }) ?? new ArtifactIngestManifest();
+        }
+        catch (JsonException)
+        {
+            return BadRequest(new Contracts.Api.ValidationErrorResponse
+            {
+                Errors = new List<Contracts.Api.ValidationFieldError>
+                {
+                    new()
+                    {
+                        Field = "manifest",
+                        Error = "manifest must be valid JSON"
+                    }
+                }
+            });
+        }
+
+        await using var stream = file.OpenReadStream();
+        var actorId = User?.Identity?.Name ?? "anonymous";
+        var result = _artifactIngest.Ingest(file.FileName, stream, manifest, actorId);
+
+        if (!result.IsValid)
+        {
+            return BadRequest(new Contracts.Api.ValidationErrorResponse
+            {
+                Errors = result.Errors
+            });
+        }
+
+        await _artifactStore.SaveArtifactAsync(result.ResolvedManifest!.PackageId, result.ResolvedManifest.Version, stream, HttpContext.RequestAborted);
+        var resolvedManifestJson = JsonSerializer.Serialize(result.ResolvedManifest, new JsonSerializerOptions
+        {
+            WriteIndented = true
+        });
+        await _artifactStore.SaveResolvedManifestAsync(result.ResolvedManifest.PackageId, result.ResolvedManifest.Version, resolvedManifestJson, HttpContext.RequestAborted);
+
+        return StatusCode(StatusCodes.Status201Created, new
+        {
+            resolvedManifest = result.ResolvedManifest
+        });
     }
 
     [HttpHead("{packageId}/{version}")]

@@ -1,20 +1,32 @@
 # PoC Phase 1 PRD and Implementation Tracker
 
-Date: 2026-04-14
-Status: In Progress (6/30 tasks complete)
-Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-storyboards-canonical.md`, `08-requirements-contract.md`, `09-security-pack.md`, `10-core-contracts-pack.md`, `11-config-persistence-contract.md`, `12-devops-pipeline-design-pack.md`, and `13-poc-phase1-definition-of-done.md`.
+Date: 2026-04-17
+Status: In progress
+Source of truth: `poc-phase1-prd-final.md`
+Companion flow doc: `storyboard-phase1.md` (user will edit separately)
+
+## Purpose
+
+This tracker is execution-only. It translates PRD requirements and acceptance criteria into dependency-ordered engineering work, verification gates, and evidence closure.
+
+This document does not redefine policy. If policy language here conflicts with PRD language, the PRD wins.
 
 ## Scope guardrails (non-negotiable)
 
-- PoC Phase 1 only. Do not execute Hardening Phase 2 implementation work.
-- Orchestrator must be a self-contained single executable with embedded React UI assets.
-- Orchestrator launch must not require preinstalled .NET runtime or IIS.
-- Runtime workstation install/upgrade/rollback actions must be Orchestrator API/CLI driven only.
+- PoC Phase 1 only. No Hardening Phase 2 implementation work.
+- Workload-first runtime model is mandatory.
+- `/api/jobs` mutation endpoints are deprecated immediately and must return `410 Gone`.
+- All new runtime flows use `/api/workload-runs`.
+- Orchestrator packaging is self-contained, single executable, embedded UI.
+- Orchestrator launch on clean host requires no preinstalled .NET runtime or IIS.
+- Runtime workstation operations remain API/UI/CLI-driven through orchestrator only.
 - Direct workstation deployment from Azure DevOps pipeline is out of scope.
-- Runtime package/artifact source must be internal-only (no external package source dependency).
-- Phase 1 execution target is single orchestrator (no HA/multi-orchestrator commitments).
+- Runtime artifact source is internal-only.
+- Phase 1 assumes single orchestrator.
+- Workload revisions are immutable once published.
+- PoC workload revision size target is 2-3 packages.
 - Canonical runtime sequence is fixed:
-  `Connect -> Register/Authenticate -> AssignJob -> AckClaim -> LeaseHeartbeat -> StepStatus* -> Complete/Fail -> LeaseClose`
+  `Connect -> Register/Authenticate -> AssignRun -> AckClaim -> LeaseHeartbeat -> StepStatus* -> Complete/Fail -> LeaseClose`
 
 ## Status legend
 
@@ -23,559 +35,306 @@ Source of truth: `poc-phase1-prd-final.md`, `18-installation-and-operational-sto
 - `Blocked`
 - `Done`
 
-## Sprint board (dependency ordered)
+## Legacy baseline (historical, completed)
+
+These tasks are retained as historical completion and are not reopened.
+
+| Task ID | Task | Status | AC IDs |
+|---|---|---|---|
+| L0-01 | Shared runtime contracts library (former P0-01) | Done | AC-003 |
+| L0-02 | Initial PRD/tracker/storyboard alignment (former P0-02/P0-03) | Done | AC-001..AC-007, AC-101..AC-105 |
+| L1-01 | SQLite canonical persistence baseline (former P1-01) | Done | AC-001, AC-002, AC-007, AC-101 |
+| L1-02 | Baseline runtime API alignment (former P1-02) | Done | AC-001, AC-002, AC-104 |
+| L1-03 | Artifact HTTP transport + range retrieval (former P1-03) | Done | AC-001, AC-006, AC-102 |
+
+## Workload-first sprint board (dependency ordered)
 
 | Task ID | Task | Sprint | Depends On | Owner | Status | AC IDs |
 |---|---|---|---|---|---|---|
-| P0-01 | Shared runtime contracts library | S1 | - | TBD (Backend) | Done | AC-003 |
-| P0-02 | Phase 1 decision closure from PRD addendum | S1 | P0-01 | TBD (Product/Arch/Security) | Done | AC-001..AC-007, AC-101..AC-105 |
-| P0-03 | Canonical storyboard merge and contradiction fixes | S1 | P0-02 | TBD (Architecture) | Done | AC-001, AC-002, AC-003, AC-102 |
-| P1-01 | SQLite persistence for canonical entities | S1 | P0-03 | TBD (Backend) | Done | AC-001, AC-002, AC-007, AC-101 |
-| P1-02 | API contract alignment (`/api/jobs`, `/steps`, `/cancel`, `/nodes`) | S1 | P1-01 | TBD (Backend) | Done | AC-001, AC-002, AC-104 |
-| P1-03 | Artifact HTTP transport + range/chunk retrieval | S1 | P1-02 | TBD (Backend/Agent) | Done | AC-001, AC-006, AC-102 |
-| P2-01 | SignalR protocol + sequence/idempotency enforcement | S1 | P1-02 | TBD (Backend) | Not Started | AC-003, AC-101 |
-| P2-02 | Lease manager + `AssignedStale` timeout policy | S1 | P2-01 | TBD (Backend) | Not Started | AC-101 |
-| P2-03 | Policy evaluation engine (retry/idempotency/risk/approval) | S2 | P2-01, P2-02, P1-03 | TBD (Backend/Agent) | Not Started | AC-002, AC-006, AC-007, AC-101 |
-| P3-01 | Windows agent service scaffold + runtime channel loop | S2 | P0-01 | TBD (Agent) | Not Started | AC-004 |
-| P3-02 | Bootstrap token to mTLS steady-state auth flow | S2 | P3-01, P2-01 | TBD (Security/Agent) | Not Started | AC-005, AC-102 |
-| P4-01 | Agent local typed pipeline + MSI/EXE adapters | S2 | P3-01 | TBD (Agent) | Not Started | AC-004, AC-006 |
-| P4-01a | Pipeline interfaces + step ordering | S2 | P4-01 | TBD (Agent) | Not Started | AC-004 |
-| P4-01b | MSI/EXE adapters + normalization integration | S2 | P4-01a | TBD (Agent) | Not Started | AC-006 |
-| P4-02 | Config snapshot/migration/restore + audit linkage | S2 | P4-01, P1-01 | TBD (Agent/Backend) | Not Started | AC-007 |
-| P5-01 | RBAC, artifact trust, audit hash chain, secret hygiene | S3 | P2-01, P3-02, P4-01 | TBD (Security/Backend) | Not Started | AC-102, AC-002 |
-| P5-01a | RBAC enforcement | S3 | P5-01 | TBD (Security/Backend) | Not Started | AC-002, AC-102 |
-| P5-01b | Artifact trust fail-closed controls | S3 | P5-01a | TBD (Security/Backend) | Not Started | AC-102 |
-| P5-01c | Audit tamper-evidence/hash chain | S3 | P5-01b | TBD (Security/Backend) | Not Started | AC-002 |
-| P5-01d | Secret hygiene and plaintext prevention | S3 | P5-01c | TBD (Security/Backend) | Not Started | AC-102 |
-| P5-02 | OTel file export policy + redaction controls | S3 | P5-01 | TBD (Security/Backend) | Not Started | AC-102, AC-103 |
-| P6-01 | UI runtime screens + live step timeline | S3 | P1-02, P2-01 | TBD (Frontend) | Not Started | AC-001, AC-002, AC-103, AC-105 |
-| P6-02 | CLI runtime command surface | S3 | P1-02 | TBD (Platform) | Not Started | AC-104, AC-001, AC-002 |
-| P7-01 | Self-contained single-file orchestrator packaging | S4 | P6-01 | TBD (Platform/DevOps) | Not Started | AC-105 |
-| P7-02 | CI/CD policy gates and orchestrator-only deploy boundary | S4 | P7-01, P6-02 | TBD (DevOps) | Not Started | AC-104, AC-105 |
-| P8-01 | Integration/E2E/chaos acceptance suite and evidence | S4 | P1-01..P7-02 | TBD (QA/All) | Not Started | AC-001..AC-007, AC-101..AC-105 |
-| P8-01a | Integration acceptance matrix | S4 | P8-01 | TBD (QA/All) | Not Started | AC-001..AC-007 |
-| P8-01b | Security/reliability acceptance matrix | S4 | P8-01a | TBD (QA/All) | Not Started | AC-101..AC-103 |
-| P8-01c | Operability/deploy acceptance matrix | S4 | P8-01b | TBD (QA/All) | Not Started | AC-104..AC-105 |
+| W0-01 | Workload-first PRD/tracker realignment | S0 | - | TBD (Product/Arch) | Done | AC-001..AC-009, AC-101..AC-105 |
+| W0-02 | Contract freeze and migration map (legacy jobs -> workload-runs) | S0 | W0-01 | TBD (Product/Arch/Backend) | Not Started | AC-001, AC-003, AC-008, AC-104 |
+| W1-01 | SQLite workload domain schema (definition/revision/run/state) | S1 | W0-02 | TBD (Backend) | Not Started | AC-001, AC-002, AC-007 |
+| W1-02 | Workload API contracts (`/api/workloads*`) | S1 | W1-01 | TBD (Backend) | Not Started | AC-001, AC-104 |
+| W1-03 | Workload run APIs (`/api/workload-runs*`) | S1 | W1-02 | TBD (Backend) | Not Started | AC-001, AC-002 |
+| W1-04 | `/api/jobs` immediate deprecation contract (`410 Gone`) | S1 | W1-03 | TBD (Backend) | Not Started | AC-008 |
+| W1-05 | Artifact ingest required/optional split + schema validator | S1 | W1-02 | TBD (Backend/Frontend) | Not Started | AC-009, AC-006, AC-102 |
+| W2-01 | Runtime contract updates (`AssignRun` payload model) | S2 | W1-03 | TBD (Contracts/Backend) | Not Started | AC-003 |
+| W2-02 | Sequence/idempotency enforcement for run timeline ingest | S2 | W2-01 | TBD (Backend) | Not Started | AC-003, AC-101 |
+| W2-03 | Lease manager + stale policy for workload runs | S2 | W2-01 | TBD (Backend) | Not Started | AC-101 |
+| W2-04 | Policy engine (retry/idempotency/risk/approval) | S2 | W2-02, W2-03 | TBD (Backend/Agent) | Not Started | AC-002, AC-006, AC-007, AC-101 |
+| W3-01 | Windows agent service scaffold + runtime loop hardening | S2 | W2-01 | TBD (Agent) | Not Started | AC-004 |
+| W3-02 | Bootstrap token -> mTLS steady-state auth flow | S2 | W3-01 | TBD (Security/Agent) | Not Started | AC-005, AC-102 |
+| W3-03 | Agent workload pipeline (ordered package-step execution) | S2 | W3-01, W1-05 | TBD (Agent) | Not Started | AC-004, AC-006 |
+| W3-04 | Node workload state persistence/reporting | S2 | W3-03 | TBD (Agent/Backend) | Not Started | AC-001, AC-002 |
+| W4-01 | Config snapshot/migration/restore linkage for mutation paths | S3 | W3-03 | TBD (Agent/Backend) | Not Started | AC-007 |
+| W5-01 | Security baseline controls (RBAC/trust/audit/secrets) | S3 | W2-04, W3-02 | TBD (Security/Backend) | Not Started | AC-102, AC-002 |
+| W5-02 | Observability stack MVP (OTel Collector + Loki + Grafana) | S3 | W2-02 | TBD (Backend/DevOps) | Not Started | AC-103 |
+| W6-01 | Orchestrator UI workload screens + run timeline | S3 | W1-03, W2-01 | TBD (Frontend) | Not Started | AC-001, AC-002, AC-103, AC-105 |
+| W6-02 | Orchestrator UI deprecation UX for `/api/jobs` | S3 | W1-04 | TBD (Frontend) | Not Started | AC-008 |
+| W6-03 | Agent UI minimal workload status/update surface | S3 | W3-04 | TBD (Frontend/Agent) | Not Started | AC-001, AC-103 |
+| W6-04 | CLI workload command surface | S3 | W1-03 | TBD (Platform) | Not Started | AC-104, AC-001, AC-002 |
+| W7-01 | Self-contained orchestrator packaging validation | S4 | W6-01 | TBD (Platform/DevOps) | Not Started | AC-105 |
+| W7-02 | CI/CD policy gates and orchestrator-only deploy boundary | S4 | W7-01, W6-04 | TBD (DevOps) | Not Started | AC-104, AC-105 |
+| W8-01 | Integration/E2E/chaos acceptance suite and evidence closure | S4 | W1-01..W7-02 | TBD (QA/All) | Not Started | AC-001..AC-009, AC-101..AC-105 |
+
+## MVP execution slices (do first)
+
+### Slice A - Domain + API foundation
+
+- `W0-02` -> `W1-01` -> `W1-02` -> `W1-03` -> `W1-04` -> `W1-05`
+
+### W0-02 - Contract freeze and migration map (legacy jobs -> workload-runs)
+
+- Owner: `TBD (Product/Arch/Backend)`
+- Status: `Not Started`
+- Objective: freeze canonical naming/payload contracts across docs and implementation before W1 changes.
+- Scope:
+  - runtime protocol names (`AssignRun`, `runId`, `workloadId`, `workloadRevision`) as canonical,
+  - endpoint migration map (`/api/jobs*` deprecated -> `/api/workload-runs*`),
+  - terminology map (`job` legacy term vs `workload-run` canonical term).
+- Output artifact:
+  - `docs/distributed-installer/contract-freeze-phase1.md` (new)
+- Verification commands:
+  - `rg "AssignJob|jobId|/api/jobs" docs/distributed-installer -n`
+  - `rg "AssignRun|runId|/api/workload-runs" docs/distributed-installer -n`
+- Acceptance links: AC-001, AC-003, AC-008, AC-104
+- Checklist:
+  - [ ] Canonical runtime sequence and message naming are explicitly frozen.
+  - [ ] All active doc examples use workload-run endpoint and identifier conventions.
+  - [ ] Deprecation payload contract for `/api/jobs` is cross-referenced where needed.
+  - [ ] Legacy-to-canonical field map is documented for implementation and tests.
+
+### Slice B - Deterministic runtime behavior
+
+- `W2-01` -> `W2-02` -> `W2-03` -> `W2-04`
+
+### Slice C - Agent execution + rollback safety
+
+- `W3-01` -> `W3-02` -> `W3-03` -> `W3-04` -> `W4-01`
+
+### Slice D - Operator visibility and closure
+
+- `W5-02` -> `W6-01` -> `W6-02` -> `W6-03` -> `W6-04` -> `W7-01` -> `W7-02` -> `W8-01`
 
 ## Task details checklist
 
-### P0-01 - Shared runtime contracts library
-
-- Owner: `TBD (Backend)`
-- Status: `Done`
-- Objective: Centralize message envelope, canonical message types, state/reason enums for orchestrator and agent.
-- Target modules:
-  - Create `src/DeploymentPoC.Contracts/DeploymentPoC.Contracts.csproj`
-  - Create `src/DeploymentPoC.Contracts/Runtime/MessageEnvelope.cs`
-  - Create `src/DeploymentPoC.Contracts/Runtime/MessageTypes.cs`
-  - Create `src/DeploymentPoC.Contracts/Jobs/JobState.cs`
-  - Create `src/DeploymentPoC.Contracts/Jobs/ReasonCodes.cs`
-  - Modify `DeploymentPoC.sln`
-- Interfaces/contracts impacted: FR-002, core message envelope in `10-core-contracts-pack.md`.
-- Test requirements: unit tests for required envelope fields and enum compatibility.
-- Verification commands:
-  - `dotnet build DeploymentPoC.sln`
-  - `dotnet test tests/DeploymentPoC.Contracts.Tests`
-- Acceptance links: AC-003
-- Suggested commit boundary: `feat(contracts): add shared runtime envelope and state contracts`
-- Checklist:
-  - [x] Contracts project compiles and is referenced by orchestrator and agent projects.
-  - [x] Envelope includes `assignmentId`, `leaseId`, `jobId`, `agentId`, `sequence` fields.
-
-### P0-02 - Phase 1 decision closure from PRD addendum
-
-- Owner: `TBD (Product/Arch/Security)`
-- Status: `Done`
-- Objective: Close all open/partial policy decisions listed in `17-poc-phase1-prd-v2-capability-addendum.md`.
-- Target modules:
-  - Modify `docs/distributed-installer/17-poc-phase1-prd-v2-capability-addendum.md`
-  - Modify `docs/distributed-installer/poc-phase1-prd-final.md`
-  - Modify `docs/distributed-installer/18-installation-and-operational-storyboards-canonical.md`
-- Interfaces/contracts impacted: FR-001..FR-006, NFR-001..NFR-005.
-- Test requirements: decision closure review and explicit signoff comments.
-- Verification commands:
-  - `dotnet build DeploymentPoC.sln`
-  - Manual doc review against Q11/Q13/Q15/Q16/Q21/Q22/Q23/Q24/Q26
-- Acceptance links: AC-001..AC-007, AC-101..AC-105
-- Suggested commit boundary: `docs(prd): close phase-1 policy decisions for execution`
-- Checklist:
-  - [x] Q11, Q13, Q15, Q16, Q21, Q22, Q23, Q24, Q26 marked closed with explicit decisions.
-  - [x] Final PRD and canonical storyboard reflect closed decisions.
-
-### P0-03 - Canonical storyboard merge and contradiction fixes
-
-- Owner: `TBD (Architecture)`
-- Status: `Done`
-- Objective: Merge strengths from storyboard drafts and remove contradictory/risky guidance.
-- Target modules:
-  - Modify `docs/distributed-installer/18-installation-and-operational-storyboards-canonical.md`
-  - Modify `docs/distributed-installer/poc-phase1-prd-final.md`
-- Interfaces/contracts impacted: FR-001, FR-002, NFR-001, NFR-002.
-- Test requirements: architecture/security review pass.
-- Verification commands:
-  - Manual checklist from `docs/distributed-installer/sessions/20260413-storyboard-review-output.md` section E
-- Acceptance links: AC-001, AC-002, AC-003, AC-102
-- Suggested commit boundary: `docs(storyboard): publish canonical merged phase-1 flows`
-- Checklist:
-  - [x] Retry contradiction is removed and policy-driven classification is explicit.
-  - [x] Self-update uses staged swap/supervisor pattern as normative.
-  - [x] Signing authority and key-custody minimum standard is documented.
-  - [x] SignalR control-plane and HTTP artifact-plane boundary is explicit.
-  - [x] Package channel taxonomy (`stable`, `canary`, `test`) is documented with immutable/hash-bound identity.
-
-### P1-01 - SQLite persistence for canonical entities
-
-- Owner: `TBD (Backend)`
-- Status: `Done`
-- Objective: Replace in-memory state with SQLite-backed canonical entities.
-- Target modules:
-  - Create `src/DeploymentPoC.Orchestrator/Data/InstallerDbContext.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Data/Entities/JobEntity.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Data/Entities/NodeEntity.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Data/Entities/AssignmentLeaseEntity.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Data/Entities/ConfigSnapshotEntity.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Data/Migrations/*`
-  - Modify `src/DeploymentPoC.Orchestrator/Program.cs`
-- Interfaces/contracts impacted: FR-001, FR-006, NFR-001.
-- Test requirements: unit mapping tests and integration persistence tests.
-- Verification commands:
-  - `dotnet ef database update --project src/DeploymentPoC.Orchestrator`
-  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Persistence`
-- Acceptance links: AC-001, AC-002, AC-007, AC-101
-- Suggested commit boundary: `feat(orchestrator): add sqlite persistence for canonical entities`
-- Checklist:
-  - [x] `Job`, `Node`, `AssignmentLease`, and `ConfigSnapshot` persisted in SQLite.
-  - [x] In-memory-only paths no longer used for runtime state.
-
-### P1-02 - API contract alignment
-
-- Owner: `TBD (Backend)`
-- Status: `Done`
-- Objective: Align API behavior and payloads with API-001..API-005.
-- Target modules:
-  - Modify `src/DeploymentPoC.Orchestrator/Controllers/JobsController.cs`
-  - Modify `src/DeploymentPoC.Orchestrator/Controllers/NodesController.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Contracts/Api/CreateJobRequest.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Contracts/Api/CreateJobResponse.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Contracts/Api/JobDetailResponse.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Contracts/Api/JobStepListResponse.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Contracts/Api/CancelJobRequest.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Contracts/Api/CancelJobResponse.cs`
-- Interfaces/contracts impacted: FR-001, NFR-004, API-001..API-005.
-- Test requirements: API contract integration tests and endpoint auth tests.
-- Verification commands:
-  - `dotnet test tests/DeploymentPoC.Orchestrator.Tests --filter Controllers`
-  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter ApiContract`
-- Acceptance links: AC-001, AC-002, AC-104
-- Suggested commit boundary: `feat(api): align job and node endpoints with core contract pack`
-- Checklist:
-  - [x] `/api/jobs/{jobId}/steps` endpoint implemented.
-  - [x] Cancel endpoint uses `POST /api/jobs/{jobId}/cancel` contract shape.
-
-### P1-03 - Artifact HTTP transport + range/chunk retrieval
-
-- Owner: `TBD (Backend/Agent)`
-- Status: `Done`
-- Objective: Implement artifact transfer over HTTP endpoints (including range/chunk retrieval) and explicitly avoid artifact payload transfer over SignalR.
-- Target modules:
-  - Create `src/DeploymentPoC.Orchestrator/Controllers/ArtifactsController.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Services/ArtifactStoreService.cs`
-  - Modify `src/DeploymentPoC.Agent/Steps/AcquireArtifact.cs`
-  - Modify `src/DeploymentPoC.Orchestrator/Program.cs`
-- Interfaces/contracts impacted: FR-001, FR-005, NFR-002.
-- Test requirements: integration tests for artifact upload/download, range requests, and no-SignalR-payload contract.
-- Verification commands:
-  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Artifact`
-  - `dotnet test tests/DeploymentPoC.Agent.IntegrationTests --filter AcquireArtifact`
-- Acceptance links: AC-001, AC-006, AC-102
-- Suggested commit boundary: `feat(artifact): add http artifact transport with range chunk retrieval`
-- Checklist:
-  - [x] Agent retrieves artifacts through HTTP endpoints only.
-  - [x] Large artifacts support range/chunk retrieval.
-  - [x] SignalR messages do not carry artifact payloads.
-
-Implementation note (API contract guidance):
-
-- For package ingestion into orchestrator artifact store, Phase 1 API shape should use one `POST /api/artifacts` request with `multipart/form-data` parts (`file` binary part + `manifest` JSON part, optional `detachedSignature`).
-- Request payload must carry binary bytes and metadata; do not use workstation file path pointers in API body.
-- Embedded UI upload (drag-and-drop from Orchestrator hosted React UI) is recommended as an operator surface, but should call the same API endpoint used by CLI/API clients.
-- Add ingest metadata pipeline implementation:
-  - `VendorMetadataProvider` (official vendor metadata/checksum retrieval),
-  - `BinaryAnalyzerService` (extract file/product/version/signer/type metadata),
-  - `ArtifactVerificationService` (digest/signature/origin metadata verification + confidence tagging).
-- Persist origin metadata/confidence per field where applicable (`declared|derived|verified`) and emit audit evidence for source + verification outcome.
-- Keep vendor-binary handling policy fail-safe:
-  - vendor installers may be acquired from official sources,
-  - vendor binaries are not re-signed as vendor,
-  - optional org attestation applies to metadata envelope/manifest only.
-
-### Large payload upload behavior (Phase 1)
-
-- Installer media are files only (single file per upload request), not folders.
-- Large files are uploaded as streaming multipart HTTP request body to `POST /api/artifacts`.
-- Download side supports range/chunk (`GET/HEAD + Range`) for agents.
-- Resumable/chunked upload sessions are deferred to Phase 2 unless explicitly added as a separate endpoint.
-- `manifest.channel` validation must allow only `stable|canary|test`.
-
-Example response:
-
-```json
-{
-    "artifactId": "a2b7d5e4-3e02-4dca-b2f2-20c630913e19",
-    "packageId": "dotnet-runtime",
-    "version": "8.0.4",
-    "channel": "stable",
-    "artifactUrl": "/api/artifacts/dotnet-runtime/8.0.4",
-    "artifactType": "exe",
-    "sizeBytes": 123456789,
-    "digest": {
-        "algorithm": "sha256",
-        "value": "<immutable-content-hash>"
-    },
-    "signatureVerification": "pass",
-    "createdAtUtc": "2026-04-16T09:30:00Z"
-}
-```
-
-### P2-01 - SignalR protocol + idempotency enforcement
+### W1-01 - SQLite workload domain schema
 
 - Owner: `TBD (Backend)`
 - Status: `Not Started`
-- Objective: Enforce canonical runtime message sequence and strict idempotency/replay guards for control/status plane only (no artifact payload transfer over SignalR).
+- Objective: add first-class workload entities and indexes in SQLite.
 - Target modules:
-  - Create `src/DeploymentPoC.Orchestrator/Hubs/AgentRuntimeHub.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Runtime/StepStatusIngestService.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Runtime/SequenceConflictAuditService.cs`
-  - Modify `src/DeploymentPoC.Orchestrator/Program.cs`
-- Interfaces/contracts impacted: FR-002, NFR-001.
-- Test requirements: unit + integration tests for stale/out-of-order and payload conflict behavior.
+  - `src/DeploymentPoC.Orchestrator/Data/InstallerDbContext.cs`
+  - `src/DeploymentPoC.Orchestrator/Data/Entities/WorkloadDefinitionEntity.cs` (new)
+  - `src/DeploymentPoC.Orchestrator/Data/Entities/WorkloadRevisionEntity.cs` (new)
+  - `src/DeploymentPoC.Orchestrator/Data/Entities/WorkloadPackageEntity.cs` (new)
+  - `src/DeploymentPoC.Orchestrator/Data/Entities/WorkloadRunEntity.cs` (new)
+  - `src/DeploymentPoC.Orchestrator/Data/Entities/NodeWorkloadStateEntity.cs` (new)
+  - `src/DeploymentPoC.Orchestrator/Migrations/*`
+- Verification commands:
+  - `dotnet ef migrations add WorkloadDomain --project src/DeploymentPoC.Orchestrator`
+  - `dotnet ef database update --project src/DeploymentPoC.Orchestrator`
+  - `dotnet test tests/DeploymentPoC.Orchestrator.Tests --filter DbContextShape`
+- Acceptance links: AC-001, AC-002, AC-007
+- Checklist:
+  - [ ] Workload revision immutability is enforced at persistence boundary.
+  - [ ] Unique active-run guard exists for `(nodeId, workloadId)`.
+  - [ ] Node workload state stores current applied revision and per-package status.
+
+### W1-02 - Workload definition/revision APIs
+
+- Owner: `TBD (Backend)`
+- Status: `Not Started`
+- Objective: expose `/api/workloads` create/list/detail/revision/publish endpoints.
+- Target modules:
+  - `src/DeploymentPoC.Orchestrator/Controllers/WorkloadsController.cs` (new)
+  - `src/DeploymentPoC.Orchestrator/Contracts/Api/Workloads/*` (new)
+  - `src/DeploymentPoC.Orchestrator/Program.cs`
+- Verification commands:
+  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter WorkloadsApi`
+- Acceptance links: AC-001, AC-104
+- Checklist:
+  - [ ] Revision creation enforces 2-3 package entries for PoC.
+  - [ ] Published revision is immutable.
+  - [ ] Invalid revision payload yields deterministic validation errors.
+
+### W1-03 - Workload run APIs
+
+- Owner: `TBD (Backend)`
+- Status: `Not Started`
+- Objective: expose `/api/workload-runs` create/get/steps/cancel with idempotency.
+- Target modules:
+  - `src/DeploymentPoC.Orchestrator/Controllers/WorkloadRunsController.cs` (new)
+  - `src/DeploymentPoC.Orchestrator/Contracts/Api/WorkloadRuns/*` (new)
+  - `src/DeploymentPoC.Orchestrator/Data/Entities/WorkloadRunEntity.cs`
+- Verification commands:
+  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter WorkloadRunsApi`
+- Acceptance links: AC-001, AC-002
+- Checklist:
+  - [ ] Create run snapshots exact workload revision content.
+  - [ ] Update mode computes changed-package execution plan deterministically.
+  - [ ] Step timeline endpoint exposes package index and package id.
+
+### W1-04 - `/api/jobs` deprecation contract
+
+- Owner: `TBD (Backend)`
+- Status: `Not Started`
+- Objective: return `410 Gone` with mandatory payload for deprecated job mutations.
+- Target modules:
+  - `src/DeploymentPoC.Orchestrator/Controllers/JobsController.cs`
+  - `src/DeploymentPoC.Orchestrator/Contracts/Api/DeprecatedEndpointResponse.cs` (new)
+- Verification commands:
+  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter JobsDeprecation`
+- Acceptance links: AC-008
+- Checklist:
+  - [ ] `POST /api/jobs` returns `410` with replacement path.
+  - [ ] `POST /api/jobs/{jobId}/cancel` returns `410` with replacement path.
+  - [ ] Deprecated endpoint audit event emitted.
+
+### W1-05 - Artifact ingest required/optional split + schema validator
+
+- Owner: `TBD (Backend/Frontend)`
+- Status: `Not Started`
+- Objective: enforce minimal required admin fields, deterministic default injection, conditional field requirements when resolution fails, and persisted resolved-manifest schema checks.
+- Target modules:
+  - `src/DeploymentPoC.Orchestrator/Controllers/ArtifactIngestController.cs` (new or extend existing)
+  - `src/DeploymentPoC.Orchestrator/Services/ManifestSchemaValidator.cs` (new)
+  - `src/DeploymentPoC.Orchestrator/Services/PolicyTemplateService.cs`
+  - `web/src/pages/Install.tsx`
+  - `web/src/services/api.ts`
+- Verification commands:
+  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter ArtifactIngest`
+  - `pnpm --dir web test -- --grep ingest`
+- Acceptance links: AC-009, AC-006, AC-102
+- Checklist:
+  - [ ] Minimal required admin fields enforced (`packageId`, `version`, `channel`, and `artifactType` unless inferable).
+  - [ ] Deterministic resolution chain implemented (`admin -> template -> analyzer -> default`).
+  - [ ] Resolved manifest persists per-field source provenance (`admin|template|analyzer|default`).
+  - [ ] Conditional field escalation enforced when install adapter/detection cannot be resolved.
+  - [ ] Missing minimal/conditional required fields fail with field-level validation errors.
+  - [ ] Signature/hash verification `fail` blocks ingest; `warn` elevates risk/approval defaults.
+  - [ ] Stored resolved manifest validates against schema-equivalent structure.
+  - [ ] Optional/admin override fields are accepted without blocking ingest.
+
+### W2-01 - Runtime contract updates (`AssignRun`)
+
+- Owner: `TBD (Contracts/Backend)`
+- Status: `Not Started`
+- Objective: standardize run-centric message payload shape with workload metadata.
+- Target modules:
+  - `src/DeploymentPoC.Contracts/Runtime/MessageEnvelope.cs`
+  - `src/DeploymentPoC.Contracts/Runtime/MessageTypes.cs`
+  - `src/DeploymentPoC.Contracts/Runtime/RunPayloads/*` (new)
+- Verification commands:
+  - `dotnet test tests/DeploymentPoC.Contracts.Tests`
+- Acceptance links: AC-003
+
+### W2-02 - Sequence/idempotency enforcement
+
+- Owner: `TBD (Backend)`
+- Status: `Not Started`
+- Objective: enforce ingest/upsert and replay rules for run step statuses.
+- Target modules:
+  - `src/DeploymentPoC.Orchestrator/Runtime/StepStatusIngestService.cs`
+  - `src/DeploymentPoC.Orchestrator/Runtime/SequenceConflictAuditService.cs`
+  - `src/DeploymentPoC.Orchestrator/Hubs/AgentRuntimeHub.cs`
 - Verification commands:
   - `dotnet test tests/DeploymentPoC.Orchestrator.Tests --filter Sequence`
   - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter SignalRProtocol`
 - Acceptance links: AC-003, AC-101
-- Suggested commit boundary: `feat(runtime): implement signalr protocol sequencing and idempotent status ingest`
-- Checklist:
-  - [ ] Upsert key is `(jobId, stepId, sequence)`.
-  - [ ] Same-key payload mismatch rejects and emits `sequence_payload_conflict`.
-  - [ ] Reconnect resumes from `lastAcknowledgedSequence + 1`.
 
-### P2-02 - Lease manager + stale handling
+### W2-03 - Lease manager + stale handling
 
 - Owner: `TBD (Backend)`
 - Status: `Not Started`
-- Objective: Enforce lease TTL, heartbeat interval, stale threshold, and stale timeout bounds.
+- Objective: preserve stale handling defaults for workload-run assignment leases.
 - Target modules:
-  - Create `src/DeploymentPoC.Orchestrator/Runtime/LeaseManager.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Runtime/LeaseTimeoutWorker.cs`
-  - Modify `src/DeploymentPoC.Orchestrator/Data/Entities/AssignmentLeaseEntity.cs`
-- Interfaces/contracts impacted: FR-002, NFR-001.
-- Test requirements: integration + chaos tests for heartbeat loss and stale timeout behavior.
+  - `src/DeploymentPoC.Orchestrator/Runtime/LeaseManager.cs`
+  - `src/DeploymentPoC.Orchestrator/Runtime/LeaseTimeoutWorker.cs`
+  - `src/DeploymentPoC.Orchestrator/Data/Entities/AssignmentLeaseEntity.cs`
 - Verification commands:
   - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Lease`
   - `dotnet test tests/DeploymentPoC.Orchestrator.ChaosTests --filter AssignedStale`
 - Acceptance links: AC-101
-- Suggested commit boundary: `feat(reliability): add lease ttl heartbeat and assignedstale timeout policy`
-- Checklist:
-  - [ ] TTL is `90s`, heartbeat interval `15s`, stale threshold `3` missed.
-  - [ ] Auto-fail bound is 2 reassignment attempts or 15 minutes stale duration.
 
-### P2-03 - Policy evaluation engine (retry/idempotency/risk/approval)
+### W2-04 - Policy engine
 
 - Owner: `TBD (Backend/Agent)`
 - Status: `Not Started`
-- Objective: Implement unified policy evaluation for retryability, idempotency mode, risk level, and approval requirements across install/update/modify/downgrade flows.
+- Objective: enforce retry/idempotency/risk/approval decisions per package-step.
 - Target modules:
-  - Create `src/DeploymentPoC.Orchestrator/Runtime/PolicyEvaluationService.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Runtime/ApprovalGateService.cs`
-  - Modify `src/DeploymentPoC.Agent/Pipeline/PipelineExecutor.cs`
-  - Modify `src/DeploymentPoC.Agent/Steps/InstallOrUpgrade.cs`
-- Interfaces/contracts impacted: FR-001, FR-005, FR-006, NFR-001.
-- Test requirements: unit + integration tests for policy branch selection, bounded retry, non-idempotent/high-risk behavior, and downgrade approvals.
+  - `src/DeploymentPoC.Orchestrator/Runtime/PolicyEvaluationService.cs`
+  - `src/DeploymentPoC.Orchestrator/Runtime/ApprovalGateService.cs`
+  - `src/DeploymentPoC.Agent/Pipeline/PipelineExecutor.cs`
 - Verification commands:
   - `dotnet test tests/DeploymentPoC.Orchestrator.Tests --filter Policy`
   - `dotnet test tests/DeploymentPoC.Agent.Tests --filter Policy`
-  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Approval`
 - Acceptance links: AC-002, AC-006, AC-007, AC-101
-- Suggested commit boundary: `feat(policy): add unified retry idempotency risk and approval evaluation`
-- Checklist:
-  - [ ] Retry is bounded and policy-driven.
-  - [ ] High-risk/non-idempotent steps never blind auto-retry.
-  - [ ] Downgrade path enforces explicit approval when enabled.
-  - [ ] Channel policy (`stable`, `canary`, `test`) is validated by API/model rules.
 
-### P3-01 - Windows agent service scaffold
+### W3-03 - Agent workload pipeline (ordered packages)
 
 - Owner: `TBD (Agent)`
 - Status: `Not Started`
-- Objective: Create persistent Windows service agent with SignalR client and channel-based execution loop.
+- Objective: execute workload package steps in revision order with deterministic checkpoints.
 - Target modules:
-  - Create `src/DeploymentPoC.Agent/DeploymentPoC.Agent.csproj`
-  - Create `src/DeploymentPoC.Agent/Program.cs`
-  - Create `src/DeploymentPoC.Agent/Services/AgentWorker.cs`
-  - Create `src/DeploymentPoC.Agent/Services/RuntimeClient.cs`
-  - Create `src/DeploymentPoC.Agent/Services/JobChannelService.cs`
-  - Modify `DeploymentPoC.sln`
-- Interfaces/contracts impacted: FR-003.
-- Test requirements: unit tests for queue processing and cancellation behavior.
-- Verification commands:
-  - `dotnet build src/DeploymentPoC.Agent/DeploymentPoC.Agent.csproj`
-  - `dotnet test tests/DeploymentPoC.Agent.Tests --filter Worker`
-- Acceptance links: AC-004
-- Suggested commit boundary: `feat(agent): scaffold windows service runtime and signalr client`
-- Checklist:
-  - [ ] Agent starts and connects to orchestrator hub.
-  - [ ] Job messages can be buffered and executed from channel loop.
-
-### P3-02 - Bootstrap token to mTLS auth flow
-
-- Owner: `TBD (Security/Agent)`
-- Status: `Not Started`
-- Objective: Support one-time enrollment token and enforce per-agent mTLS identity for steady-state reconnect.
-- Target modules:
-  - Create `src/DeploymentPoC.Orchestrator/Security/EnrollmentService.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Security/AgentCertificateValidator.cs`
-  - Modify `src/DeploymentPoC.Orchestrator/Hubs/AgentRuntimeHub.cs`
-  - Create `src/DeploymentPoC.Agent/Security/CertificateBindingService.cs`
-- Interfaces/contracts impacted: FR-004, NFR-002.
-- Test requirements: integration tests for token single-use and invalid-cert reconnect rejection.
-- Verification commands:
-  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Auth`
-  - `dotnet test tests/DeploymentPoC.Agent.Tests --filter Enrollment`
-- Acceptance links: AC-005, AC-102
-- Suggested commit boundary: `feat(security): enforce enrollment token flow and mTLS steady-state identity`
-- Checklist:
-  - [ ] Token is consumed once and invalidated.
-  - [ ] Reconnect without valid bound cert is rejected.
-
-Implementation note (enrollment endpoint semantics):
-
-- Keep enrollment token issuance as `POST /api/nodes/enroll` (not GET).
-- Reason: token creation is state-changing and returns a one-time secret; GET semantics are cache/prerender/prefetch prone and inappropriate for secret issuance.
-- Agent bootstrap should require only `OrchestratorUrl` + short-lived token; hostname/node metadata should be auto-collected on first agent startup/connect.
-
-### P4-01 - Agent local typed pipeline + adapters
-
-- Owner: `TBD (Agent)`
-- Status: `Not Started`
-- Objective: Execute full per-job step pipeline locally and support MSI/EXE adapters with normalized outcomes.
-- Target modules:
-  - Create `src/DeploymentPoC.Agent/Pipeline/IInstallStep.cs`
-  - Create `src/DeploymentPoC.Agent/Pipeline/IPreCheck.cs`
-  - Create `src/DeploymentPoC.Agent/Pipeline/PipelineExecutor.cs`
-  - Create `src/DeploymentPoC.Agent/Steps/PreConditionCheck.cs`
-  - Create `src/DeploymentPoC.Agent/Steps/AcquireArtifact.cs`
-  - Create `src/DeploymentPoC.Agent/Steps/ValidateSignatureAndHash.cs`
-  - Create `src/DeploymentPoC.Agent/Steps/DetectCurrentState.cs`
-  - Create `src/DeploymentPoC.Agent/Steps/InstallOrUpgrade.cs`
-  - Create `src/DeploymentPoC.Agent/Steps/PostInstallVerify.cs`
-  - Create `src/DeploymentPoC.Agent/Steps/EmitFinalization.cs`
-  - Create `src/DeploymentPoC.Agent/Adapters/MsiAdapter.cs`
-  - Create `src/DeploymentPoC.Agent/Adapters/ExeAdapter.cs`
-- Interfaces/contracts impacted: FR-003, FR-005.
-- Test requirements: unit tests for step ordering and adapter normalization; integration tests for MSI/EXE flow.
+  - `src/DeploymentPoC.Agent/Pipeline/*`
+  - `src/DeploymentPoC.Agent/Steps/AcquireArtifact.cs`
+  - `src/DeploymentPoC.Agent/Steps/InstallOrUpgrade.cs`
+  - `src/DeploymentPoC.Agent/Steps/PostInstallVerify.cs`
+  - `src/DeploymentPoC.Agent/Steps/EmitFinalization.cs`
 - Verification commands:
   - `dotnet test tests/DeploymentPoC.Agent.Tests --filter Pipeline`
-  - `dotnet test tests/DeploymentPoC.Agent.IntegrationTests --filter Adapter`
+  - `dotnet test tests/DeploymentPoC.Agent.IntegrationTests --filter Workload`
 - Acceptance links: AC-004, AC-006
-- Suggested commit boundary: `feat(agent): implement local typed pipeline with msi exe adapters`
 - Checklist:
-  - [ ] Agent executes full job pipeline without orchestrator step-by-step dispatch.
-  - [ ] MSI and EXE paths emit normalized status/telemetry.
-  - [ ] **Execution split P4-01a (AC-004):** implement pipeline interfaces + step ordering with unit tests (`PipelineExecutor`, step contracts).
-  - [ ] **Execution split P4-01b (AC-006):** implement MSI/EXE adapters + integration tests + normalized reason/status mapping.
+  - [ ] Install mode runs all packages in order.
+  - [ ] Update mode runs only changed packages in same order.
+  - [ ] Node workload revision updates only after full package-step success.
 
-### P4-02 - Config snapshot/migration/restore contract implementation
+### W4-01 - Config snapshot/migration/restore
 
 - Owner: `TBD (Agent/Backend)`
 - Status: `Not Started`
-- Objective: Implement upgrade config persistence contract with deterministic migration and restore-on-failure.
+- Objective: enforce restore-on-failure with audit linkage for mutation paths.
 - Target modules:
-  - Create `src/DeploymentPoC.Agent/Config/IConfigMigration.cs`
-  - Create `src/DeploymentPoC.Agent/Config/MigrationChainResolver.cs`
-  - Create `src/DeploymentPoC.Agent/Config/SnapshotService.cs`
-  - Create `src/DeploymentPoC.Agent/Config/RestoreService.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Services/ConfigAuditService.cs`
-  - Modify `src/DeploymentPoC.Orchestrator/Data/Entities/ConfigSnapshotEntity.cs`
-- Interfaces/contracts impacted: FR-006, `11-config-persistence-contract.md`.
-- Test requirements: unit tests for missing migration hop; integration tests for restore and audit event emission.
+  - `src/DeploymentPoC.Agent/Config/*`
+  - `src/DeploymentPoC.Orchestrator/Services/ConfigAuditService.cs`
+  - `src/DeploymentPoC.Orchestrator/Data/Entities/ConfigSnapshotEntity.cs`
 - Verification commands:
   - `dotnet test tests/DeploymentPoC.Agent.Tests --filter Migration`
   - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter ConfigSnapshot`
 - Acceptance links: AC-007
-- Suggested commit boundary: `feat(upgrade): implement snapshot migration restore contract and audit linkage`
-- Checklist:
-  - [ ] Missing hop results in `migration_path_missing`.
-  - [ ] Failed migration triggers restore and linked audit event.
 
-### P5-01 - Security controls baseline implementation
+### W5-02 - Observability stack MVP
 
-- Owner: `TBD (Security/Backend)`
+- Owner: `TBD (Backend/DevOps)`
 - Status: `Not Started`
-- Objective: Enforce RBAC, artifact trust checks, audit tamper evidence, and no plaintext secret handling.
+- Objective: make workload run telemetry queryable in Grafana/Loki via OTel collector.
 - Target modules:
-  - Create `src/DeploymentPoC.Orchestrator/Security/RbacPolicies.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Security/AuditHashChainService.cs`
-  - Modify `src/DeploymentPoC.Orchestrator/Controllers/*.cs`
-  - Create `src/DeploymentPoC.Agent/Security/ArtifactValidationService.cs`
-  - Create `src/DeploymentPoC.Agent/Security/SecretProvider.cs`
-- Interfaces/contracts impacted: NFR-002, mitigation mappings M-001..M-006.
-- Test requirements: security integration tests for unsigned artifact block, unauthorized role denial, and secret redaction.
-- Verification commands:
-  - `dotnet test tests/DeploymentPoC.SecurityTests`
-  - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Authorization`
-- Acceptance links: AC-102, AC-002
-- Suggested commit boundary: `feat(security): add artifact trust rbac audit chain and secret protection`
-- Checklist:
-  - [ ] Unsigned or tampered artifacts fail closed.
-  - [ ] Unauthorized role cannot trigger runtime install actions.
-  - [ ] Sensitive values are not written to logs or config in plaintext.
-  - [ ] **Execution split P5-01a (AC-002, AC-102):** RBAC enforcement.
-  - [ ] **Execution split P5-01b (AC-102):** artifact trust enforcement (signature/hash fail-closed).
-  - [ ] **Execution split P5-01c (AC-002):** audit tamper-evidence/hash chain.
-  - [ ] **Execution split P5-01d (AC-102):** secret hygiene + plaintext-prevention verification.
-
-### P5-02 - OTel file export policy + redaction controls
-
-- Owner: `TBD (Security/Backend)`
-- Status: `Not Started`
-- Objective: Implement and verify Phase 1 OTel defaults (file-based export with rotation/retention) and denylist-based sensitive data redaction/access controls.
-- Target modules:
-  - Create `src/DeploymentPoC.Orchestrator/Observability/OtelExportPolicy.cs`
-  - Create `src/DeploymentPoC.Orchestrator/Observability/LogRedactionPolicy.cs`
-  - Modify `src/DeploymentPoC.Orchestrator/Program.cs`
-- Interfaces/contracts impacted: NFR-002, NFR-003.
-- Test requirements: integration tests for rotation/retention policy and secret/token redaction behavior.
+  - `src/DeploymentPoC.Orchestrator/Observability/*`
+  - `deploy/observability/docker-compose.yml` (new)
+  - `deploy/observability/otel-collector.yaml` (new)
+  - `deploy/observability/loki-config.yaml` (new)
+  - `docs/distributed-installer/diagrams/*` (optional update)
 - Verification commands:
   - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter Otel`
-  - `dotnet test tests/DeploymentPoC.SecurityTests --filter Redaction`
-- Acceptance links: AC-102, AC-103
-- Suggested commit boundary: `feat(observability): enforce otel file export defaults and redaction policy`
+  - `pnpm --dir web run test:e2e -- --grep observability`
+- Acceptance links: AC-103
 - Checklist:
-  - [ ] File-based OTel export with rotation and retention is enforced.
-  - [ ] Sensitive fields (secrets/tokens/credentials) are redacted in logs.
-  - [ ] Access policy for telemetry endpoints/log files is least-privilege by default.
-
-### P6-01 - UI runtime screens and live timeline
-
-- Owner: `TBD (Frontend)`
-- Status: `Not Started`
-- Objective: Provide actionable PoC dashboard and job views with live status/step timeline.
-- Target modules:
-  - Modify `web/src/pages/Dashboard.tsx`
-  - Modify `web/src/pages/Jobs.tsx`
-  - Modify `web/src/pages/Nodes.tsx`
-  - Modify `web/src/pages/Install.tsx`
-  - Create `web/src/services/api.ts`
-  - Create `web/src/services/realtime.ts`
-  - Modify `src/DeploymentPoC.Orchestrator/DeploymentPoC.Orchestrator.csproj`
-- Interfaces/contracts impacted: FR-001, NFR-003, NFR-005.
-- Test requirements: web integration tests and E2E tests for job submit/cancel/status.
-- Verification commands:
-  - `pnpm --dir web test`
-  - `pnpm --dir web run build`
-  - `pnpm --dir web run test:e2e`
-- Acceptance links: AC-001, AC-002, AC-103, AC-105
-- Suggested commit boundary: `feat(ui): add poc runtime dashboards jobs nodes and live step timeline`
-- Checklist:
-  - [ ] UI shows terminal job state and step-level updates.
-  - [ ] Embedded UI artifacts can be served by orchestrator executable.
-
-### P6-02 - CLI runtime command surface
-
-- Owner: `TBD (Platform)`
-- Status: `Not Started`
-- Objective: Implement runtime command path via CLI (not script orchestration).
-- Target modules:
-  - Create `src/DeploymentPoC.Cli/DeploymentPoC.Cli.csproj`
-  - Create `src/DeploymentPoC.Cli/Commands/JobsCommand.cs`
-  - Create `src/DeploymentPoC.Cli/Commands/NodesCommand.cs`
-  - Modify `DeploymentPoC.sln`
-- Interfaces/contracts impacted: NFR-004, FR-001.
-- Test requirements: integration tests for create/cancel/status commands.
-- Verification commands:
-  - `dotnet run --project src/DeploymentPoC.Cli -- jobs create --help`
-  - `dotnet test tests/DeploymentPoC.Cli.IntegrationTests`
-- Acceptance links: AC-104, AC-001, AC-002
-- Suggested commit boundary: `feat(cli): add runtime api cli surface for jobs and nodes`
-- Checklist:
-  - [ ] Install/upgrade/rollback/cancel/status are available through CLI calls to orchestrator API.
-
-### P7-01 - Self-contained orchestrator packaging
-
-- Owner: `TBD (Platform/DevOps)`
-- Status: `Not Started`
-- Objective: Produce self-contained single-file orchestrator executable with embedded React UI for clean-host run.
-- Target modules:
-  - Modify `src/DeploymentPoC.Orchestrator/DeploymentPoC.Orchestrator.csproj`
-  - Create `scripts/package-orchestrator.ps1`
-  - Modify `src/DeploymentPoC.Orchestrator/Program.cs`
-- Interfaces/contracts impacted: NFR-005.
-- Test requirements: packaging validation on clean Windows machine without .NET/IIS.
-- Verification commands:
-  - `dotnet publish src/DeploymentPoC.Orchestrator/DeploymentPoC.Orchestrator.csproj --self-contained --runtime win-x64 -p:PublishSingleFile=true`
-  - Run published executable on clean host and verify dashboard + API.
-- Acceptance links: AC-105
-- Suggested commit boundary: `feat(packaging): publish self-contained single-file orchestrator with embedded ui`
-- Checklist:
-  - [ ] Orchestrator launches on clean host with no runtime prereq installs.
-  - [ ] Embedded dashboard assets load from executable.
-
-### P7-02 - CI/CD gates and policy enforcement
-
-- Owner: `TBD (DevOps)`
-- Status: `Not Started`
-- Objective: Implement pipeline gates and enforce orchestrator-only deployment boundary.
-- Target modules:
-  - Create or modify `azure-pipelines.yml`
-  - Create `scripts/sign-artifacts.ps1`
-  - Create `scripts/validate-clean-host-launch.ps1`
-- Interfaces/contracts impacted: NFR-004, NFR-005, DevOps policy in `12-devops-pipeline-design-pack.md`.
-- Test requirements: CI gate tests for packaging and policy boundaries.
-- Verification commands:
-  - CI run for stages: `CI -> Publish -> PackagingValidation -> DeployOrchestrator -> Integration -> E2E`
-  - Validate no direct workstation deployment tasks exist in runtime path.
-- Acceptance links: AC-104, AC-105
-- Suggested commit boundary: `chore(ci): add poc pipeline gates and orchestrator-only deploy policy`
-- Checklist:
-  - [ ] Pipeline deploys orchestrator only.
-  - [ ] Runtime workstation actions are triggered only through Orchestrator API/CLI.
-
-### P8-01 - End-to-end acceptance and evidence suite
-
-- Owner: `TBD (QA/All)`
-- Status: `Not Started`
-- Objective: Build acceptance test suite and evidence pack covering all PoC AC IDs.
-- Target modules:
-  - Create `tests/DeploymentPoC.Orchestrator.IntegrationTests/*`
-  - Create `tests/DeploymentPoC.Agent.IntegrationTests/*`
-  - Create `tests/DeploymentPoC.E2E/*`
-  - Create `tests/DeploymentPoC.Orchestrator.ChaosTests/*`
-- Interfaces/contracts impacted: All FR/NFR acceptance criteria.
-- Test requirements: unit, integration, e2e, and chaos scenarios.
-- Verification commands:
-  - `dotnet test DeploymentPoC.sln`
-  - `pnpm --dir web run test:e2e`
-  - `dotnet test tests/DeploymentPoC.Orchestrator.ChaosTests`
-- Acceptance links: AC-001..AC-007, AC-101..AC-105
-- Suggested commit boundary: `test(poc): add full acceptance matrix for phase-1 contracts`
-- Checklist:
-  - [ ] Evidence artifact is captured for each AC.
-  - [ ] No Hardening Phase 2-only checks are required for PoC completion.
-  - [ ] **Execution split P8-01a (AC-001..AC-007):** integration acceptance matrix.
-  - [ ] **Execution split P8-01b (AC-101..AC-103):** security/reliability acceptance matrix.
-  - [ ] **Execution split P8-01c (AC-104..AC-105):** operability/deploy acceptance matrix.
+  - [ ] Queries by `workloadId` and `runId` return package-step records.
+  - [ ] Queries by `nodeId` show active and failed runs.
+  - [ ] File export remains available as fallback.
 
 ## Phase verification gates
 
 | Phase | Gate command(s) | Exit criterion | Owner | Status |
 |---|---|---|---|---|
-| Phase 0-1 | `dotnet build DeploymentPoC.sln` + persistence/API tests | Contracts + SQLite + API compile and pass tests | TBD | In Progress |
-| Phase 2 | runtime protocol and lease test suites | Sequence, idempotency, stale policy pass | TBD | Not Started |
-| Phase 3-4 | agent unit/integration + migration tests | Agent executes full pipeline; config restore verified | TBD | Not Started |
-| Phase 5 | security test suite | Unsigned block, RBAC deny, secret hygiene pass | TBD | Not Started |
-| Phase 6 | web test + e2e + CLI integration tests | UI and CLI runtime operations pass | TBD | Not Started |
-| Phase 7 | `dotnet publish` self-contained + clean-host launch validation + CI gate run | AC-104/AC-105 policy and packaging satisfied | TBD | Not Started |
-| Phase 8 | full solution tests + acceptance evidence review | AC-001..AC-105 marked complete with evidence | TBD | Not Started |
+| Slice A | `dotnet build DeploymentPoC.sln` + workload API tests | workload domain + deprecation + ingest validation pass | TBD | Not Started |
+| Slice B | protocol + lease + policy suites | deterministic run sequencing/idempotency/stale behavior pass | TBD | Not Started |
+| Slice C | agent pipeline + migration tests | ordered package execution + restore behavior pass | TBD | Not Started |
+| Slice D | web + cli + observability tests | operator visibility and runtime operations pass | TBD | Not Started |
+| Packaging | self-contained publish + clean-host launch | AC-105 satisfied | TBD | Not Started |
+| Final | full tests + evidence review | AC-001..AC-009, AC-101..AC-105 closed with evidence | TBD | Not Started |
 
 ## AC evidence tracker
 
@@ -583,19 +342,22 @@ Implementation note (enrollment endpoint semantics):
 |---|---|---|---|
 | AC-001 | TBD | TBD | Not Started |
 | AC-002 | TBD | TBD | Not Started |
-| AC-003 | src/DeploymentPoC.Contracts/* | TBD (Backend) | Done |
+| AC-003 | `src/DeploymentPoC.Contracts/*`, SignalR suites | TBD | In Progress |
 | AC-004 | TBD | TBD | Not Started |
 | AC-005 | TBD | TBD | Not Started |
 | AC-006 | TBD | TBD | Not Started |
 | AC-007 | TBD | TBD | Not Started |
+| AC-008 | `/api/jobs` deprecation integration tests | TBD | Not Started |
+| AC-009 | artifact ingest schema validation tests | TBD | Not Started |
 | AC-101 | TBD | TBD | Not Started |
 | AC-102 | TBD | TBD | Not Started |
-| AC-103 | TBD | TBD | Not Started |
-| AC-104 | TBD | TBD | Not Started |
-| AC-105 | TBD | TBD | Not Started |
+| AC-103 | Loki/Grafana query evidence | TBD | Not Started |
+| AC-104 | REST/CLI workload command evidence | TBD | Not Started |
+| AC-105 | clean-host orchestrator launch evidence | TBD | Not Started |
 
 ## Change control notes
 
-- Use one commit per task completion in dependency order.
-- If a task must be split, append suffixes (`P4-01a`, `P4-01b`) and keep AC mapping explicit.
-- Any request that adds Hardening Phase 2 controls must be recorded separately and not block PoC completion.
+- One commit per completed task section in dependency order.
+- If a task is split, use explicit suffixes and maintain AC mapping.
+- Hardening Phase 2 controls can be logged as backlog but must not block Phase 1 closure.
+- Storyboard updates are intentionally excluded in this pass per user instruction.

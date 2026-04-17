@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 
@@ -28,6 +29,23 @@ public sealed class ArtifactStoreService
     public bool Exists(string packageId, string version)
     {
         return File.Exists(GetArtifactPath(packageId, version));
+    }
+
+    public async Task SaveArtifactAsync(string packageId, string version, Stream source, CancellationToken cancellationToken = default)
+    {
+        var artifactPath = GetArtifactPath(packageId, version);
+        Directory.CreateDirectory(Path.GetDirectoryName(artifactPath)!);
+
+        await using var file = File.Create(artifactPath);
+        source.Position = 0;
+        await source.CopyToAsync(file, cancellationToken);
+    }
+
+    public async Task SaveResolvedManifestAsync(string packageId, string version, string manifestJson, CancellationToken cancellationToken = default)
+    {
+        var manifestPath = GetManifestPath(packageId, version);
+        Directory.CreateDirectory(Path.GetDirectoryName(manifestPath)!);
+        await File.WriteAllTextAsync(manifestPath, manifestJson, Encoding.UTF8, cancellationToken);
     }
 
     public long GetSize(string packageId, string version)
@@ -80,6 +98,20 @@ public sealed class ArtifactStoreService
         ValidatePathSegment(version, nameof(version));
 
         var candidatePath = Path.GetFullPath(Path.Combine(_rootPath, packageId, version, "artifact.bin"));
+        if (!candidatePath.StartsWith(_rootPathWithSeparator, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("Resolved path is outside artifact root.");
+        }
+
+        return candidatePath;
+    }
+
+    private string GetManifestPath(string packageId, string version)
+    {
+        ValidatePathSegment(packageId, nameof(packageId));
+        ValidatePathSegment(version, nameof(version));
+
+        var candidatePath = Path.GetFullPath(Path.Combine(_rootPath, packageId, version, "resolved-manifest.json"));
         if (!candidatePath.StartsWith(_rootPathWithSeparator, StringComparison.Ordinal))
         {
             throw new ArgumentException("Resolved path is outside artifact root.");

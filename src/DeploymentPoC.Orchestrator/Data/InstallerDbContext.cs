@@ -15,6 +15,23 @@ public sealed class InstallerDbContext : DbContext
     public DbSet<PackageEntity> Packages => Set<PackageEntity>();
     public DbSet<AssignmentLeaseEntity> AssignmentLeases => Set<AssignmentLeaseEntity>();
     public DbSet<ConfigSnapshotEntity> ConfigSnapshots => Set<ConfigSnapshotEntity>();
+    public DbSet<WorkloadDefinitionEntity> WorkloadDefinitions => Set<WorkloadDefinitionEntity>();
+    public DbSet<WorkloadRevisionEntity> WorkloadRevisions => Set<WorkloadRevisionEntity>();
+    public DbSet<WorkloadPackageEntity> WorkloadPackages => Set<WorkloadPackageEntity>();
+    public DbSet<WorkloadRunEntity> WorkloadRuns => Set<WorkloadRunEntity>();
+    public DbSet<NodeWorkloadStateEntity> NodeWorkloadStates => Set<NodeWorkloadStateEntity>();
+
+    public override int SaveChanges()
+    {
+        EnforceWorkloadRevisionImmutability();
+        return base.SaveChanges();
+    }
+
+    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        EnforceWorkloadRevisionImmutability();
+        return base.SaveChangesAsync(cancellationToken);
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -120,5 +137,121 @@ public sealed class InstallerDbContext : DbContext
         modelBuilder.Entity<ConfigSnapshotEntity>().Property(x => x.SourceSchemaVersion).HasMaxLength(64);
         modelBuilder.Entity<ConfigSnapshotEntity>().Property(x => x.StorageLocation).HasMaxLength(512);
         modelBuilder.Entity<ConfigSnapshotEntity>().Property(x => x.IntegrityHash).HasMaxLength(128);
+
+        modelBuilder.Entity<WorkloadDefinitionEntity>(entity =>
+        {
+            entity.HasKey(x => x.WorkloadId);
+            entity.Property(x => x.Name).HasMaxLength(128);
+            entity.Property(x => x.Description).HasMaxLength(512);
+            entity.HasIndex(x => x.Name).IsUnique();
+            entity.HasOne(x => x.PublishedRevision)
+                .WithMany()
+                .HasForeignKey(x => x.PublishedRevisionId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<WorkloadRevisionEntity>(entity =>
+        {
+            entity.HasKey(x => x.RevisionId);
+            entity.Property(x => x.Version).HasMaxLength(64);
+            entity.HasOne(x => x.Workload)
+                .WithMany(x => x.Revisions)
+                .HasForeignKey(x => x.WorkloadId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.WorkloadId, x.Version }).IsUnique();
+        });
+
+        modelBuilder.Entity<WorkloadPackageEntity>(entity =>
+        {
+            entity.HasKey(x => x.WorkloadPackageId);
+            entity.HasOne(x => x.Revision)
+                .WithMany(x => x.Packages)
+                .HasForeignKey(x => x.RevisionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => new { x.RevisionId, x.PackageIndex }).IsUnique();
+        });
+
+        modelBuilder.Entity<WorkloadRunEntity>(entity =>
+        {
+            entity.HasKey(x => x.WorkloadRunRecordId);
+            entity.HasIndex(x => x.RunId);
+            entity.Property(x => x.Mode).HasMaxLength(32);
+            entity.Property(x => x.State).HasMaxLength(32);
+            entity.Property(x => x.IdempotencyKey).HasMaxLength(128);
+            entity.Property(x => x.IdempotencyRequestHash).HasMaxLength(64);
+            entity.Property(x => x.CancelReason).HasMaxLength(512);
+            entity.HasOne(x => x.Workload)
+                .WithMany(x => x.Runs)
+                .HasForeignKey(x => x.WorkloadId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Revision)
+                .WithMany()
+                .HasForeignKey(x => x.RevisionId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Node)
+                .WithMany(x => x.WorkloadRuns)
+                .HasForeignKey(x => x.NodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(x => x.IdempotencyKey).IsUnique();
+            entity.HasIndex(x => new { x.NodeId, x.WorkloadId })
+                .HasDatabaseName("IX_WorkloadRuns_NodeId_WorkloadId_Active")
+                .HasFilter("\"State\" IN ('Queued','Running')")
+                .IsUnique();
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_WorkloadRuns_Mode", "\"Mode\" IN ('install','update','rollback','cancel')");
+                t.HasCheckConstraint("CK_WorkloadRuns_State", "\"State\" IN ('Queued','Running','Completed','Failed','Cancelled')");
+            });
+        });
+
+        modelBuilder.Entity<NodeWorkloadStateEntity>(entity =>
+        {
+            entity.HasKey(x => x.NodeWorkloadStateId);
+            entity.Property(x => x.PackageStatesJson).HasMaxLength(8192);
+            entity.HasOne(x => x.Node)
+                .WithMany(x => x.NodeWorkloadStates)
+                .HasForeignKey(x => x.NodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Workload)
+                .WithMany(x => x.NodeStates)
+                .HasForeignKey(x => x.WorkloadId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.CurrentRevision)
+                .WithMany()
+                .HasForeignKey(x => x.CurrentRevisionId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasIndex(x => new { x.NodeId, x.WorkloadId }).IsUnique();
+        });
+    }
+
+    private void EnforceWorkloadRevisionImmutability()
+    {
+        var revisionEntries = ChangeTracker.Entries<WorkloadRevisionEntity>()
+            .Where(e => e.State is EntityState.Modified or EntityState.Deleted)
+            .ToList();
+
+        foreach (var entry in revisionEntries)
+        {
+            if (entry.State == EntityState.Deleted)
+            {
+                throw new InvalidOperationException("Workload revisions are immutable and cannot be deleted.");
+            }
+
+            var forbiddenPropertiesChanged = entry.Properties
+                .Where(p => p.Metadata.Name is not nameof(WorkloadRevisionEntity.IsPublished))
+                .Any(p => p.IsModified);
+            if (forbiddenPropertiesChanged)
+            {
+                throw new InvalidOperationException("Workload revisions are immutable after creation.");
+            }
+        }
+
+        var packageEntries = ChangeTracker.Entries<WorkloadPackageEntity>()
+            .Where(e => e.State is EntityState.Modified or EntityState.Deleted)
+            .ToList();
+        if (packageEntries.Count > 0)
+        {
+            throw new InvalidOperationException("Workload revision packages are immutable after creation.");
+        }
     }
 }

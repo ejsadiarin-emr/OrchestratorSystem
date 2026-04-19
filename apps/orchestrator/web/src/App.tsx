@@ -1,7 +1,7 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import Layout from './components/Layout'
 import AgentLocal from './pages/AgentLocal'
-import Dashboard from './pages/Dashboard'
+import CommandCenter from './pages/CommandCenter'
 import Install from './pages/Install'
 import Nodes from './pages/Nodes'
 import Packages from './pages/Packages'
@@ -13,7 +13,7 @@ export default function App() {
     <BrowserRouter>
       <Layout>
         <Routes>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<CommandCenter />} />
           <Route path="/agent-local" element={<AgentLocal />} />
           <Route path="/workloads" element={<Workloads />} />
           <Route path="/workload-runs" element={<WorkloadRuns />} />

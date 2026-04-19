@@ -1,14 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-
-const navItems = [
-  { path: '/', label: 'Dashboard' },
-  { path: '/agent-local', label: 'Agent Local' },
-  { path: '/workloads', label: 'Workloads' },
-  { path: '/workload-runs', label: 'Workload Runs' },
-  { path: '/nodes', label: 'Nodes' },
-  { path: '/packages', label: 'Artifacts (Legacy)' },
-  { path: '/install', label: 'New Install' },
-]
+import { layoutAppTitle, layoutNavItems } from '../../../../../shared/web-common/layoutShell'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation()
@@ -20,12 +11,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex min-h-16 flex-col gap-3 py-3 lg:h-20 lg:flex-row lg:items-center lg:justify-between lg:py-0">
             <div className="flex items-center">
               <div>
-                <span className="text-xl font-semibold tracking-tight">EJ Workload Orchestrator</span>
+                <span className="text-xl font-semibold tracking-tight">{layoutAppTitle}</span>
                 <p className="text-xs text-[var(--text-soft)]">PoC Phase 1 workload-first operator shell</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-1">
-              {navItems.map((item) => (
+              {layoutNavItems.map((item) => (
                 <Link
                   key={item.path}
                   to={item.path}

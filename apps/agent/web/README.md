@@ -19,14 +19,14 @@ This app is currently a **frontend-only mock** for storyboard validation. Core f
 ## Install
 
 ```bash
-cd web
+cd apps/agent/web
 pnpm install
 ```
 
 ## Run in development
 
 ```bash
-cd web
+cd apps/agent/web
 pnpm dev
 ```
 
@@ -35,7 +35,7 @@ Open the local URL shown by Vite (typically `http://localhost:5173`).
 ## Quality checks
 
 ```bash
-cd web
+cd apps/agent/web
 pnpm lint
 pnpm test
 pnpm build
@@ -45,14 +45,14 @@ pnpm build
 
 Production build outputs directly to the orchestrator embedded static site directory:
 
-- `../src/DeploymentPoC.Orchestrator/wwwroot`
+- `../backend/wwwroot`
 
-That behavior is configured in `web/vite.config.ts` (`build.outDir`).
+That behavior is configured in `apps/agent/web/vite.config.ts` (`build.outDir`).
 
 To regenerate embedded assets:
 
 ```bash
-cd web
+cd apps/agent/web
 pnpm build
 ```
 

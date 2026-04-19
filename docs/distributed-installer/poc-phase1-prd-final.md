@@ -12,9 +12,10 @@ Active documentation set for `docs/distributed-installer/`:
 
 1. `poc-phase1-prd-final.md` (this document)
 2. `poc-phase1-prd-and-implementation-tracker.md`
-3. `storyboard-phase1.md`
-4. `sessions/` (historical notes retained)
-5. `diagrams/` (diagram artifacts retained)
+3. `storyboard-phase1-workload-aligned.md` (canonical storyboard for Phase 1)
+4. `storyboard-phase1.md` (legacy historical storyboard retained for reference)
+5. `sessions/` (historical notes retained)
+6. `diagrams/` (diagram artifacts retained)
 
 Content consolidated into this PRD from prior packs/reports:
 
@@ -63,11 +64,12 @@ Core posture:
 - first-class `workloads` made of predefined package steps,
 - immutable workload revisions,
 - install and update lifecycle on both orchestrator node and agent nodes,
-- immediate deprecation of `/api/jobs` mutation endpoints in favor of `/api/workload-runs`,
+- runtime lifecycle APIs are workload-run only (`/api/workload-runs`); `/api/jobs` is non-runtime historical context,
 - SignalR for control/status only and HTTP for artifact bytes,
 - policy-governed retry/idempotency/risk decisions,
 - step-level telemetry with required workload correlation fields,
 - self-contained orchestrator executable with embedded React UI.
+- agent runtime includes a minimal embedded web UI for local workload visibility and guided update actions.
 
 ---
 
@@ -83,6 +85,7 @@ Core posture:
 - typed adapter support for MSI/EXE execution paths
 - config snapshot/migration/restore contract for mutation safety
 - self-contained orchestrator packaging with embedded UI
+- agent packaging with embedded local web UI for customer-facing workload visibility
 - workload execution target may be an agent node or the orchestrator node
 
 ### Out of scope [PoC Phase 1]
@@ -152,7 +155,7 @@ Core posture:
 ### Core components
 
 - **Orchestrator:** REST API, SignalR runtime hub, workload registry, run planner, policy/lease logic, persistence, embedded UI host.
-- **Agent:** persistent Windows service, runtime client, local typed execution pipeline, adapter execution, telemetry emission.
+- **Agent:** persistent Windows service, runtime client, local typed execution pipeline, adapter execution, telemetry emission, embedded local web UI.
 - **Artifact store:** orchestrator-managed internal artifact source.
 - **Operator surfaces:** API/UI/CLI for runtime actions; scripts are provisioning-only.
 
@@ -201,20 +204,17 @@ Core posture:
 | API-010 | GET | `/api/nodes` | list node health/registration |
 | API-011 | POST | `/api/nodes/enroll` | issue one-time enrollment token |
 | API-012 | POST | `/api/artifacts` | ingest artifact media + manifest |
-| API-013 | POST | `/api/jobs` | deprecated endpoint (returns 410) |
-| API-014 | POST | `/api/jobs/{jobId}/cancel` | deprecated endpoint (returns 410) |
+| API-013 | POST | `/api/jobs` | removed from runtime API surface (historical migration reference only) |
+| API-014 | POST | `/api/jobs/{jobId}/cancel` | removed from runtime API surface (historical migration reference only) |
 
-### Deprecated endpoint behavior
+### Legacy endpoint history
 
-`/api/jobs` mutation endpoints are deprecated immediately in Phase 1.
+`/api/jobs` mutation endpoints are not part of the runtime API surface for current Phase 1 implementation.
 
-Required response contract:
+Historical migration context:
 
-- HTTP status: `410 Gone`
-- payload fields:
-  - `code = "deprecated_endpoint"`
-  - `message = "Use /api/workload-runs"`
-  - `replacementPath = "/api/workload-runs"`
+- Earlier migration guidance referenced `410 Gone` responses and replacement path `/api/workload-runs`.
+- Current implementation guidance is unambiguous: use `/api/workload-runs` lifecycle APIs only.
 
 ### Runtime message envelope
 
@@ -413,8 +413,9 @@ All ADR content is represented in this PRD and linked tracker work.
 | FR-004 | [PoC Phase 1] Bootstrap provisioning supports transactional rollback/cleanup on failure | Must | AC-005 |
 | FR-005 | [PoC Phase 1] Typed installer adapter strategy supports MSI/EXE with normalized outcomes | Should | AC-006 |
 | FR-006 | [PoC Phase 1] Mutation flow enforces config snapshot/migration/restore contract | Must | AC-007 |
-| FR-007 | [PoC Phase 1] `/api/jobs` mutation endpoints are deprecated immediately and replaced by `/api/workload-runs` | Must | AC-008 |
+| FR-007 | [PoC Phase 1] Runtime lifecycle APIs use `/api/workload-runs` only; `/api/jobs` mutation endpoints are non-runtime historical context | Must | AC-008 |
 | FR-008 | [PoC Phase 1] Artifact ingest validates minimal required fields, injects deterministic defaults for prefillable fields, enforces conditional requirements when resolution fails, and persists schema-valid resolved manifests | Must | AC-009 |
+| FR-009 | [PoC Phase 1] Agent provides a minimal embedded web UI to show local workload status and support guided local update actions aligned with orchestrator policy | Should | AC-106 |
 
 ---
 
@@ -441,13 +442,14 @@ All ADR content is represented in this PRD and linked tracker work.
 | AC-005 | FR-004 | Bootstrap failure executes reverse-order cleanup and token invalidation | Integration/Manual |
 | AC-006 | FR-005 | MSI/EXE adapters execute through typed pipeline with normalized telemetry | Integration |
 | AC-007 | FR-006 | Mutation failure restores from snapshot and emits linked audit evidence | Integration |
-| AC-008 | FR-007 | `/api/jobs` and `/api/jobs/{jobId}/cancel` return `410` with replacement path `/api/workload-runs` | Integration |
+| AC-008 | FR-007 | Runtime lifecycle coverage uses `/api/workload-runs`; no runtime path depends on `/api/jobs` mutations | Integration |
 | AC-009 | FR-008 | Artifact ingest injects deterministic defaults for prefillable fields, rejects missing minimal required or unresolved conditional fields, and persists schema-valid resolved manifests with field-source provenance | Integration |
 | AC-101 | NFR-001 | Stale lease policy behaves correctly under disconnect/reconnect and chaos scenarios | Integration/Chaos |
 | AC-102 | NFR-002 | Unsigned artifact blocked, unauthorized action denied, invalid cert reconnect denied, no plaintext secrets | Integration/Security |
 | AC-103 | NFR-003 | Package-step telemetry and required workload correlation attributes are queryable in Grafana/Loki | Integration/Observability |
 | AC-104 | NFR-004 | Runtime actions available through REST/CLI workload surfaces without script dependency | Integration/Manual |
 | AC-105 | NFR-005 | Orchestrator executable runs on clean Windows host with API and UI available | Integration/Manual |
+| AC-106 | FR-009 | Agent executable provides local embedded UI showing node/workload state and permitted guided update actions with auditable outcomes | Integration/Manual |
 
 ---
 
@@ -490,7 +492,7 @@ Required test layers:
 - integration: workload API/persistence/runtime channel contracts,
 - e2e: operator-critical submit-monitor-cancel/rollback flows,
 - fault-injection: checksum mismatch, disconnect/reconnect, retry exhaustion, lease stale paths,
-- compatibility: `/api/jobs` deprecation behavior.
+- compatibility: legacy migration behavior is documented and remains non-runtime.
 
 Evidence policy:
 
@@ -533,6 +535,7 @@ On-prem/air-gap realism requirements:
 | FR-006 | ADR-013 | snapshot/migration/restore integration suite |
 | FR-007 | ADR-007, ADR-012 | deprecation contract integration checks |
 | FR-008 | ADR-014 | artifact ingest schema validation suite |
+| FR-009 | ADR-009 | agent embedded local UI workflow integration/manual suite |
 | NFR-001 | ADR-008 | lease stale + chaos suite |
 | NFR-002 | ADR-006, ADR-012 | security integration + negative tests |
 | NFR-003 | ADR-004 | observability query contract integration suite |
@@ -545,7 +548,7 @@ On-prem/air-gap realism requirements:
 
 PoC Phase 1 is complete only when all conditions are true:
 
-1. `AC-001..AC-009` and `AC-101..AC-105` each have linked evidence.
+1. `AC-001..AC-009`, `AC-101..AC-106` each have linked evidence.
 2. Security baseline controls are proven with negative tests.
 3. Contract consistency across PRD, tracker, and storyboard is verified.
 4. Packaging and deployment policy constraints are proven in CI evidence.

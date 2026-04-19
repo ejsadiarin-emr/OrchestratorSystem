@@ -1,0 +1,286 @@
+export type ManifestChannel = 'stable' | 'canary' | 'test'
+
+export type ConfidenceTag = 'declared' | 'derived' | 'verified'
+
+export interface OriginMetadata {
+  sourceUrl: string
+  publisher: string
+  packageFamily: string
+  collectedAt: string
+  sourceConfidence: ConfidenceTag
+  publisherConfidence: ConfidenceTag
+}
+
+export interface ArtifactManifest {
+  name: string
+  version: string
+  channel: ManifestChannel
+  installType: 'msi' | 'exe' | 'zip'
+  installArgs: string
+  digestSha256: string
+  signingIdentity: string
+  originMetadata: OriginMetadata
+}
+
+export interface ArtifactUploadRequest {
+  fileName: string
+  fileSizeBytes: number
+  manifest: ArtifactManifest
+  detachedSignature?: string
+}
+
+export type IngestStepStatus = 'pending' | 'running' | 'completed'
+
+export interface IngestStep {
+  id: string
+  label: string
+  status: IngestStepStatus
+}
+
+export interface ArtifactRecord {
+  id: string
+  fileName: string
+  createdAt: string
+  manifest: ArtifactManifest
+  detachedSignaturePresent: boolean
+}
+
+export interface ArtifactIngestResult {
+  artifact: ArtifactRecord
+  steps: IngestStep[]
+}
+
+export interface EnrollmentToken {
+  token: string
+  issuedAt: string
+  expiresAt: string
+  requestedBy: string
+  orchestratorUrl: string
+  singleUse: true
+  used: boolean
+}
+
+export interface IssueEnrollmentTokenRequest {
+  requestedBy: string
+  orchestratorUrl: string
+  ttlMinutes: number
+}
+
+export type NodeStatus = 'online' | 'offline' | 'installing' | 'enrolling' | 'unknown'
+
+export interface Node {
+  id: string
+  hostname: string
+  ipAddress: string
+  status: NodeStatus
+  description: string
+  osVersion: string
+  agentVersion: string
+  firstConnectedAt?: string
+  lastSeenAt: string
+}
+
+export type WorkloadRevisionState = 'draft' | 'published'
+
+export type WorkloadRunMode = 'install' | 'update' | 'rollback' | 'cancel'
+
+export type WorkloadRunStatus = 'pending' | 'assigned' | 'running' | 'completed' | 'failed' | 'cancelled'
+
+export interface WorkloadPackageStep {
+  packageId: string
+  packageName: string
+  packageVersion: string
+  packageIndex: number
+  stepId: string
+}
+
+export interface WorkloadRevision {
+  id: string
+  workloadId: string
+  revision: string
+  state: WorkloadRevisionState
+  createdAt: string
+  publishedAt?: string
+  packageSteps: WorkloadPackageStep[]
+}
+
+export interface WorkloadDefinition {
+  id: string
+  name: string
+  description: string
+  createdAt: string
+  latestRevision?: WorkloadRevision
+}
+
+export interface WorkloadRunTimelineItem {
+  sequence: number
+  packageId: string
+  packageIndex: number
+  stepId: string
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  messageType: 'AssignRun' | 'AckClaim' | 'LeaseHeartbeat' | 'StepStatus' | 'Complete' | 'Fail' | 'LeaseClose'
+  at: string
+  detail: string
+  nodeId: string
+}
+
+export interface WorkloadRunDiagnostics {
+  reasonCode?: string
+  lastMessage?: string
+  replacementHint?: string
+}
+
+export interface WorkloadRun {
+  id: string
+  workloadId: string
+  workloadName: string
+  workloadRevision: string
+  mode: WorkloadRunMode
+  targetNodeIds: string[]
+  targetNodeHostnames: string[]
+  status: WorkloadRunStatus
+  createdAt: string
+  startedAt?: string
+  completedAt?: string
+  diagnostics?: WorkloadRunDiagnostics
+  timeline: WorkloadRunTimelineItem[]
+}
+
+export interface NodeWorkloadState {
+  nodeId: string
+  workloadId: string
+  workloadRevision: string
+  runId: string
+  status: WorkloadRunStatus
+  updatedAt: string
+}
+
+export interface DashboardSummary {
+  totalNodes: number
+  connectedNodes: number
+  activeWorkloadRuns: number
+  failedWorkloadRuns: number
+  workloadDefinitions: number
+}
+
+export interface AuditEvent {
+  id: string
+  at: string
+  title: string
+  detail: string
+  type: 'ingest' | 'enrollment' | 'workload-run' | 'system'
+}
+
+export type NodeHealth = 'online' | 'warning' | 'offline'
+
+export type NodeRunState =
+  | 'idle'
+  | 'install'
+  | 'update'
+  | 'rollback'
+  | 'cancel'
+  | 'pending-approval'
+  | 'failed'
+  | 'success'
+
+export type RiskLevel = 'low' | 'med' | 'high'
+
+export interface DashboardKpiSummary {
+  fleetOnline: number
+  fleetOffline: number
+  activeRuns24h: number
+  failedRuns24h: number
+  pendingApprovals: number
+  controlPlaneLatencyP95Ms: number
+}
+
+export interface DashboardNodeRow {
+  nodeId: string
+  hostname: string
+  health: NodeHealth
+  assignedWorkload: string
+  workloadRevision: string
+  runState: NodeRunState
+  lastCheckInAge: string
+  riskLevel: RiskLevel
+  reasonCode?: string
+}
+
+export interface ImportantEvent {
+  id: string
+  severity: 'critical' | 'high' | 'medium' | 'info'
+  title: string
+  detail: string
+  ageLabel: string
+  nodeId?: string
+  runId?: string
+}
+
+export interface MiniLogLine {
+  id: string
+  at: string
+  message: string
+  level: 'info' | 'warn' | 'error'
+}
+
+export interface OrchestratorHomeData {
+  kpis: DashboardKpiSummary
+  nodes: DashboardNodeRow[]
+  events: ImportantEvent[]
+  selectedNodeId: string
+  logsByNodeId: Record<string, MiniLogLine[]>
+}
+
+export interface AgentLocalSummary {
+  nodeId: string
+  hostname: string
+  health: NodeHealth
+  runState: NodeRunState
+  currentWorkload: string
+  targetRevision: string
+  installedRevision: string
+  pendingApproval: boolean
+  riskLevel: RiskLevel
+}
+
+export interface CreateWorkloadDefinitionRequest {
+  name: string
+  description: string
+}
+
+export interface CreateWorkloadRevisionRequest {
+  workloadId: string
+  revision: string
+  packageSteps: WorkloadPackageStep[]
+}
+
+export interface CreateWorkloadRunRequest {
+  workloadId: string
+  workloadRevision: string
+  mode: WorkloadRunMode
+  targetNodeIds: string[]
+}
+
+export interface CreateNodeRequest {
+  hostname: string
+  ipAddress: string
+  description: string
+}
+
+export interface CreatePackageRequest {
+  name: string
+  version: string
+  sourcePath: string
+  installType: string
+  installArgs: string
+}
+
+export interface Package {
+  id: string
+  name: string
+  version: string
+  sourcePath: string
+  installType: string
+  installArgs: string
+  createdAt: string
+}

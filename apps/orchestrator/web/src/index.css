@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+:root {
+  --bg-canvas: radial-gradient(circle at 0% 0%, #eef4ff 0, #f8fafc 42%, #f1f5f9 100%);
+  --surface: #ffffff;
+  --surface-glass: rgba(255, 255, 255, 0.84);
+  --surface-border: #dbe4f0;
+  --surface-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  --accent: #0f766e;
+  --accent-strong: #115e59;
+  --text-strong: #0f172a;
+  --text-soft: #475569;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg-canvas);
+  color: var(--text-strong);
+}

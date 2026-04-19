@@ -55,8 +55,8 @@ appsettings.*.json
 secrets.json
 
 # Orchestrator runtime SQLite artifacts
-src/DeploymentPoC.Orchestrator/data/
-src/DeploymentPoC.Orchestrator/data/**/*.db*
+apps/orchestrator/backend/data/
+apps/orchestrator/backend/data/**/*.db*
 
 # Publish outputs
 publish/

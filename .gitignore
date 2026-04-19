@@ -71,3 +71,16 @@ publish/
 
 node_modules
 dist
+
+# Build outputs
+apps/orchestrator/backend/wwwroot/
+.artifacts/
+.superpowers/
+
+# Local data
+data/
+
+# Temporary session files
+session-*.md
+20260*.md
+retain.md

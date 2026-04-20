@@ -5,8 +5,8 @@ import { buildWorkloadRows } from './workloadRows'
 function makeHomeData(nodes: OrchestratorHomeData['nodes']): OrchestratorHomeData {
   return {
     kpis: {
-      fleetOnline: 0,
-      fleetOffline: 0,
+      nodesOnline: 0,
+      nodesOffline: 0,
       artifactsStored: 0,
       workloadDefinitions: 0,
       runningWorkloads: 0,
@@ -33,10 +33,9 @@ describe('buildWorkloadRows', () => {
         nodeId: 'node-a',
         hostname: 'a',
         health: 'online',
-        workloads: [
-          { name: 'Factory Base Install', revision: '1.0.0', runState: 'update' },
-          { name: 'Observer Stack', revision: '0.9.0', runState: 'idle' },
-        ],
+        assignedWorkload: 'Factory Base Install',
+        workloadRevision: '1.0.0',
+        runState: 'update',
         lastCheckInAge: '10s',
         riskLevel: 'low',
         revisionUpdateAvailable: true,
@@ -46,12 +45,26 @@ describe('buildWorkloadRows', () => {
         nodeId: 'node-b',
         hostname: 'b',
         health: 'warning',
-        workloads: [{ name: 'Factory Base Install', revision: '1.1.0', runState: 'pending-approval' }],
+        assignedWorkload: 'Factory Base Install',
+        workloadRevision: '1.1.0',
+        runState: 'pending-approval',
         lastCheckInAge: '15s',
         riskLevel: 'med',
         revisionUpdateAvailable: false,
         packageUpdatesAvailable: true,
         packageUpdateCount: 0,
+      },
+      {
+        nodeId: 'node-c',
+        hostname: 'c',
+        health: 'online',
+        assignedWorkload: 'Observer Stack',
+        workloadRevision: '0.9.0',
+        runState: 'idle',
+        lastCheckInAge: '12s',
+        riskLevel: 'low',
+        revisionUpdateAvailable: true,
+        packageUpdatesAvailable: true,
       },
     ])
 
@@ -87,10 +100,9 @@ describe('buildWorkloadRows', () => {
         nodeId: 'node-1',
         hostname: 'n1',
         health: 'online',
-        workloads: [
-          { name: 'Zulu', revision: '1', runState: 'idle' },
-          { name: 'Alpha', revision: '1', runState: 'idle' },
-        ],
+        assignedWorkload: 'Zulu',
+        workloadRevision: '1',
+        runState: 'idle',
         lastCheckInAge: '1s',
         riskLevel: 'low',
         revisionUpdateAvailable: false,
@@ -101,7 +113,9 @@ describe('buildWorkloadRows', () => {
         nodeId: 'node-2',
         hostname: 'n2',
         health: 'online',
-        workloads: [{ name: 'Bravo', revision: '1', runState: 'idle' }],
+        assignedWorkload: 'Bravo',
+        workloadRevision: '1',
+        runState: 'idle',
         lastCheckInAge: '1s',
         riskLevel: 'low',
         revisionUpdateAvailable: false,
@@ -112,7 +126,9 @@ describe('buildWorkloadRows', () => {
         nodeId: 'node-3',
         hostname: 'n3',
         health: 'online',
-        workloads: [{ name: 'Alpha', revision: '1', runState: 'idle' }],
+        assignedWorkload: 'Alpha',
+        workloadRevision: '1',
+        runState: 'idle',
         lastCheckInAge: '1s',
         riskLevel: 'low',
         revisionUpdateAvailable: false,
@@ -121,6 +137,6 @@ describe('buildWorkloadRows', () => {
     ])
 
     const rows = buildWorkloadRows(data)
-    expect(rows.map(row => row.name)).toEqual(['Bravo', 'Alpha', 'Zulu'])
+    expect(rows.map(row => row.name)).toEqual(['Bravo', 'Zulu', 'Alpha'])
   })
 })

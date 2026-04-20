@@ -4,13 +4,13 @@ import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 
 const pageTitles: Record<string, string> = {
-  '/': 'Orchestrator Home',
+  '/': 'Node Operations Overview',
   '/workloads': 'Workload Definitions',
   '/workload-runs': 'Workload Runs',
   '/nodes': 'Node Enrollment',
-  '/packages': 'Legacy Packages',
+  '/packages': 'Artifact Packages',
   '/agent-local': 'Agent Local Console',
-  '/install': 'Artifact Ingestion',
+  '/install': 'Artifact Store Console',
 }
 
 interface LayoutProps {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../components/ui/sheet'
+import { Modal, ModalContent, ModalDescription, ModalHeader, ModalTitle } from '../components/ui/modal'
 import { getOrchestratorHomeData } from '../services/api'
 import type { DashboardNodeRow, OrchestratorHomeData } from '../types'
 import { InfoHint } from './dashboard/InfoHint'
@@ -108,7 +108,11 @@ export default function Dashboard() {
     if (!selectedNode) {
       return null
     }
-    return selectedNode.workloads[0] ?? null
+    return {
+      name: selectedNode.assignedWorkload,
+      revision: selectedNode.workloadRevision,
+      runState: selectedNode.runState,
+    }
   }, [selectedNode])
 
   const workloadRows = useMemo<WorkloadRow[]>(() => buildWorkloadRows(data), [data])
@@ -151,16 +155,15 @@ export default function Dashboard() {
 
     return data.nodes
       .map(node => {
-        const workload = node.workloads.find(item => item.name === drawerState.workloadName)
-        if (!workload) {
+        if (node.assignedWorkload !== drawerState.workloadName) {
           return null
         }
 
         return {
           nodeId: node.nodeId,
           health: node.health,
-          revision: workload.revision,
-          runState: workload.runState,
+          revision: node.workloadRevision,
+          runState: node.runState,
           revisionUpdateAvailable: node.revisionUpdateAvailable,
           packageUpdatesAvailable: node.packageUpdatesAvailable,
           packageUpdateCount: node.packageUpdateCount ?? 0,
@@ -202,9 +205,9 @@ export default function Dashboard() {
     <div className="space-y-6">
       <header className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-strong)]">Orchestrator Home</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-strong)]">Node Operations Overview</h1>
           <p className="mt-2 text-sm text-[var(--text-soft)]">
-            Workload-first triage surface for fleet health, run actions, and node-level evidence.
+            Workload-first triage surface for node health, run actions, and node-level evidence.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-[var(--text-soft)]">
             <span>Auto-refresh: every 15s</span>
@@ -228,15 +231,15 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
         <KpiCard
-          label="Fleet Online"
-          value={`${data.kpis.fleetOnline}`}
-          detail={`${data.kpis.fleetOnline + data.kpis.fleetOffline} enrolled nodes`}
+          label="Nodes Online"
+          value={`${data.kpis.nodesOnline}`}
+          detail={`${data.kpis.nodesOnline + data.kpis.nodesOffline} enrolled nodes`}
         />
-        <KpiCard label="Fleet Offline" value={`${data.kpis.fleetOffline}`} detail="Node availability incidents" />
+        <KpiCard label="Nodes Offline" value={`${data.kpis.nodesOffline}`} detail="Node availability incidents" />
         <KpiCard
           label="Workload Definitions"
           value={`${data.kpis.workloadDefinitions}`}
-          detail={`${workloadRows.length} active on fleet`}
+          detail={`${workloadRows.length} active on nodes`}
         />
         <KpiCard label="Running Workloads" value={`${data.kpis.runningWorkloads}`} detail={`${data.kpis.activeRuns24h} runs / 24h`} />
         <KpiCard
@@ -296,15 +299,11 @@ export default function Dashboard() {
                         </RowTrigger>
                       </td>
                       <td className="px-3 py-2 text-[var(--text-soft)]">{node.health}</td>
-                      <td className="px-3 py-2 text-[var(--text-soft)]">{node.workloads.length}</td>
+                      <td className="px-3 py-2 text-[var(--text-soft)]">{node.assignedWorkload ? 1 : 0}</td>
                       <td className="px-3 py-2 text-[var(--text-soft)]">
-                        <div className="space-y-1">
-                          {node.workloads.map(workload => (
-                            <p key={`${node.nodeId}-${workload.name}-${workload.revision}`} className="truncate">
-                              {workload.name} ({workload.revision})
-                            </p>
-                          ))}
-                        </div>
+                        <p className="truncate">
+                          {node.assignedWorkload ? `${node.assignedWorkload} (${node.workloadRevision})` : '-'}
+                        </p>
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex flex-col items-start gap-1">
@@ -342,7 +341,7 @@ export default function Dashboard() {
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-wide text-[var(--text-soft)]">
                     <th scope="col" className="px-3 py-2">Workload</th>
-                    <th scope="col" className="px-3 py-2">Revisions In Fleet</th>
+                    <th scope="col" className="px-3 py-2">Version</th>
                     <th scope="col" className="px-3 py-2">Nodes Assigned</th>
                     <th scope="col" className="px-3 py-2">
                       <div className="flex items-center gap-1">
@@ -400,7 +399,7 @@ export default function Dashboard() {
               <div className="mt-3 space-y-3 text-sm">
                 <p className="font-medium text-[var(--text-strong)]">Selected Node: {selectedNode.nodeId}</p>
                 <p className="text-[var(--text-soft)]">
-                  Workloads: {selectedNode.workloads.map(workload => `${workload.name} (${workload.revision})`).join(', ')}
+                  Workload: {selectedNode.assignedWorkload} ({selectedNode.workloadRevision})
                 </p>
                 <p className="text-[var(--text-soft)]">
                   Primary Run State: {selectedNodePrimaryWorkload ? selectedNodePrimaryWorkload.runState : 'n/a'}
@@ -453,7 +452,7 @@ export default function Dashboard() {
         </section>
       </div>
 
-      <Sheet
+      <Modal
         open={drawerState !== null}
         onOpenChange={open => {
           if (!open) {
@@ -461,19 +460,19 @@ export default function Dashboard() {
           }
         }}
       >
-        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
+        <ModalContent className="w-[min(96vw,64rem)] max-h-[90vh] overflow-y-auto bg-[var(--surface)] p-0">
           {drawerState?.kind === 'node' && (
             <>
-              <SheetHeader>
-                <SheetTitle>Node details</SheetTitle>
+              <ModalHeader>
+                <ModalTitle>Node details</ModalTitle>
                 {!drawerNode ? (
-                  <SheetDescription>Selected node is no longer available. Close drawer and retry.</SheetDescription>
+                  <ModalDescription>Selected node is no longer available. Close popup and retry.</ModalDescription>
                 ) : (
-                  <SheetDescription>
+                  <ModalDescription>
                     {drawerNode.nodeId} ({drawerNode.hostname})
-                  </SheetDescription>
+                  </ModalDescription>
                 )}
-              </SheetHeader>
+              </ModalHeader>
               {drawerNode && (
                 <div className="flex flex-wrap gap-2 px-4 pb-2 pt-1">
                   <StatusChip label={`Health: ${drawerNode.health}`} tone={drawerNode.health === 'offline' ? 'danger' : 'neutral'} />
@@ -491,13 +490,9 @@ export default function Dashboard() {
                 <div className="space-y-4 px-4 pb-4">
                   <section className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm">
                     <p className="font-medium text-[var(--text-strong)]">Workload signals</p>
-                    <ul className="mt-2 space-y-1 text-[var(--text-soft)]">
-                      {drawerNode.workloads.map(workload => (
-                        <li key={`${drawerNode.nodeId}-${workload.name}-${workload.revision}`}>
-                          {workload.name} | rev {workload.revision} | run-state {workload.runState}
-                        </li>
-                      ))}
-                    </ul>
+                    <p className="mt-2 text-[var(--text-soft)]">
+                      {drawerNode.assignedWorkload} | rev {drawerNode.workloadRevision} | run-state {drawerNode.runState}
+                    </p>
                   </section>
 
                   <section className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm text-[var(--text-soft)]">
@@ -536,14 +531,20 @@ export default function Dashboard() {
                     {nodeDrawerLogs.length === 0 ? (
                       <p className="mt-2 text-[var(--text-soft)]">No actionable lines for this node context.</p>
                     ) : (
-                      <ul className="mt-2 space-y-2">
+                      <ul className="mt-2 space-y-2 font-mono text-xs">
                         {nodeDrawerLogs.map(line => (
                           <li
                             key={line.id}
-                            className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
+                            className={`rounded-lg border px-3 py-2 ${
+                              line.level === 'error'
+                                ? 'border-red-400/40 bg-[#1f0f12] text-red-100'
+                                : line.level === 'warn'
+                                ? 'border-amber-400/40 bg-[#1f1a0f] text-amber-100'
+                                : 'border-slate-500/30 bg-[#111827] text-slate-100'
+                            }`}
                           >
-                            <p className="font-mono text-xs text-[var(--text-soft)]">{line.at}</p>
-                            <p className="mt-1 text-[var(--text-strong)]">{line.message}</p>
+                            <p className="opacity-80">[{line.at}] {line.level.toUpperCase()}</p>
+                            <p className="mt-1">{line.message}</p>
                           </li>
                         ))}
                       </ul>
@@ -566,14 +567,14 @@ export default function Dashboard() {
 
           {drawerState?.kind === 'workload' && (
             <>
-              <SheetHeader>
-                <SheetTitle>Workload details</SheetTitle>
+              <ModalHeader>
+                <ModalTitle>Workload details</ModalTitle>
                 {!drawerWorkload ? (
-                  <SheetDescription>Selected workload is no longer available. Close drawer and retry.</SheetDescription>
+                  <ModalDescription>Selected workload is no longer available. Close popup and retry.</ModalDescription>
                 ) : (
-                  <SheetDescription>{drawerWorkload.name}</SheetDescription>
+                  <ModalDescription>{drawerWorkload.name}</ModalDescription>
                 )}
-              </SheetHeader>
+              </ModalHeader>
               {drawerWorkload && (
                 <div className="flex flex-wrap gap-2 px-4 pb-2 pt-1">
                   <StatusChip
@@ -596,7 +597,7 @@ export default function Dashboard() {
                 <div className="space-y-4 px-4 pb-4">
                   <section className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm text-[var(--text-soft)]">
                     <p>
-                      Revisions in fleet:{' '}
+                      Version:{' '}
                       <span className="font-medium text-[var(--text-strong)]">{drawerWorkload.revisionsLabel}</span>
                     </p>
                     <p className="mt-1">
@@ -678,8 +679,8 @@ export default function Dashboard() {
               )}
             </>
           )}
-        </SheetContent>
-      </Sheet>
+        </ModalContent>
+      </Modal>
     </div>
   )
 }

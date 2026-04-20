@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   cancelWorkloadRun,
   createWorkloadRun,
@@ -37,7 +37,7 @@ export default function WorkloadRuns() {
   const [submitting, setSubmitting] = useState(false)
   const unsubscribers = useRef<Map<string, () => void>>(new Map())
 
-  const refresh = async (status: WorkloadRunStatus | 'all' = filter) => {
+  const refresh = useCallback(async (status: WorkloadRunStatus | 'all' = filter) => {
     const [runData, nodeData, workloadData] = await Promise.all([
       listWorkloadRuns(status),
       listNodes(),
@@ -59,22 +59,25 @@ export default function WorkloadRuns() {
     if (form.targetNodeIds.length === 0 && nodeData[0]) {
       setForm(current => ({ ...current, targetNodeIds: [nodeData[0].id] }))
     }
-  }
+  }, [filter, form.targetNodeIds.length, form.workloadId])
 
   useEffect(() => {
     refresh()
       .catch(() => setError('Failed to load workload runs, workloads, or nodes.'))
       .finally(() => setLoading(false))
 
+    const subscriptions = unsubscribers.current
+
     return () => {
-      Array.from(unsubscribers.current.values()).forEach(unsubscribe => unsubscribe())
-      unsubscribers.current.clear()
+      const activeUnsubscribers = Array.from(subscriptions.values())
+      activeUnsubscribers.forEach(unsubscribe => unsubscribe())
+      subscriptions.clear()
     }
-  }, [])
+  }, [refresh])
 
   useEffect(() => {
     refresh(filter).catch(() => setError('Failed to refresh workload runs.'))
-  }, [filter])
+  }, [filter, refresh])
 
   useEffect(() => {
     const active = runs.filter(run => run.status === 'assigned' || run.status === 'running' || run.status === 'pending')
@@ -148,7 +151,11 @@ export default function WorkloadRuns() {
         </p>
       </header>
 
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      {error && (
+        <div className="rounded-lg border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-4 py-3 text-sm text-[var(--status-danger-text)]">
+          {error}
+        </div>
+      )}
 
       <section className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
         <h2 className="text-lg font-semibold text-[var(--text-strong)]">Create Workload Run</h2>
@@ -242,7 +249,7 @@ export default function WorkloadRuns() {
             className={`rounded-full px-3 py-1 text-sm ${
               filter === value
                 ? 'bg-[var(--accent)] text-white'
-                : 'bg-white text-[var(--text-soft)] ring-1 ring-[var(--surface-border)] hover:bg-slate-50'
+                : 'bg-[var(--surface)] text-[var(--text-soft)] ring-1 ring-[var(--surface-border)] hover:bg-[var(--surface-subtle)]'
             }`}
           >
             {value}
@@ -268,7 +275,7 @@ export default function WorkloadRuns() {
               </thead>
               <tbody className="divide-y divide-[var(--surface-border)] text-sm">
                 {runs.map(run => (
-                  <tr key={run.id} className="cursor-pointer hover:bg-slate-50" onClick={() => openRunDetails(run)}>
+                  <tr key={run.id} className="cursor-pointer hover:bg-[var(--surface-subtle)]" onClick={() => openRunDetails(run)}>
                     <td className="px-4 py-3 font-medium text-[var(--text-strong)]">{run.workloadName}</td>
                     <td className="px-4 py-3 text-[var(--text-soft)]">{run.mode}</td>
                     <td className="px-4 py-3 text-[var(--text-soft)]">{run.workloadRevision}</td>
@@ -296,8 +303,8 @@ export default function WorkloadRuns() {
       </section>
 
       {selectedRun && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
-          <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
             <h3 className="text-xl font-semibold text-[var(--text-strong)]">{selectedRun.id} diagnostics</h3>
             <p className="mt-1 text-sm text-[var(--text-soft)]">
               {selectedRun.workloadName} revision {selectedRun.workloadRevision} on {selectedRun.targetNodeHostnames.join(', ')}
@@ -315,7 +322,7 @@ export default function WorkloadRuns() {
                 {selectedRun.diagnostics?.reasonCode ?? 'n/a'}
               </div>
               {selectedRun.diagnostics?.lastMessage && (
-                <div className="col-span-2 rounded-lg border border-[var(--surface-border)] bg-slate-50 px-3 py-2 text-[var(--text-soft)]">
+                <div className="col-span-2 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] px-3 py-2 text-[var(--text-soft)]">
                   {selectedRun.diagnostics.lastMessage}
                 </div>
               )}
@@ -349,7 +356,7 @@ export default function WorkloadRuns() {
 
             <button
               onClick={() => setSelectedRun(null)}
-              className="mt-6 w-full rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-200"
+              className="mt-6 w-full rounded-lg bg-[var(--surface-muted)] px-4 py-2 text-sm font-medium text-[var(--text-soft)] hover:bg-[var(--surface-border)]"
             >
               Close
             </button>

@@ -4,13 +4,13 @@ import Sidebar from './Sidebar'
 import Topbar from './Topbar'
 
 const pageTitles: Record<string, string> = {
-  '/': 'Overview',
-  '/workloads': 'Pipelines',
-  '/workload-runs': 'Logs',
-  '/nodes': 'Workers',
-  '/packages': 'Packages',
-  '/agent-local': 'Agent',
-  '/install': 'Settings',
+  '/': 'Orchestrator Home',
+  '/workloads': 'Workload Definitions',
+  '/workload-runs': 'Workload Runs',
+  '/nodes': 'Node Enrollment',
+  '/packages': 'Legacy Packages',
+  '/agent-local': 'Agent Local Console',
+  '/install': 'Artifact Ingestion',
 }
 
 interface LayoutProps {
@@ -22,11 +22,11 @@ export default function Layout({ children }: LayoutProps) {
   const title = pageTitles[location.pathname] || 'Orchestrator'
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="min-h-screen bg-[var(--bg-canvas)] text-[var(--text-strong)] lg:flex">
       <Sidebar />
-      <div className="flex-1 flex flex-col">
+      <div className="flex min-h-screen flex-1 flex-col">
         <Topbar title={title} />
-        <main className="flex-1 p-6">{children}</main>
+        <main className="flex-1 px-4 py-6 lg:px-6">{children}</main>
       </div>
     </div>
   )

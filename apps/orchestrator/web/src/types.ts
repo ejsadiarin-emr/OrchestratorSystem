@@ -188,6 +188,8 @@ export type RiskLevel = 'low' | 'med' | 'high'
 export interface DashboardKpiSummary {
   fleetOnline: number
   fleetOffline: number
+  workloadDefinitions: number
+  runningWorkloads: number
   activeRuns24h: number
   failedRuns24h: number
   pendingApprovals: number
@@ -203,6 +205,9 @@ export interface DashboardNodeRow {
   runState: NodeRunState
   lastCheckInAge: string
   riskLevel: RiskLevel
+  revisionUpdateAvailable: boolean
+  packageUpdatesAvailable: boolean
+  packageUpdateCount?: number
   reasonCode?: string
 }
 

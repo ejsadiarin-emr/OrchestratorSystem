@@ -121,7 +121,9 @@ export default function AgentLocal() {
   }
 
   if (!summary) {
-    return <div className="py-8 text-center text-red-700">Failed to load agent local console data.</div>
+    return (
+      <div className="py-8 text-center text-[var(--status-danger-text)]">Failed to load agent local console data.</div>
+    )
   }
 
   return (
@@ -133,7 +135,11 @@ export default function AgentLocal() {
         </p>
       </header>
 
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+      {error && (
+        <div className="rounded-lg border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-4 py-3 text-sm text-[var(--status-danger-text)]">
+          {error}
+        </div>
+      )}
 
       <section className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-5 shadow-[var(--surface-shadow)]">
         <h2 className="text-base font-semibold text-[var(--text-strong)]">Node and Run Status</h2>
@@ -160,7 +166,7 @@ export default function AgentLocal() {
             type="button"
             onClick={() => handleRunPrecheck()}
             disabled={runningPrecheck}
-            className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] disabled:bg-slate-400"
+            className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] disabled:bg-[var(--surface-border)]"
           >
             {runningPrecheck ? 'Running Pre-check...' : 'Run Pre-check'}
           </button>
@@ -169,7 +175,7 @@ export default function AgentLocal() {
             type="button"
             onClick={() => handleStartGuidedUpdate()}
             disabled={!confirmUpdate || startingUpdate}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:bg-slate-400"
+            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:bg-[var(--surface-border)]"
           >
             {startingUpdate ? 'Starting Guided Update...' : 'Start Guided Update'}
           </button>
@@ -189,8 +195,10 @@ export default function AgentLocal() {
           <p
             role={precheckMessage.kind === 'success' ? 'status' : 'alert'}
             aria-live="polite"
-            className={`mt-3 text-sm ${
-              precheckMessage.kind === 'success' ? 'text-emerald-700' : 'text-red-700'
+            className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
+              precheckMessage.kind === 'success'
+                ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-text)]'
+                : 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] text-[var(--status-danger-text)]'
             }`}
           >
             {precheckMessage.text}
@@ -205,7 +213,7 @@ export default function AgentLocal() {
         ) : (
           <ul className="mt-3 space-y-2 text-sm">
             {logs.map(line => (
-              <li key={line.id} className="rounded-lg border border-[var(--surface-border)] bg-slate-50 px-3 py-2">
+              <li key={line.id} className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] px-3 py-2">
                 <p className="font-mono text-xs text-[var(--text-soft)]">{line.at}</p>
                 <p className="mt-1 text-[var(--text-strong)]">{line.message}</p>
               </li>
@@ -223,7 +231,7 @@ export default function AgentLocal() {
           type="button"
           onClick={() => handleExportDiagnostics()}
           disabled={exportingDiagnostics}
-          className="mt-4 rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:bg-slate-400"
+          className="mt-4 rounded-lg bg-[var(--surface-muted)] px-4 py-2 text-sm font-medium text-[var(--text-strong)] hover:bg-[var(--surface-border)] disabled:bg-[var(--surface-border)]"
         >
           {exportingDiagnostics ? 'Exporting Diagnostics...' : 'Export Diagnostics'}
         </button>
@@ -232,7 +240,11 @@ export default function AgentLocal() {
           <p
             role={diagnosticsNotice.kind === 'success' ? 'status' : 'alert'}
             aria-live="polite"
-            className={`mt-3 text-sm ${diagnosticsNotice.kind === 'success' ? 'text-emerald-700' : 'text-red-700'}`}
+            className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
+              diagnosticsNotice.kind === 'success'
+                ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-text)]'
+                : 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] text-[var(--status-danger-text)]'
+            }`}
           >
             {diagnosticsNotice.text}
           </p>
@@ -244,7 +256,7 @@ export default function AgentLocal() {
 
 function StatusRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-[var(--surface-border)] bg-slate-50 px-3 py-2">
+    <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] px-3 py-2">
       <dt className="text-xs uppercase tracking-wide text-[var(--text-soft)]">{label}</dt>
       <dd className="mt-1 text-[var(--text-strong)]">{value}</dd>
     </div>

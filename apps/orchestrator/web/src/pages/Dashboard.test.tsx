@@ -13,6 +13,8 @@ describe('Dashboard orchestrator home', () => {
     )
 
     expect(await screen.findByText('Fleet Online / Offline')).toBeInTheDocument()
+    expect(screen.getByText('Workload Definitions')).toBeInTheDocument()
+    expect(screen.getByText('Running Workloads')).toBeInTheDocument()
     expect(screen.getByText('Active + Failed Runs (24h)')).toBeInTheDocument()
     expect(screen.getByText('Pending Approvals')).toBeInTheDocument()
     expect(screen.getByText('Control-plane Latency (p95)')).toBeInTheDocument()
@@ -20,6 +22,53 @@ describe('Dashboard orchestrator home', () => {
     expect(screen.getByText('Action Panel')).toBeInTheDocument()
     expect(screen.getByText('Important Events')).toBeInTheDocument()
     expect(screen.getByText('Mini Log Viewer')).toBeInTheDocument()
+  })
+
+  it('renders explicit update indicators and events severity filters', async () => {
+    render(
+      <MemoryRouter>
+        <Dashboard />
+      </MemoryRouter>,
+    )
+
+    await screen.findByText('Nodes Live Table')
+
+    expect(screen.getAllByText('Revision update').length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Package updates/).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: 'all' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'critical' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'high' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'medium' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'info' })).toBeInTheDocument()
+  })
+
+  it('filters right-rail events by severity', async () => {
+    render(
+      <MemoryRouter>
+        <Dashboard />
+      </MemoryRouter>,
+    )
+
+    await screen.findByText('Important Events')
+    expect(screen.getByText('Workload package sequencing healthy')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'critical' }))
+
+    await waitFor(() => {
+      expect(screen.queryByText('Workload package sequencing healthy')).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('Node heartbeat timeout')).toBeInTheDocument()
+  })
+
+  it('shows auto-refresh metadata in dashboard header', async () => {
+    render(
+      <MemoryRouter>
+        <Dashboard />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText(/Auto-refresh:/)).toBeInTheDocument()
+    expect(screen.getByText(/Last updated:/)).toBeInTheDocument()
   })
 
   it('updates action panel and mini log viewer when selecting a node', async () => {

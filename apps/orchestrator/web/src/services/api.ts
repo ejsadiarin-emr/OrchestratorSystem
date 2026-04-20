@@ -264,6 +264,8 @@ const auditEvents: AuditEvent[] = [
 const orchestratorKpis: DashboardKpiSummary = {
   fleetOnline: 24,
   fleetOffline: 2,
+  workloadDefinitions: 6,
+  runningWorkloads: 4,
   activeRuns24h: 14,
   failedRuns24h: 3,
   pendingApprovals: 2,
@@ -280,6 +282,9 @@ const orchestratorNodes: DashboardNodeRow[] = [
     runState: 'update',
     lastCheckInAge: '18s',
     riskLevel: 'low',
+    revisionUpdateAvailable: true,
+    packageUpdatesAvailable: true,
+    packageUpdateCount: 2,
   },
   {
     nodeId: 'node-002',
@@ -290,6 +295,8 @@ const orchestratorNodes: DashboardNodeRow[] = [
     runState: 'pending-approval',
     lastCheckInAge: '42s',
     riskLevel: 'med',
+    revisionUpdateAvailable: true,
+    packageUpdatesAvailable: false,
     reasonCode: 'approval_window_required',
   },
   {
@@ -301,6 +308,9 @@ const orchestratorNodes: DashboardNodeRow[] = [
     runState: 'failed',
     lastCheckInAge: '6m',
     riskLevel: 'high',
+    revisionUpdateAvailable: false,
+    packageUpdatesAvailable: true,
+    packageUpdateCount: 1,
     reasonCode: 'heartbeat_timeout',
   },
 ]

@@ -4,12 +4,23 @@
   --bg-canvas: radial-gradient(circle at 0% 0%, #eef4ff 0, #f8fafc 42%, #f1f5f9 100%);
   --surface: #ffffff;
   --surface-glass: rgba(255, 255, 255, 0.84);
+  --surface-subtle: #f8fafc;
+  --surface-muted: #eef2f7;
   --surface-border: #dbe4f0;
   --surface-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
   --accent: #0f766e;
   --accent-strong: #115e59;
   --text-strong: #0f172a;
   --text-soft: #475569;
+  --status-danger-bg: #fef2f2;
+  --status-danger-border: #fecaca;
+  --status-danger-text: #b91c1c;
+  --status-success-bg: #ecfdf5;
+  --status-success-border: #bbf7d0;
+  --status-success-text: #166534;
+  --status-warning-bg: #fffbeb;
+  --status-warning-border: #fde68a;
+  --status-warning-text: #92400e;
 }
 
 body {

@@ -4,38 +4,41 @@ import {
   GitBranch,
   Server,
   FileText,
+  Laptop,
   Settings,
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
 const navItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Overview' },
-  { to: '/workloads', icon: GitBranch, label: 'Pipelines' },
-  { to: '/nodes', icon: Server, label: 'Workers' },
-  { to: '/workload-runs', icon: FileText, label: 'Logs' },
-  { to: '/install', icon: Settings, label: 'Settings' },
+  { to: '/', icon: LayoutDashboard, label: 'Home' },
+  { to: '/workloads', icon: GitBranch, label: 'Workloads' },
+  { to: '/workload-runs', icon: FileText, label: 'Workload Runs' },
+  { to: '/nodes', icon: Server, label: 'Nodes' },
+  { to: '/agent-local', icon: Laptop, label: 'Agent Local' },
+  { to: '/install', icon: Settings, label: 'Install' },
 ]
 
 export default function Sidebar() {
   return (
-    <aside className="w-56 h-screen border-r border-border bg-sidebar flex flex-col">
-      <div className="p-4 border-b border-sidebar-border">
-        <h1 className="text-lg font-semibold text-sidebar-foreground">
+    <aside className="w-full border-b border-[var(--surface-border)] bg-[var(--surface-glass)] backdrop-blur lg:h-screen lg:w-64 lg:border-b-0 lg:border-r">
+      <div className="border-b border-[var(--surface-border)] px-4 py-4 lg:px-5">
+        <h1 className="text-lg font-semibold text-[var(--text-strong)]">
           Orchestrator
         </h1>
+        <p className="mt-1 text-xs text-[var(--text-soft)]">Workload-first operations console</p>
       </div>
-      <nav className="flex-1 p-2">
+      <nav className="flex gap-2 overflow-x-auto p-3 lg:flex-col lg:overflow-visible lg:p-4">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors',
+                'inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors lg:flex',
                 isActive
-                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
-                  : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'
+                  ? 'bg-[var(--accent)] text-white shadow-sm'
+                  : 'text-[var(--text-soft)] hover:bg-[var(--surface-subtle)] hover:text-[var(--text-strong)]'
               )
             }
           >

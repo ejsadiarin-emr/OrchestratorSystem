@@ -57,9 +57,48 @@ export default function Workloads() {
   }
 
   useEffect(() => {
-    refresh()
-      .catch(() => setError('Failed to load workloads and revisions.'))
-      .finally(() => setLoading(false))
+    let active = true
+
+    const loadInitialData = async () => {
+      try {
+        const [workloadData, artifactData] = await Promise.all([listWorkloads(), listArtifacts()])
+        if (!active) {
+          return
+        }
+
+        setWorkloads(workloadData)
+        setArtifacts(artifactData)
+
+        const fallbackWorkloadId = workloadData[0]?.id || ''
+        setSelectedWorkloadId(fallbackWorkloadId)
+
+        if (fallbackWorkloadId) {
+          const revisionData = await listWorkloadRevisions(fallbackWorkloadId)
+          if (!active) {
+            return
+          }
+          setRevisions(revisionData)
+          setRevisionForm(current => ({ ...current, workloadId: fallbackWorkloadId }))
+        } else {
+          setRevisions([])
+          setRevisionForm(current => ({ ...current, workloadId: '' }))
+        }
+      } catch {
+        if (active) {
+          setError('Failed to load workloads and revisions.')
+        }
+      } finally {
+        if (active) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadInitialData()
+
+    return () => {
+      active = false
+    }
   }, [])
 
   const selectedPackages = useMemo(() => {
@@ -134,8 +173,16 @@ export default function Workloads() {
         </p>
       </header>
 
-      {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
-      {message && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</div>}
+      {error && (
+        <div className="rounded-lg border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-4 py-3 text-sm text-[var(--status-danger-text)]">
+          {error}
+        </div>
+      )}
+      {message && (
+        <div className="rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-4 py-3 text-sm text-[var(--status-success-text)]">
+          {message}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <section className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
@@ -249,7 +296,7 @@ export default function Workloads() {
                   <td className="px-4 py-3 text-[var(--text-soft)]">{item.description}</td>
                   <td className="px-4 py-3 text-[var(--text-soft)]">{item.latestRevision?.revision ?? 'No revision yet'}</td>
                   <td className="px-4 py-3">
-                    <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700">
+                      <span className="rounded-full bg-[var(--surface-muted)] px-2 py-1 text-xs text-[var(--text-soft)]">
                       {item.latestRevision?.state ?? 'draft'}
                     </span>
                   </td>
@@ -275,7 +322,7 @@ export default function Workloads() {
                     <p className="text-xs text-[var(--text-soft)]">{revision.packageSteps.length} package steps</p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700">{revision.state}</span>
+                    <span className="rounded-full bg-[var(--surface-muted)] px-2 py-1 text-xs text-[var(--text-soft)]">{revision.state}</span>
                     {revision.state === 'draft' && (
                       <button
                         onClick={() => onPublishRevision(revision.id)}

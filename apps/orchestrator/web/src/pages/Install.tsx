@@ -120,43 +120,45 @@ export default function Install() {
   }
 
   return (
-    <div className="space-y-8">
-      <header>
-        <h1 className="text-2xl font-bold text-gray-800">Installer Artifact Ingestion</h1>
-        <p className="text-sm text-gray-600 mt-2">
+    <div className="space-y-6">
+      <header className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-strong)]">Installer Artifact Ingestion</h1>
+        <p className="mt-2 text-sm text-[var(--text-soft)]">
           Mocked Phase 1 flow: one multipart POST to <code>/api/artifacts</code> with required
           <code> file</code>, required <code>manifest</code>, optional <code>detachedSignature</code>.
         </p>
       </header>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        <div className="xl:col-span-2 bg-white rounded-lg shadow p-6 space-y-5">
-          <h2 className="text-lg font-semibold text-gray-800">Upload & Verify</h2>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className="space-y-5 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)] xl:col-span-2">
+          <h2 className="text-lg font-semibold text-[var(--text-strong)]">Upload & Verify</h2>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700">{error}</div>
+            <div className="rounded-lg border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] p-3 text-sm text-[var(--status-danger-text)]">
+              {error}
+            </div>
           )}
 
           {successMessage && (
-            <div className="bg-green-50 border border-green-200 rounded-md p-3 text-sm text-green-700">
+            <div className="rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] p-3 text-sm text-[var(--status-success-text)]">
               {successMessage}
             </div>
           )}
 
           <form onSubmit={handleAnalyze} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className="text-sm text-gray-700">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <label className="text-sm text-[var(--text-soft)]">
                 Installer file (multipart <code>file</code> part)
                 <input
                   type="text"
                   value={fileDraft.fileName}
                   onChange={event => setFileDraft(current => ({ ...current, fileName: event.target.value }))}
                   placeholder="EJ-Installer-1.13.0.msi"
-                  className="mt-1 w-full border border-gray-300 rounded-md px-3 py-2"
+                  className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
                   required
                 />
               </label>
-              <label className="text-sm text-gray-700">
+              <label className="text-sm text-[var(--text-soft)]">
                 File size bytes
                 <input
                   type="number"
@@ -165,44 +167,47 @@ export default function Install() {
                   onChange={event =>
                     setFileDraft(current => ({ ...current, fileSizeBytes: Number(event.target.value) || 0 }))
                   }
-                  className="mt-1 w-full border border-gray-300 rounded-md px-3 py-2"
+                  className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
                   required
                 />
               </label>
             </div>
 
-            <label className="text-sm text-gray-700 block">
+            <label className="block text-sm text-[var(--text-soft)]">
               Optional company detached signature
               <input
                 type="text"
                 value={fileDraft.detachedSignature}
                 onChange={event => setFileDraft(current => ({ ...current, detachedSignature: event.target.value }))}
                 placeholder="base64-signature"
-                className="mt-1 w-full border border-gray-300 rounded-md px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
               />
             </label>
 
-            <button type="submit" className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700">
+            <button
+              type="submit"
+              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)]"
+            >
               Analyze and Prefill Metadata
             </button>
           </form>
 
           {manifest && (
-            <form onSubmit={handleStore} className="space-y-4 border-t border-gray-200 pt-5">
-              <h3 className="font-semibold text-gray-800">Manifest (multipart JSON part)</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form onSubmit={handleStore} className="space-y-4 border-t border-[var(--surface-border)] pt-5">
+              <h3 className="font-semibold text-[var(--text-strong)]">Manifest (multipart JSON part)</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Field label="Name" value={manifest.name} onChange={value => setManifest({ ...manifest, name: value })} />
                 <Field
                   label="Version"
                   value={manifest.version}
                   onChange={value => setManifest({ ...manifest, version: value })}
                 />
-                <label className="text-sm text-gray-700">
+                <label className="text-sm text-[var(--text-soft)]">
                   Channel
                   <select
                     value={manifest.channel}
                     onChange={event => setManifest({ ...manifest, channel: event.target.value as ManifestChannel })}
-                    className="mt-1 w-full border border-gray-300 rounded-md px-3 py-2"
+                    className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
                   >
                     {channelOptions.map(option => (
                       <option value={option} key={option}>
@@ -221,43 +226,43 @@ export default function Install() {
               </div>
 
               {channelError && (
-                <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                <div className="rounded-lg border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-text)]">
                   {channelError}
                 </div>
               )}
 
-              <label className="text-sm text-gray-700 block">
+              <label className="block text-sm text-[var(--text-soft)]">
                 Install args
                 <input
                   type="text"
                   value={manifest.installArgs}
                   onChange={event => setManifest({ ...manifest, installArgs: event.target.value })}
-                  className="mt-1 w-full border border-gray-300 rounded-md px-3 py-2"
+                  className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
                 />
               </label>
 
-              <label className="text-sm text-gray-700 block">
+              <label className="block text-sm text-[var(--text-soft)]">
                 Digest SHA256
                 <input
                   type="text"
                   value={manifest.digestSha256}
                   onChange={event => setManifest({ ...manifest, digestSha256: event.target.value })}
-                  className="mt-1 w-full border border-gray-300 rounded-md px-3 py-2"
+                  className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
                 />
               </label>
 
-              <label className="text-sm text-gray-700 block">
+              <label className="block text-sm text-[var(--text-soft)]">
                 Signing identity
                 <input
                   type="text"
                   value={manifest.signingIdentity}
                   onChange={event => setManifest({ ...manifest, signingIdentity: event.target.value })}
-                  className="mt-1 w-full border border-gray-300 rounded-md px-3 py-2"
+                  className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
                 />
               </label>
 
-              <div className="rounded-md border border-gray-200 p-4 bg-gray-50 space-y-2">
-                <h4 className="font-medium text-gray-800">Origin metadata</h4>
+              <div className="space-y-2 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-4">
+                <h4 className="font-medium text-[var(--text-strong)]">Origin metadata</h4>
                 <Field
                   label="Source URL"
                   value={manifest.originMetadata.sourceUrl}
@@ -284,14 +289,14 @@ export default function Install() {
                 <button
                   type="submit"
                   disabled={Boolean(channelError) || stage === 'uploading'}
-                  className="bg-emerald-600 text-white px-4 py-2 rounded-md hover:bg-emerald-700 disabled:bg-gray-400"
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-[var(--surface-border)]"
                 >
                   {stage === 'uploading' ? 'Storing...' : 'Verify and Store Artifact'}
                 </button>
                 <button
                   type="button"
                   onClick={resetForm}
-                  className="bg-gray-200 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-300"
+                  className="rounded-lg bg-[var(--surface-muted)] px-4 py-2 text-sm font-medium text-[var(--text-soft)] hover:bg-[var(--surface-border)]"
                 >
                   Reset Draft
                 </button>
@@ -300,8 +305,8 @@ export default function Install() {
           )}
         </div>
 
-        <aside className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Ingest Timeline</h2>
+        <aside className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
+          <h2 className="mb-4 text-lg font-semibold text-[var(--text-strong)]">Ingest Timeline</h2>
           <ol className="space-y-3">
             {steps.map(step => (
               <li key={step.id} className="flex items-start gap-3">
@@ -311,12 +316,12 @@ export default function Install() {
                       ? 'bg-emerald-500'
                       : step.status === 'running'
                       ? 'bg-blue-500'
-                      : 'bg-gray-300'
+                      : 'bg-[var(--surface-border)]'
                   }`}
                 />
                 <div>
-                  <p className="text-sm font-medium text-gray-800">{step.label}</p>
-                  <p className="text-xs text-gray-500 uppercase">{step.status}</p>
+                  <p className="text-sm font-medium text-[var(--text-strong)]">{step.label}</p>
+                  <p className="text-xs uppercase text-[var(--text-soft)]">{step.status}</p>
                 </div>
               </li>
             ))}
@@ -324,36 +329,36 @@ export default function Install() {
         </aside>
       </div>
 
-      <section className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-800">Artifacts in Store</h2>
-          <p className="text-xs text-gray-500 mt-1">Immutable records keyed by manifest identity and digest.</p>
+      <section className="overflow-hidden rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] shadow-[var(--surface-shadow)]">
+        <div className="border-b border-[var(--surface-border)] px-6 py-4">
+          <h2 className="text-lg font-semibold text-[var(--text-strong)]">Artifacts in Store</h2>
+          <p className="mt-1 text-xs text-[var(--text-soft)]">Immutable records keyed by manifest identity and digest.</p>
         </div>
         {artifacts.length === 0 ? (
-          <p className="px-6 py-5 text-sm text-gray-500">No artifacts ingested yet.</p>
+          <p className="px-6 py-5 text-sm text-[var(--text-soft)]">No artifacts ingested yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-[var(--surface-border)]">
+              <thead className="bg-[var(--surface-subtle)]">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Artifact</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Channel</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Digest</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Origin metadata</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Artifact</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Channel</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Digest</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Origin metadata</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-[var(--surface-border)]">
                 {artifacts.map(artifact => (
                   <tr key={artifact.id}>
                     <td className="px-6 py-4">
-                      <p className="font-medium text-gray-800">{artifact.fileName}</p>
-                      <p className="text-xs text-gray-500">{artifact.id}</p>
+                      <p className="font-medium text-[var(--text-strong)]">{artifact.fileName}</p>
+                      <p className="text-xs text-[var(--text-soft)]">{artifact.id}</p>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{artifact.manifest.channel}</td>
-                    <td className="px-6 py-4 text-xs text-gray-600 font-mono">{artifact.manifest.digestSha256.slice(0, 18)}...</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
+                    <td className="px-6 py-4 text-sm text-[var(--text-soft)]">{artifact.manifest.channel}</td>
+                    <td className="px-6 py-4 font-mono text-xs text-[var(--text-soft)]">{artifact.manifest.digestSha256.slice(0, 18)}...</td>
+                    <td className="px-6 py-4 text-sm text-[var(--text-soft)]">
                       {artifact.manifest.originMetadata.publisher}
-                      <div className="text-xs text-gray-500">{artifact.manifest.originMetadata.sourceUrl}</div>
+                      <div className="text-xs text-[var(--text-soft)]">{artifact.manifest.originMetadata.sourceUrl}</div>
                     </td>
                   </tr>
                 ))}
@@ -368,13 +373,13 @@ export default function Install() {
 
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
-    <label className="text-sm text-gray-700 block">
+    <label className="block text-sm text-[var(--text-soft)]">
       {label}
       <input
         type="text"
         value={value}
         onChange={event => onChange(event.target.value)}
-        className="mt-1 w-full border border-gray-300 rounded-md px-3 py-2"
+        className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
       />
     </label>
   )

@@ -73,44 +73,52 @@ export default function Nodes() {
   }
 
   return (
-    <div className="space-y-8">
-      <header>
-        <h1 className="text-2xl font-bold text-gray-800">Agent Bootstrap & Enrollment</h1>
-        <p className="text-sm text-gray-600 mt-2">
+    <div className="space-y-6">
+      <header className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-strong)]">Agent Bootstrap & Enrollment</h1>
+        <p className="mt-2 text-sm text-[var(--text-soft)]">
           Enrollment tokens are issued with <code>POST /api/nodes/enroll</code>. Bootstrap script needs only
           orchestrator URL and short-lived token.
         </p>
       </header>
 
-      {error && <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-      {message && <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{message}</div>}
+      {error && (
+        <div className="rounded-lg border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-4 py-3 text-sm text-[var(--status-danger-text)]">
+          {error}
+        </div>
+      )}
+      {message && (
+        <div className="rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-4 py-3 text-sm text-[var(--status-success-text)]">
+          {message}
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <section className="bg-white rounded-lg shadow p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-800">1) Issue short-lived enrollment token</h2>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <section className="space-y-4 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
+          <h2 className="text-lg font-semibold text-[var(--text-strong)]">1) Issue short-lived enrollment token</h2>
           <form onSubmit={handleIssueToken} className="space-y-4">
-            <label className="text-sm text-gray-700 block">
+            <label className="block text-sm text-[var(--text-soft)]">
               Orchestrator URL
               <input
                 type="text"
                 value={orchestratorUrl}
                 onChange={event => setOrchestratorUrl(event.target.value)}
-                className="mt-1 w-full border border-gray-300 rounded-md px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
                 required
               />
             </label>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <label className="text-sm text-gray-700 block">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <label className="block text-sm text-[var(--text-soft)]">
                 Requested by
                 <input
                   type="text"
                   value={requestedBy}
                   onChange={event => setRequestedBy(event.target.value)}
-                  className="mt-1 w-full border border-gray-300 rounded-md px-3 py-2"
+                  className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
                   required
                 />
               </label>
-              <label className="text-sm text-gray-700 block">
+              <label className="block text-sm text-[var(--text-soft)]">
                 TTL (minutes)
                 <input
                   type="number"
@@ -118,7 +126,7 @@ export default function Nodes() {
                   max={120}
                   value={ttlMinutes}
                   onChange={event => setTtlMinutes(Number(event.target.value) || 1)}
-                  className="mt-1 w-full border border-gray-300 rounded-md px-3 py-2"
+                  className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
                   required
                 />
               </label>
@@ -126,33 +134,33 @@ export default function Nodes() {
             <button
               type="submit"
               disabled={creatingToken}
-              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:bg-gray-400"
+              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:bg-[var(--surface-border)]"
             >
               {creatingToken ? 'Issuing...' : 'Issue Token (POST)'}
             </button>
           </form>
         </section>
 
-        <section className="bg-white rounded-lg shadow p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-800">2) Bootstrap script and first connect</h2>
-          <p className="text-sm text-gray-600">
+        <section className="space-y-4 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
+          <h2 className="text-lg font-semibold text-[var(--text-strong)]">2) Bootstrap script and first connect</h2>
+          <p className="text-sm text-[var(--text-soft)]">
             Required bootstrap input is URL + token only. Hostname, IP, OS version, and agent version are
             auto-collected when the node first connects.
           </p>
-          <pre className="text-xs bg-gray-900 text-gray-100 rounded-md p-3 overflow-x-auto">
+          <pre className="overflow-x-auto rounded-lg bg-slate-950 p-3 font-mono text-xs text-slate-100">
 {`powershell -ExecutionPolicy Bypass -File .\\bootstrap-agent.ps1 \\
   -OrchestratorUrl "${orchestratorUrl}" \\
   -EnrollmentToken "${simulateToken || '<token>'}"`}
           </pre>
 
           <form onSubmit={handleFirstConnect} className="space-y-3">
-            <label className="text-sm text-gray-700 block">
+            <label className="block text-sm text-[var(--text-soft)]">
               Token to consume
               <input
                 type="text"
                 value={simulateToken}
                 onChange={event => setSimulateToken(event.target.value)}
-                className="mt-1 w-full border border-gray-300 rounded-md px-3 py-2"
+                className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
                 placeholder="enroll-0001"
                 required
               />
@@ -160,7 +168,7 @@ export default function Nodes() {
             <button
               type="submit"
               disabled={simulatingConnect}
-              className="bg-emerald-600 text-white px-4 py-2 rounded-md hover:bg-emerald-700 disabled:bg-gray-400"
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-[var(--surface-border)]"
             >
               {simulatingConnect ? 'Connecting...' : 'Simulate First Connect'}
             </button>
@@ -168,33 +176,33 @@ export default function Nodes() {
         </section>
       </div>
 
-      <section className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-800">Enrollment Tokens</h2>
+      <section className="overflow-hidden rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] shadow-[var(--surface-shadow)]">
+        <div className="border-b border-[var(--surface-border)] px-6 py-4">
+          <h2 className="text-lg font-semibold text-[var(--text-strong)]">Enrollment Tokens</h2>
         </div>
         {tokens.length === 0 ? (
-          <p className="px-6 py-5 text-sm text-gray-500">No tokens issued yet.</p>
+          <p className="px-6 py-5 text-sm text-[var(--text-soft)]">No tokens issued yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-[var(--surface-border)]">
+              <thead className="bg-[var(--surface-subtle)]">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Token</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">URL</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expires</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">State</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Token</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">URL</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Expires</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">State</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-[var(--surface-border)]">
                 {tokens.map(token => (
                   <tr key={token.token}>
-                    <td className="px-6 py-4 text-sm font-mono text-gray-700">{token.token}</td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{token.orchestratorUrl}</td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{new Date(token.expiresAt).toLocaleString()}</td>
+                    <td className="px-6 py-4 text-sm font-mono text-[var(--text-soft)]">{token.token}</td>
+                    <td className="px-6 py-4 text-sm text-[var(--text-soft)]">{token.orchestratorUrl}</td>
+                    <td className="px-6 py-4 text-sm text-[var(--text-soft)]">{new Date(token.expiresAt).toLocaleString()}</td>
                     <td className="px-6 py-4 text-sm">
                       <span
-                        className={`px-2 py-1 rounded-full text-xs ${
-                          token.used ? 'bg-gray-200 text-gray-800' : 'bg-blue-100 text-blue-800'
+                        className={`rounded-full px-2 py-1 text-xs ${
+                          token.used ? 'bg-[var(--surface-muted)] text-[var(--text-soft)]' : 'bg-[var(--status-warning-bg)] text-[var(--status-warning-text)]'
                         }`}
                       >
                         {token.used ? 'Consumed (invalidated)' : 'Issued (single-use)'}
@@ -208,34 +216,34 @@ export default function Nodes() {
         )}
       </section>
 
-      <section className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-800">Registered Nodes</h2>
+      <section className="overflow-hidden rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] shadow-[var(--surface-shadow)]">
+        <div className="border-b border-[var(--surface-border)] px-6 py-4">
+          <h2 className="text-lg font-semibold text-[var(--text-strong)]">Registered Nodes</h2>
         </div>
         {nodes.length === 0 ? (
-          <p className="px-6 py-5 text-sm text-gray-500">No nodes registered yet.</p>
+          <p className="px-6 py-5 text-sm text-[var(--text-soft)]">No nodes registered yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-[var(--surface-border)]">
+              <thead className="bg-[var(--surface-subtle)]">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Hostname</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">IP</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">First Connect</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Metadata</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Hostname</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">IP</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Status</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">First Connect</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Metadata</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-[var(--surface-border)]">
                 {nodes.map(node => (
                   <tr key={node.id}>
-                    <td className="px-6 py-4 text-sm font-medium text-gray-800">{node.hostname}</td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{node.ipAddress}</td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{node.status}</td>
-                    <td className="px-6 py-4 text-sm text-gray-700">
+                    <td className="px-6 py-4 text-sm font-medium text-[var(--text-strong)]">{node.hostname}</td>
+                    <td className="px-6 py-4 text-sm text-[var(--text-soft)]">{node.ipAddress}</td>
+                    <td className="px-6 py-4 text-sm text-[var(--text-soft)]">{node.status}</td>
+                    <td className="px-6 py-4 text-sm text-[var(--text-soft)]">
                       {node.firstConnectedAt ? new Date(node.firstConnectedAt).toLocaleString() : 'Pending'}
                     </td>
-                    <td className="px-6 py-4 text-xs text-gray-600">
+                    <td className="px-6 py-4 text-xs text-[var(--text-soft)]">
                       <div>OS: {node.osVersion}</div>
                       <div>Agent: {node.agentVersion}</div>
                       <div>Last seen: {new Date(node.lastSeenAt).toLocaleString()}</div>

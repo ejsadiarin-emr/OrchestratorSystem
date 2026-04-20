@@ -6,12 +6,15 @@ interface TopbarProps {
 
 export default function Topbar({ title }: TopbarProps) {
   return (
-    <header className="h-14 border-b border-border bg-background flex items-center justify-between px-4">
-      <h2 className="text-lg font-medium">{title}</h2>
+    <header className="flex min-h-16 items-center justify-between border-b border-[var(--surface-border)] bg-[var(--surface-glass)] px-4 backdrop-blur lg:px-6">
+      <div>
+        <h2 className="text-lg font-semibold text-[var(--text-strong)]">{title}</h2>
+        <p className="text-xs text-[var(--text-soft)]">Phase 1 workload-first operations console</p>
+      </div>
       <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">Admin</span>
-        <div className="size-8 rounded-full bg-muted flex items-center justify-center">
-          <User className="size-4 text-muted-foreground" />
+        <span className="rounded-full bg-[var(--surface-subtle)] px-3 py-1 text-xs font-medium text-[var(--text-soft)]">Admin</span>
+        <div className="flex size-8 items-center justify-center rounded-full bg-[var(--surface-subtle)]">
+          <User className="size-4 text-[var(--text-soft)]" />
         </div>
       </div>
     </header>

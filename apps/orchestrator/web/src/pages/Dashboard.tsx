@@ -1,56 +1,84 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '../components/ui/sheet'
 import { getOrchestratorHomeData } from '../services/api'
 import type { DashboardNodeRow, OrchestratorHomeData } from '../types'
+import { InfoHint } from './dashboard/InfoHint'
+import type { InfoHintKey } from './dashboard/infoHints'
+import { RowTrigger } from './dashboard/RowTrigger'
+import type { WorkloadRow } from './dashboard/models'
+import { buildWorkloadRows } from './dashboard/workloadRows'
 
 const EVENT_FILTERS = ['all', 'critical', 'high', 'medium', 'info'] as const
 type EventFilter = (typeof EVENT_FILTERS)[number]
 const AUTO_REFRESH_MS = 15_000
 
+type DrawerState = { kind: 'node'; nodeId: string } | { kind: 'workload'; workloadName: string } | null
+
 export default function Dashboard() {
   const [data, setData] = useState<OrchestratorHomeData | null>(null)
   const [selectedNodeId, setSelectedNodeId] = useState('')
+  const [drawerState, setDrawerState] = useState<DrawerState>(null)
   const [eventFilter, setEventFilter] = useState<EventFilter>('all')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const loadRequestIdRef = useRef(0)
+  const refreshRequestIdRef = useRef(0)
 
-  const refresh = useCallback(async () => {
-    setRefreshing(true)
-    try {
-      const result = await getOrchestratorHomeData()
+  const applyHomeData = useCallback(
+    (result: OrchestratorHomeData, preserveSelection: boolean) => {
       setData(result)
       setLastUpdatedAt(new Date().toISOString())
       setSelectedNodeId(current => {
-        if (current && result.nodes.some(node => node.nodeId === current)) {
+        if (preserveSelection && current && result.nodes.some(node => node.nodeId === current)) {
           return current
         }
         return result.selectedNodeId || result.nodes[0]?.nodeId || ''
       })
       setError(null)
+    },
+    [],
+  )
+
+  const loadHomeData = useCallback(async () => getOrchestratorHomeData(), [])
+
+  const refresh = useCallback(async () => {
+    const requestId = ++refreshRequestIdRef.current
+    setRefreshing(true)
+    try {
+      const result = await loadHomeData()
+      if (requestId !== refreshRequestIdRef.current) {
+        return
+      }
+      applyHomeData(result, true)
     } catch {
+      if (requestId !== refreshRequestIdRef.current) {
+        return
+      }
       setError('Failed to load orchestrator home data.')
     } finally {
-      setRefreshing(false)
+      if (requestId === refreshRequestIdRef.current) {
+        setRefreshing(false)
+      }
     }
-  }, [])
+  }, [applyHomeData, loadHomeData])
 
   useEffect(() => {
     let active = true
 
-    getOrchestratorHomeData()
+    const requestId = ++loadRequestIdRef.current
+
+    loadHomeData()
       .then(result => {
-        if (!active) {
+        if (!active || requestId !== loadRequestIdRef.current) {
           return
         }
-
-        setData(result)
-        setLastUpdatedAt(new Date().toISOString())
-        setSelectedNodeId(result.selectedNodeId || result.nodes[0]?.nodeId || '')
+        applyHomeData(result, false)
         setLoading(false)
       })
       .catch(() => {
-        if (active) {
+        if (active && requestId === loadRequestIdRef.current) {
           setError('Failed to load orchestrator home data.')
           setLoading(false)
         }
@@ -59,7 +87,7 @@ export default function Dashboard() {
     return () => {
       active = false
     }
-  }, [])
+  }, [applyHomeData, loadHomeData])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -76,10 +104,14 @@ export default function Dashboard() {
     [data?.nodes, selectedNodeId],
   )
 
-  const nodeLogs = useMemo(
-    () => (selectedNodeId && data?.logsByNodeId[selectedNodeId]) || [],
-    [data?.logsByNodeId, selectedNodeId],
-  )
+  const selectedNodePrimaryWorkload = useMemo(() => {
+    if (!selectedNode) {
+      return null
+    }
+    return selectedNode.workloads[0] ?? null
+  }, [selectedNode])
+
+  const workloadRows = useMemo<WorkloadRow[]>(() => buildWorkloadRows(data), [data])
 
   const filteredEvents = useMemo(() => {
     if (!data) {
@@ -90,6 +122,71 @@ export default function Dashboard() {
     }
     return data.events.filter(event => event.severity === eventFilter)
   }, [data, eventFilter])
+
+  const drawerNode = useMemo<DashboardNodeRow | null>(() => {
+    if (!data || !drawerState || drawerState.kind !== 'node') {
+      return null
+    }
+    return data.nodes.find(node => node.nodeId === drawerState.nodeId) ?? null
+  }, [data, drawerState])
+
+  const nodeDrawerLogs = useMemo(() => {
+    if (!data || !drawerState || drawerState.kind !== 'node') {
+      return []
+    }
+    return data.logsByNodeId[drawerState.nodeId] || []
+  }, [data, drawerState])
+
+  const drawerWorkload = useMemo<WorkloadRow | null>(() => {
+    if (!drawerState || drawerState.kind !== 'workload') {
+      return null
+    }
+    return workloadRows.find(workload => workload.name === drawerState.workloadName) ?? null
+  }, [drawerState, workloadRows])
+
+  const workloadDrawerNodes = useMemo(() => {
+    if (!data || !drawerState || drawerState.kind !== 'workload') {
+      return []
+    }
+
+    return data.nodes
+      .map(node => {
+        const workload = node.workloads.find(item => item.name === drawerState.workloadName)
+        if (!workload) {
+          return null
+        }
+
+        return {
+          nodeId: node.nodeId,
+          health: node.health,
+          revision: workload.revision,
+          runState: workload.runState,
+          revisionUpdateAvailable: node.revisionUpdateAvailable,
+          packageUpdatesAvailable: node.packageUpdatesAvailable,
+          packageUpdateCount: node.packageUpdateCount ?? 0,
+        }
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+  }, [data, drawerState])
+
+  const workloadRevisionUpdateNodes = useMemo(
+    () => workloadDrawerNodes.filter(node => node.revisionUpdateAvailable),
+    [workloadDrawerNodes],
+  )
+
+  const workloadPackageSignalNodes = useMemo(
+    () => workloadDrawerNodes.filter(node => node.packageUpdatesAvailable),
+    [workloadDrawerNodes],
+  )
+
+  const openNodeDrawer = (nodeId: string) => {
+    setSelectedNodeId(nodeId)
+    setDrawerState({ kind: 'node', nodeId })
+  }
+
+  const openWorkloadDrawer = (workloadName: string) => {
+    setDrawerState({ kind: 'workload', workloadName })
+  }
 
   if (loading) {
     return <div className="text-center py-8">Loading...</div>
@@ -129,63 +226,86 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Fleet Online / Offline" value={`${data.kpis.fleetOnline} / ${data.kpis.fleetOffline}`} />
-        <KpiCard label="Workload Definitions" value={`${data.kpis.workloadDefinitions}`} />
-        <KpiCard label="Running Workloads" value={`${data.kpis.runningWorkloads}`} />
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
         <KpiCard
-          label="Active + Failed Runs (24h)"
-          value={`${data.kpis.activeRuns24h} + ${data.kpis.failedRuns24h}`}
+          label="Fleet Online"
+          value={`${data.kpis.fleetOnline}`}
+          detail={`${data.kpis.fleetOnline + data.kpis.fleetOffline} enrolled nodes`}
         />
-        <KpiCard label="Pending Approvals" value={`${data.kpis.pendingApprovals}`} />
-        <KpiCard label="Control-plane Latency (p95)" value={`${data.kpis.controlPlaneLatencyP95Ms} ms`} />
+        <KpiCard label="Fleet Offline" value={`${data.kpis.fleetOffline}`} detail="Node availability incidents" />
+        <KpiCard
+          label="Workload Definitions"
+          value={`${data.kpis.workloadDefinitions}`}
+          detail={`${workloadRows.length} active on fleet`}
+        />
+        <KpiCard label="Running Workloads" value={`${data.kpis.runningWorkloads}`} detail={`${data.kpis.activeRuns24h} runs / 24h`} />
+        <KpiCard
+          label="Pending Approvals"
+          value={`${data.kpis.pendingApprovals}`}
+          detail="Operator action required"
+          hintKey="pendingApprovals"
+        />
+        <KpiCard label="Artifacts Stored" value={`${data.kpis.artifactsStored}`} detail="Backing workload packages" />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[260px_1fr_320px]">
-        <section className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-5 shadow-[var(--surface-shadow)]">
-          <h2 className="text-base font-semibold text-[var(--text-strong)]">Filter Rail</h2>
-          <div className="mt-4 space-y-4 text-sm text-[var(--text-soft)]">
-            <FilterStub label="Site" value="All Sites" />
-            <FilterStub label="Workload" value="All Workloads" />
-            <FilterStub label="Node Status" value="online | warning | offline" />
-            <FilterStub label="Run Status" value="active + pending-approval + failed" />
-            <FilterStub label="Time Range" value="Last 24h" />
-          </div>
-        </section>
-
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_320px]">
         <div className="space-y-6">
           <section className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-5 shadow-[var(--surface-shadow)]">
-            <h2 className="text-base font-semibold text-[var(--text-strong)]">Nodes Live Table</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-base font-semibold text-[var(--text-strong)]">Nodes Live Table</h2>
+              <p className="text-xs text-[var(--text-soft)]">Filters: all nodes, all workloads</p>
+            </div>
             <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full divide-y divide-[var(--surface-border)] text-sm">
+              <table aria-label="Nodes Live Table" className="min-w-full divide-y divide-[var(--surface-border)] text-sm">
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-wide text-[var(--text-soft)]">
-                    <th className="px-3 py-2">Node</th>
-                    <th className="px-3 py-2">Health</th>
-                    <th className="px-3 py-2">Assigned Workload</th>
-                    <th className="px-3 py-2">Revision</th>
-                    <th className="px-3 py-2">Run State</th>
-                    <th className="px-3 py-2">Check-in</th>
-                    <th className="px-3 py-2">Risk</th>
-                    <th className="px-3 py-2">Updates</th>
-                    <th className="px-3 py-2">Reason</th>
-                    <th className="px-3 py-2 text-right">Select</th>
+                    <th scope="col" className="px-3 py-2">Node</th>
+                    <th scope="col" className="px-3 py-2">Health</th>
+                    <th scope="col" className="px-3 py-2">Workload Count</th>
+                    <th scope="col" className="px-3 py-2">Workload Set</th>
+                    <th scope="col" className="px-3 py-2">Workload Updates</th>
+                    <th scope="col" className="px-3 py-2">Check-in</th>
+                    <th scope="col" className="px-3 py-2">
+                      <div className="flex items-center gap-1">
+                        <span>Risk (Node)</span>
+                        <InfoHint label="Risk (Node)" hintKey="riskNode" />
+                      </div>
+                    </th>
+                    <th scope="col" className="px-3 py-2">
+                      <div className="flex items-center gap-1">
+                        <span>Reason</span>
+                        <InfoHint label="Reason" hintKey="reason" />
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--surface-border)]">
                   {data.nodes.map(node => (
                     <tr
                       key={node.nodeId}
-                      aria-selected={selectedNodeId === node.nodeId}
-                      className={selectedNodeId === node.nodeId ? 'bg-[var(--surface-subtle)]' : ''}
+                      onClick={() => openNodeDrawer(node.nodeId)}
+                      className={`cursor-pointer ${selectedNodeId === node.nodeId ? 'bg-[var(--surface-subtle)]' : 'hover:bg-[var(--surface-subtle)]'}`}
                     >
-                      <td className="px-3 py-2 font-medium text-[var(--text-strong)]">{node.nodeId}</td>
+                      <td className="px-3 py-2 font-medium text-[var(--text-strong)]">
+                        <RowTrigger
+                          label={`Open node details ${node.nodeId}`}
+                          onActivate={() => openNodeDrawer(node.nodeId)}
+                          className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+                        >
+                          {node.nodeId}
+                        </RowTrigger>
+                      </td>
                       <td className="px-3 py-2 text-[var(--text-soft)]">{node.health}</td>
-                      <td className="px-3 py-2 text-[var(--text-soft)]">{node.assignedWorkload}</td>
-                      <td className="px-3 py-2 text-[var(--text-soft)]">{node.workloadRevision}</td>
-                      <td className="px-3 py-2 text-[var(--text-soft)]">{node.runState}</td>
-                      <td className="px-3 py-2 text-[var(--text-soft)]">{node.lastCheckInAge}</td>
-                      <td className="px-3 py-2 text-[var(--text-soft)]">{node.riskLevel}</td>
+                      <td className="px-3 py-2 text-[var(--text-soft)]">{node.workloads.length}</td>
+                      <td className="px-3 py-2 text-[var(--text-soft)]">
+                        <div className="space-y-1">
+                          {node.workloads.map(workload => (
+                            <p key={`${node.nodeId}-${workload.name}-${workload.revision}`} className="truncate">
+                              {workload.name} ({workload.revision})
+                            </p>
+                          ))}
+                        </div>
+                      </td>
                       <td className="px-3 py-2">
                         <div className="flex flex-col items-start gap-1">
                           <IndicatorBadge
@@ -200,17 +320,71 @@ export default function Dashboard() {
                           />
                         </div>
                       </td>
+                      <td className="px-3 py-2 text-[var(--text-soft)]">{node.lastCheckInAge}</td>
+                      <td className="px-3 py-2 text-[var(--text-soft)]">{node.riskLevel}</td>
                       <td className="px-3 py-2 font-mono text-xs text-[var(--text-soft)]">{node.reasonCode || '-'}</td>
-                      <td className="px-3 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedNodeId(node.nodeId)}
-                          className="text-sm text-[var(--accent)] hover:text-[var(--accent-strong)]"
-                          aria-label={`Select ${node.nodeId}`}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-5 shadow-[var(--surface-shadow)]">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-base font-semibold text-[var(--text-strong)]">Workloads Overview</h2>
+              <p className="text-xs text-[var(--text-soft)]">
+                Workloads are first-class: package and revision update pressure is tracked at workload scope.
+              </p>
+            </div>
+            <div className="mt-4 overflow-x-auto">
+              <table aria-label="Workloads Overview" className="min-w-full divide-y divide-[var(--surface-border)] text-sm">
+                <thead>
+                  <tr className="text-left text-xs uppercase tracking-wide text-[var(--text-soft)]">
+                    <th scope="col" className="px-3 py-2">Workload</th>
+                    <th scope="col" className="px-3 py-2">Revisions In Fleet</th>
+                    <th scope="col" className="px-3 py-2">Nodes Assigned</th>
+                    <th scope="col" className="px-3 py-2">
+                      <div className="flex items-center gap-1">
+                        <span>Nodes Running</span>
+                        <InfoHint label="Nodes Running" hintKey="nodesRunning" />
+                      </div>
+                    </th>
+                    <th scope="col" className="px-3 py-2">
+                      <div className="flex items-center gap-1">
+                        <span>Revision Updates</span>
+                        <InfoHint label="Revision Updates" hintKey="revisionUpdates" />
+                      </div>
+                    </th>
+                    <th scope="col" className="px-3 py-2">
+                      <div className="flex items-center gap-1">
+                        <span>Package Update Signals</span>
+                        <InfoHint label="Package Update Signals" hintKey="packageUpdateSignals" />
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--surface-border)]">
+                  {workloadRows.map(workload => (
+                    <tr
+                      key={workload.name}
+                      onClick={() => openWorkloadDrawer(workload.name)}
+                      className="cursor-pointer hover:bg-[var(--surface-subtle)]"
+                    >
+                      <td className="px-3 py-2 font-medium text-[var(--text-strong)]">
+                        <RowTrigger
+                          label={`Open workload details ${workload.name}`}
+                          onActivate={() => openWorkloadDrawer(workload.name)}
+                          className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                         >
-                          Select
-                        </button>
+                          {workload.name}
+                        </RowTrigger>
                       </td>
+                      <td className="px-3 py-2 text-[var(--text-soft)]">{workload.revisionsLabel}</td>
+                      <td className="px-3 py-2 text-[var(--text-soft)]">{workload.nodesAssigned}</td>
+                      <td className="px-3 py-2 text-[var(--text-soft)]">{workload.runningNodes}</td>
+                      <td className="px-3 py-2 text-[var(--text-soft)]">{workload.nodesWithRevisionUpdates}</td>
+                      <td className="px-3 py-2 text-[var(--text-soft)]">{workload.packageUpdateSignals}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -226,9 +400,11 @@ export default function Dashboard() {
               <div className="mt-3 space-y-3 text-sm">
                 <p className="font-medium text-[var(--text-strong)]">Selected Node: {selectedNode.nodeId}</p>
                 <p className="text-[var(--text-soft)]">
-                  Workload: {selectedNode.assignedWorkload} ({selectedNode.workloadRevision})
+                  Workloads: {selectedNode.workloads.map(workload => `${workload.name} (${workload.revision})`).join(', ')}
                 </p>
-                <p className="text-[var(--text-soft)]">Run State: {selectedNode.runState}</p>
+                <p className="text-[var(--text-soft)]">
+                  Primary Run State: {selectedNodePrimaryWorkload ? selectedNodePrimaryWorkload.runState : 'n/a'}
+                </p>
                 <div className="flex flex-wrap gap-2">
                   <button className="rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-medium text-white">Start Update</button>
                   <button className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-medium text-white">Approve Risky Update</button>
@@ -236,22 +412,6 @@ export default function Dashboard() {
                   <button className="rounded-lg bg-slate-600 px-3 py-2 text-xs font-medium text-white">Open Run Timeline</button>
                 </div>
               </div>
-            )}
-          </section>
-
-          <section className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-5 shadow-[var(--surface-shadow)]">
-            <h2 className="text-base font-semibold text-[var(--text-strong)]">Mini Log Viewer</h2>
-            {nodeLogs.length === 0 ? (
-              <p className="mt-3 text-sm text-[var(--text-soft)]">No actionable lines for this node context.</p>
-            ) : (
-              <ul className="mt-3 space-y-2 text-sm">
-                {nodeLogs.map(line => (
-                  <li key={line.id} className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] px-3 py-2">
-                    <p className="font-mono text-xs text-[var(--text-soft)]">{line.at}</p>
-                    <p className="mt-1 text-[var(--text-strong)]">{line.message}</p>
-                  </li>
-                ))}
-              </ul>
             )}
           </section>
         </div>
@@ -292,25 +452,258 @@ export default function Dashboard() {
           )}
         </section>
       </div>
+
+      <Sheet
+        open={drawerState !== null}
+        onOpenChange={open => {
+          if (!open) {
+            setDrawerState(null)
+          }
+        }}
+      >
+        <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
+          {drawerState?.kind === 'node' && (
+            <>
+              <SheetHeader>
+                <SheetTitle>Node details</SheetTitle>
+                {!drawerNode ? (
+                  <SheetDescription>Selected node is no longer available. Close drawer and retry.</SheetDescription>
+                ) : (
+                  <SheetDescription>
+                    {drawerNode.nodeId} ({drawerNode.hostname})
+                  </SheetDescription>
+                )}
+              </SheetHeader>
+              {drawerNode && (
+                <div className="flex flex-wrap gap-2 px-4 pb-2 pt-1">
+                  <StatusChip label={`Health: ${drawerNode.health}`} tone={drawerNode.health === 'offline' ? 'danger' : 'neutral'} />
+                  <StatusChip label={`Risk: ${drawerNode.riskLevel}`} tone={drawerNode.riskLevel === 'high' ? 'danger' : 'neutral'} />
+                  <StatusChip label={`Revision update: ${drawerNode.revisionUpdateAvailable ? 'Yes' : 'No'}`} tone={drawerNode.revisionUpdateAvailable ? 'warning' : 'neutral'} />
+                  <StatusChip
+                    label={`Package signals: ${drawerNode.packageUpdatesAvailable ? 'Yes' : 'No'}`}
+                    tone={drawerNode.packageUpdatesAvailable ? 'warning' : 'neutral'}
+                  />
+                </div>
+              )}
+              {!drawerNode ? (
+                <div className="px-4 pb-4 text-sm text-[var(--text-soft)]">Node context unavailable after refresh.</div>
+              ) : (
+                <div className="space-y-4 px-4 pb-4">
+                  <section className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm">
+                    <p className="font-medium text-[var(--text-strong)]">Workload signals</p>
+                    <ul className="mt-2 space-y-1 text-[var(--text-soft)]">
+                      {drawerNode.workloads.map(workload => (
+                        <li key={`${drawerNode.nodeId}-${workload.name}-${workload.revision}`}>
+                          {workload.name} | rev {workload.revision} | run-state {workload.runState}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+
+                  <section className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm text-[var(--text-soft)]">
+                    <p className="flex items-center gap-1">
+                      <span>
+                        Risk (Node): <span className="font-medium text-[var(--text-strong)]">{drawerNode.riskLevel}</span>
+                      </span>
+                      <InfoHint label="Risk (Node)" hintKey="riskNode" />
+                    </p>
+                    <p className="mt-1 flex items-center gap-1">
+                      <span>
+                        Reason: <span className="font-mono text-xs">{drawerNode.reasonCode || '-'}</span>
+                      </span>
+                      <InfoHint label="Reason" hintKey="reason" />
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <IndicatorBadge
+                        active={drawerNode.revisionUpdateAvailable}
+                        label="Revision update"
+                        inactiveLabel="Revision current"
+                      />
+                      <IndicatorBadge
+                        active={drawerNode.packageUpdatesAvailable}
+                        label={
+                          drawerNode.packageUpdateCount
+                            ? `Package updates (${drawerNode.packageUpdateCount})`
+                            : 'Package updates'
+                        }
+                        inactiveLabel="Packages current"
+                      />
+                    </div>
+                  </section>
+
+                  <section className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm">
+                    <p className="font-medium text-[var(--text-strong)]">Mini logs</p>
+                    {nodeDrawerLogs.length === 0 ? (
+                      <p className="mt-2 text-[var(--text-soft)]">No actionable lines for this node context.</p>
+                    ) : (
+                      <ul className="mt-2 space-y-2">
+                        {nodeDrawerLogs.map(line => (
+                          <li
+                            key={line.id}
+                            className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
+                          >
+                            <p className="font-mono text-xs text-[var(--text-soft)]">{line.at}</p>
+                            <p className="mt-1 text-[var(--text-strong)]">{line.message}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+
+                  <section className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm">
+                    <p className="font-medium text-[var(--text-strong)]">Action controls</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button className="rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-medium text-white">Start Update</button>
+                      <button className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-medium text-white">Approve Risky Update</button>
+                      <button className="rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white">Cancel Run</button>
+                      <button className="rounded-lg bg-slate-600 px-3 py-2 text-xs font-medium text-white">Open Run Timeline</button>
+                    </div>
+                  </section>
+                </div>
+              )}
+            </>
+          )}
+
+          {drawerState?.kind === 'workload' && (
+            <>
+              <SheetHeader>
+                <SheetTitle>Workload details</SheetTitle>
+                {!drawerWorkload ? (
+                  <SheetDescription>Selected workload is no longer available. Close drawer and retry.</SheetDescription>
+                ) : (
+                  <SheetDescription>{drawerWorkload.name}</SheetDescription>
+                )}
+              </SheetHeader>
+              {drawerWorkload && (
+                <div className="flex flex-wrap gap-2 px-4 pb-2 pt-1">
+                  <StatusChip
+                    label={`Mixed revisions: ${drawerWorkload.mixedRevisions ? 'Yes' : 'No'}`}
+                    tone={drawerWorkload.mixedRevisions ? 'warning' : 'neutral'}
+                  />
+                  <StatusChip
+                    label={`Revision updates: ${workloadRevisionUpdateNodes.length} nodes`}
+                    tone={workloadRevisionUpdateNodes.length > 0 ? 'warning' : 'neutral'}
+                  />
+                  <StatusChip
+                    label={`Package signals: ${workloadPackageSignalNodes.length} nodes`}
+                    tone={workloadPackageSignalNodes.length > 0 ? 'warning' : 'neutral'}
+                  />
+                </div>
+              )}
+              {!drawerWorkload ? (
+                <div className="px-4 pb-4 text-sm text-[var(--text-soft)]">Workload context unavailable after refresh.</div>
+              ) : (
+                <div className="space-y-4 px-4 pb-4">
+                  <section className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm text-[var(--text-soft)]">
+                    <p>
+                      Revisions in fleet:{' '}
+                      <span className="font-medium text-[var(--text-strong)]">{drawerWorkload.revisionsLabel}</span>
+                    </p>
+                    <p className="mt-1">
+                      Nodes assigned: <span className="font-medium text-[var(--text-strong)]">{drawerWorkload.nodesAssigned}</span>
+                    </p>
+                    <p>
+                      Nodes running: <span className="font-medium text-[var(--text-strong)]">{drawerWorkload.runningNodes}</span>
+                    </p>
+                    <p className="mt-1">
+                      Revision updates: <span className="font-medium text-[var(--text-strong)]">{drawerWorkload.nodesWithRevisionUpdates}</span>
+                    </p>
+                    <p>
+                      Mixed revisions detected:{' '}
+                      <span className="font-medium text-[var(--text-strong)]">{drawerWorkload.mixedRevisions ? 'Yes' : 'No'}</span>
+                    </p>
+                    <p>
+                      Package update signals:{' '}
+                      <span className="font-medium text-[var(--text-strong)]">{drawerWorkload.packageUpdateSignals}</span>
+                    </p>
+                  </section>
+
+                  <section className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm">
+                    <p className="font-medium text-[var(--text-strong)]">Impacted-node snapshots</p>
+                    <div className="mt-3 space-y-3 text-[var(--text-soft)]">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide">Revision update contributors</p>
+                        {workloadRevisionUpdateNodes.length === 0 ? (
+                          <p className="mt-1">No nodes currently reporting revision update availability.</p>
+                        ) : (
+                          <ul className="mt-2 space-y-1">
+                            {workloadRevisionUpdateNodes.map(node => (
+                              <li key={`${drawerWorkload.name}-${node.nodeId}-revision-update`}>{node.nodeId}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide">Package update signal nodes</p>
+                        {workloadPackageSignalNodes.length === 0 ? (
+                          <p className="mt-1">No nodes currently reporting package update signals.</p>
+                        ) : (
+                          <ul className="mt-2 space-y-1">
+                            {workloadPackageSignalNodes.map(node => (
+                              <li key={`${drawerWorkload.name}-${node.nodeId}-package-signal`}>
+                                {node.nodeId} | package signals {node.packageUpdateCount}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm">
+                    <p className="font-medium text-[var(--text-strong)]">Nodes assigned and run state</p>
+                    {workloadDrawerNodes.length === 0 ? (
+                      <p className="mt-2 text-[var(--text-soft)]">No nodes currently assigned.</p>
+                    ) : (
+                      <ul className="mt-2 space-y-2 text-[var(--text-soft)]">
+                        {workloadDrawerNodes.map(node => (
+                          <li
+                            key={`${drawerWorkload.name}-${node.nodeId}`}
+                            className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
+                          >
+                            <p className="font-medium text-[var(--text-strong)]">{node.nodeId}</p>
+                            <p className="mt-1 text-xs">
+                              revision {node.revision} | run-state {node.runState} | health {node.health}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+
+                  <section className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm text-[var(--text-soft)]">
+                    Package update signals are derived from node telemetry and may lag artifact-store truth.
+                  </section>
+                </div>
+              )}
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }
 
-function KpiCard({ label, value }: { label: string; value: string }) {
+function KpiCard({
+  label,
+  value,
+  detail,
+  hintKey,
+}: {
+  label: string
+  value: string
+  detail: string
+  hintKey?: InfoHintKey
+}) {
   return (
-    <section className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-5 shadow-[var(--surface-shadow)]">
-      <p className="text-xs uppercase tracking-wide text-[var(--text-soft)]">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-[var(--text-strong)]">{value}</p>
+    <section className="rounded-xl border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2 shadow-[var(--surface-shadow)]">
+      <p className="flex items-center gap-1 text-[11px] uppercase tracking-wide text-[var(--text-soft)]">
+        <span>{label}</span>
+        {hintKey ? <InfoHint label={label} hintKey={hintKey} /> : null}
+      </p>
+      <p className="mt-1 text-lg font-semibold leading-tight text-[var(--text-strong)]">{value}</p>
+      <p className="mt-1 text-[11px] text-[var(--text-soft)]">{detail}</p>
     </section>
-  )
-}
-
-function FilterStub({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] px-3 py-2">
-      <p className="text-xs uppercase tracking-wide">{label}</p>
-      <p className="mt-1 text-[var(--text-strong)]">{value}</p>
-    </div>
   )
 }
 
@@ -335,4 +728,15 @@ function IndicatorBadge({
       {inactiveLabel}
     </span>
   )
+}
+
+function StatusChip({ label, tone }: { label: string; tone: 'neutral' | 'warning' | 'danger' }) {
+  const toneClass =
+    tone === 'warning'
+      ? 'border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] text-[var(--status-warning-text)]'
+      : tone === 'danger'
+      ? 'border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] text-[var(--status-danger-text)]'
+      : 'border-[var(--surface-border)] bg-[var(--surface-muted)] text-[var(--text-soft)]'
+
+  return <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${toneClass}`}>{label}</span>
 }

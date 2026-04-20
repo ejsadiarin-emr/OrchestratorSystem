@@ -262,8 +262,9 @@ const auditEvents: AuditEvent[] = [
 ]
 
 const orchestratorKpis: DashboardKpiSummary = {
-  fleetOnline: 24,
-  fleetOffline: 2,
+  nodesOnline: 24,
+  nodesOffline: 2,
+  artifactsStored: artifacts.length,
   workloadDefinitions: 6,
   runningWorkloads: 4,
   activeRuns24h: 14,

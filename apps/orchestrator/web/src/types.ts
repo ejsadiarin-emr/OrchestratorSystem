@@ -186,10 +186,11 @@ export type NodeRunState =
 export type RiskLevel = 'low' | 'med' | 'high'
 
 export interface DashboardKpiSummary {
-  fleetOnline: number
-  fleetOffline: number
+  nodesOnline: number
+  nodesOffline: number
   workloadDefinitions: number
   runningWorkloads: number
+  artifactsStored: number
   activeRuns24h: number
   failedRuns24h: number
   pendingApprovals: number

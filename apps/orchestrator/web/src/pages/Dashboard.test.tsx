@@ -12,8 +12,8 @@ describe('Dashboard orchestrator home', () => {
       </MemoryRouter>,
     )
 
-    expect(await screen.findByText('Fleet Online')).toBeInTheDocument()
-    expect(screen.getByText('Fleet Offline')).toBeInTheDocument()
+    expect(await screen.findByText('Nodes Online')).toBeInTheDocument()
+    expect(screen.getByText('Nodes Offline')).toBeInTheDocument()
     expect(screen.getByText('Workload Definitions')).toBeInTheDocument()
     expect(screen.getByText('Running Workloads')).toBeInTheDocument()
     expect(screen.getByText('Pending Approvals')).toBeInTheDocument()
@@ -38,12 +38,12 @@ describe('Dashboard orchestrator home', () => {
 
     expect(screen.getByText('Workload Count')).toBeInTheDocument()
     expect(screen.getByText('Workload Updates')).toBeInTheDocument()
-    expect(screen.getAllByText('Factory Base Install (1.1.0)').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Observer Stack (0.9.0)').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Factory Base Install (1.0.0)').length).toBeGreaterThan(0)
+    expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
+    expect(screen.getByText('Observer Stack (0.9.0)')).toBeInTheDocument()
+    expect(screen.getByText('Factory Base Install (1.0.0)')).toBeInTheDocument()
 
-    expect(screen.getByText(/Workloads:/)).toBeInTheDocument()
-    expect(screen.getAllByText(/Factory Base Install \(1\.1\.0\), Observer Stack \(0\.9\.0\)/).length).toBeGreaterThan(0)
+    expect(screen.getByText(/Workload:/)).toBeInTheDocument()
+    expect(screen.getAllByText(/Factory Base Install \(1\.1\.0\)/).length).toBeGreaterThan(0)
   })
 
   it('renders explicit update indicators and events severity filters', async () => {
@@ -112,7 +112,7 @@ describe('Dashboard orchestrator home', () => {
     })
   })
 
-  it('opens node drawer from row click and shows node log content', async () => {
+  it('opens node popup from row click and shows node log content', async () => {
     render(
       <MemoryRouter>
         <Dashboard />
@@ -147,7 +147,7 @@ describe('Dashboard orchestrator home', () => {
     expect(screen.getByText(/node-002 \(.+\)/)).toBeInTheDocument()
   })
 
-  it('opens workload drawer from row click and shows derived signal copy', async () => {
+  it('opens workload popup from row click and shows derived signal copy', async () => {
     render(
       <MemoryRouter>
         <Dashboard />
@@ -160,13 +160,12 @@ describe('Dashboard orchestrator home', () => {
 
     expect(await screen.findByRole('heading', { name: 'Workload details' })).toBeInTheDocument()
     expect(screen.getByText('Mixed revisions: No')).toBeInTheDocument()
-    expect(screen.getByText('Revision updates: 2 nodes')).toBeInTheDocument()
-    expect(screen.getByText('Package signals: 1 nodes')).toBeInTheDocument()
+    expect(screen.getByText('Revision updates: 1 nodes')).toBeInTheDocument()
+    expect(screen.getByText('Package signals: 0 nodes')).toBeInTheDocument()
     expect(screen.getByText(/Mixed revisions detected:/)).toBeInTheDocument()
     expect(screen.getByText('Impacted-node snapshots')).toBeInTheDocument()
     expect(screen.getByText('Revision update contributors')).toBeInTheDocument()
     expect(screen.getByText('Package update signal nodes')).toBeInTheDocument()
-    expect(screen.getByText('node-001 | package signals 2')).toBeInTheDocument()
     expect(screen.getAllByText('node-002').length).toBeGreaterThan(0)
     expect(
       screen.getByText(/Package update signals are derived from node telemetry and may lag artifact-store truth/i),
@@ -207,6 +206,17 @@ describe('Dashboard orchestrator home', () => {
     expect(screen.getByText(/Mixed revisions detected:/)).toBeInTheDocument()
     expect(screen.getByText('node-001 | package signals 2')).toBeInTheDocument()
     expect(screen.getByText('node-003 | package signals 1')).toBeInTheDocument()
+  })
+
+  it('shows workload overview version column label', async () => {
+    render(
+      <MemoryRouter>
+        <Dashboard />
+      </MemoryRouter>,
+    )
+
+    await screen.findByText('Workloads Overview')
+    expect(screen.getByText('Version')).toBeInTheDocument()
   })
 
   it('renders info hint indicators for target labels', async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   getSupportedChannels,
   listArtifacts,
@@ -6,6 +6,7 @@ import {
   uploadArtifact,
   validateManifestChannel,
 } from '../services/api'
+import { Modal, ModalContent, ModalDescription, ModalHeader, ModalTitle } from '../components/ui/modal'
 import type { ArtifactManifest, ArtifactRecord, IngestStep, ManifestChannel } from '../types'
 
 type UploadStage = 'idle' | 'prefilled' | 'uploading' | 'stored'
@@ -34,6 +35,9 @@ export default function Install() {
   const [steps, setSteps] = useState<IngestStep[]>(emptyIngestSteps)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [isDragActive, setIsDragActive] = useState(false)
+  const [selectedArtifact, setSelectedArtifact] = useState<ArtifactRecord | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     listArtifacts()
@@ -51,17 +55,16 @@ export default function Install() {
       : 'manifest.channel must be one of stable, canary, or test.'
   }, [manifest])
 
-  const handleAnalyze = (event: React.FormEvent) => {
-    event.preventDefault()
-    setError(null)
-    setSuccessMessage(null)
-
-    if (!fileDraft.fileName || fileDraft.fileSizeBytes <= 0) {
-      setError('Provide installer file name and file size to model multipart file upload part.')
+  const prefillFromFile = (fileName: string, fileSizeBytes: number) => {
+    if (!fileName || fileSizeBytes <= 0) {
+      setError('Select a local installer file before prefilling metadata.')
       return
     }
 
-    const prefetched = suggestManifestFromFile(fileDraft.fileName, fileDraft.fileSizeBytes)
+    setError(null)
+    setSuccessMessage(null)
+
+    const prefetched = suggestManifestFromFile(fileName, fileSizeBytes)
     setManifest(prefetched)
     setSteps([
       { ...emptyIngestSteps[0], status: 'completed' },
@@ -70,6 +73,30 @@ export default function Install() {
       { ...emptyIngestSteps[3] },
     ])
     setStage('prefilled')
+  }
+
+  const handleFileSelection = (file: File | null) => {
+    if (!file) {
+      return
+    }
+
+    setFileDraft(current => ({
+      ...current,
+      fileName: file.name,
+      fileSizeBytes: file.size,
+    }))
+    prefillFromFile(file.name, file.size)
+  }
+
+  const handlePickerChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null
+    handleFileSelection(file)
+  }
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    setIsDragActive(false)
+    handleFileSelection(event.dataTransfer.files?.[0] ?? null)
   }
 
   const handleStore = async (event: React.FormEvent) => {
@@ -113,6 +140,10 @@ export default function Install() {
     setStage('idle')
     setError(null)
     setSuccessMessage(null)
+    setIsDragActive(false)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
   }
 
   if (loading) {
@@ -122,16 +153,17 @@ export default function Install() {
   return (
     <div className="space-y-6">
       <header className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
-        <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-strong)]">Installer Artifact Ingestion</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-strong)]">Artifact Store Console</h1>
         <p className="mt-2 text-sm text-[var(--text-soft)]">
-          Mocked Phase 1 flow: one multipart POST to <code>/api/artifacts</code> with required
-          <code> file</code>, required <code>manifest</code>, optional <code>detachedSignature</code>.
+          Stage local artifacts for workload revisions with one mocked multipart POST to
+          <code> /api/artifacts</code> using required <code>file</code>, required <code>manifest</code>, and optional
+          <code> detachedSignature</code>.
         </p>
       </header>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-5 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)] xl:col-span-2">
-          <h2 className="text-lg font-semibold text-[var(--text-strong)]">Upload & Verify</h2>
+          <h2 className="text-lg font-semibold text-[var(--text-strong)]">Ingest Artifact</h2>
 
           {error && (
             <div className="rounded-lg border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] p-3 text-sm text-[var(--status-danger-text)]">
@@ -145,33 +177,52 @@ export default function Install() {
             </div>
           )}
 
-          <form onSubmit={handleAnalyze} className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <label className="text-sm text-[var(--text-soft)]">
-                Installer file (multipart <code>file</code> part)
+          <div className="space-y-4">
+            <div
+              data-testid="artifact-dropzone"
+              onDragOver={event => {
+                event.preventDefault()
+                setIsDragActive(true)
+              }}
+              onDragLeave={() => setIsDragActive(false)}
+              onDrop={handleDrop}
+              className={`rounded-xl border border-dashed p-5 text-sm transition-colors ${
+                isDragActive
+                  ? 'border-[var(--accent)] bg-[var(--surface-subtle)]'
+                  : 'border-[var(--surface-border)] bg-[var(--surface-subtle)]'
+              }`}
+            >
+              <p className="font-medium text-[var(--text-strong)]">Drop installer media here</p>
+              <p className="mt-1 text-[var(--text-soft)]">or pick from local disk. Metadata prefill runs immediately.</p>
+              <div className="mt-4">
                 <input
-                  type="text"
-                  value={fileDraft.fileName}
-                  onChange={event => setFileDraft(current => ({ ...current, fileName: event.target.value }))}
-                  placeholder="EJ-Installer-1.13.0.msi"
-                  className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
-                  required
+                  ref={fileInputRef}
+                  id="artifact-file-picker"
+                  type="file"
+                  aria-label="Select local artifact file"
+                  onChange={handlePickerChange}
+                  className="sr-only"
                 />
-              </label>
-              <label className="text-sm text-[var(--text-soft)]">
-                File size bytes
-                <input
-                  type="number"
-                  min={1}
-                  value={fileDraft.fileSizeBytes || ''}
-                  onChange={event =>
-                    setFileDraft(current => ({ ...current, fileSizeBytes: Number(event.target.value) || 0 }))
-                  }
-                  className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
-                  required
-                />
-              </label>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)]"
+                >
+                  Choose Local Artifact
+                </button>
+              </div>
             </div>
+
+            {fileDraft.fileName ? (
+              <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm text-[var(--text-soft)]">
+                Selected <span className="font-medium text-[var(--text-strong)]">{fileDraft.fileName}</span> ({fileDraft.fileSizeBytes}{' '}
+                bytes)
+              </div>
+            ) : (
+              <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm text-[var(--text-soft)]">
+                No artifact selected yet.
+              </div>
+            )}
 
             <label className="block text-sm text-[var(--text-soft)]">
               Optional company detached signature
@@ -183,18 +234,11 @@ export default function Install() {
                 className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
               />
             </label>
-
-            <button
-              type="submit"
-              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)]"
-            >
-              Analyze and Prefill Metadata
-            </button>
-          </form>
+          </div>
 
           {manifest && (
             <form onSubmit={handleStore} className="space-y-4 border-t border-[var(--surface-border)] pt-5">
-              <h3 className="font-semibold text-[var(--text-strong)]">Manifest (multipart JSON part)</h3>
+              <h3 className="font-semibold text-[var(--text-strong)]">Manifest Draft</h3>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Field label="Name" value={manifest.name} onChange={value => setManifest({ ...manifest, name: value })} />
                 <Field
@@ -291,7 +335,7 @@ export default function Install() {
                   disabled={Boolean(channelError) || stage === 'uploading'}
                   className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-[var(--surface-border)]"
                 >
-                  {stage === 'uploading' ? 'Storing...' : 'Verify and Store Artifact'}
+                  {stage === 'uploading' ? 'Storing...' : 'Validate and Store Artifact'}
                 </button>
                 <button
                   type="button"
@@ -331,8 +375,8 @@ export default function Install() {
 
       <section className="overflow-hidden rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] shadow-[var(--surface-shadow)]">
         <div className="border-b border-[var(--surface-border)] px-6 py-4">
-          <h2 className="text-lg font-semibold text-[var(--text-strong)]">Artifacts in Store</h2>
-          <p className="mt-1 text-xs text-[var(--text-soft)]">Immutable records keyed by manifest identity and digest.</p>
+          <h2 className="text-lg font-semibold text-[var(--text-strong)]">Artifact Inventory</h2>
+          <p className="mt-1 text-xs text-[var(--text-soft)]">Immutable records available for future workload revisions.</p>
         </div>
         {artifacts.length === 0 ? (
           <p className="px-6 py-5 text-sm text-[var(--text-soft)]">No artifacts ingested yet.</p>
@@ -342,23 +386,36 @@ export default function Install() {
               <thead className="bg-[var(--surface-subtle)]">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Artifact</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Version</th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Channel</th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Digest</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Origin metadata</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Origin</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Details</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--surface-border)]">
                 {artifacts.map(artifact => (
                   <tr key={artifact.id}>
                     <td className="px-6 py-4">
-                      <p className="font-medium text-[var(--text-strong)]">{artifact.fileName}</p>
+                      <p className="font-medium text-[var(--text-strong)]">{artifact.manifest.name}</p>
+                      <p className="text-xs text-[var(--text-soft)]">{artifact.fileName}</p>
                       <p className="text-xs text-[var(--text-soft)]">{artifact.id}</p>
                     </td>
+                    <td className="px-6 py-4 text-sm text-[var(--text-soft)]">{artifact.manifest.version}</td>
                     <td className="px-6 py-4 text-sm text-[var(--text-soft)]">{artifact.manifest.channel}</td>
                     <td className="px-6 py-4 font-mono text-xs text-[var(--text-soft)]">{artifact.manifest.digestSha256.slice(0, 18)}...</td>
                     <td className="px-6 py-4 text-sm text-[var(--text-soft)]">
                       {artifact.manifest.originMetadata.publisher}
                       <div className="text-xs text-[var(--text-soft)]">{artifact.manifest.originMetadata.sourceUrl}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedArtifact(artifact)}
+                        className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] px-3 py-1.5 text-xs font-medium text-[var(--text-soft)] hover:bg-[var(--surface-border)]"
+                      >
+                        View
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -367,6 +424,31 @@ export default function Install() {
           </div>
         )}
       </section>
+
+      <Modal open={Boolean(selectedArtifact)} onOpenChange={open => !open && setSelectedArtifact(null)}>
+        <ModalContent className="w-[min(94vw,44rem)]">
+          <ModalHeader>
+            <ModalTitle>Artifact details</ModalTitle>
+            <ModalDescription>Inspect full manifest and source metadata before attaching to a workload revision.</ModalDescription>
+          </ModalHeader>
+          {selectedArtifact && (
+            <div className="grid grid-cols-1 gap-3 px-4 pb-4 text-sm md:grid-cols-2">
+              <Detail label="Artifact id" value={selectedArtifact.id} mono />
+              <Detail label="File" value={selectedArtifact.fileName} />
+              <Detail label="Name" value={selectedArtifact.manifest.name} />
+              <Detail label="Version" value={selectedArtifact.manifest.version} />
+              <Detail label="Channel" value={selectedArtifact.manifest.channel} />
+              <Detail label="Install type" value={selectedArtifact.manifest.installType} />
+              <Detail label="Digest" value={selectedArtifact.manifest.digestSha256} mono />
+              <Detail label="Detached signature" value={selectedArtifact.detachedSignaturePresent ? 'Present' : 'Not provided'} />
+              <Detail label="Signing identity" value={selectedArtifact.manifest.signingIdentity} />
+              <Detail label="Publisher" value={selectedArtifact.manifest.originMetadata.publisher} />
+              <Detail label="Source URL" value={selectedArtifact.manifest.originMetadata.sourceUrl} mono />
+              <Detail label="Stored at" value={new Date(selectedArtifact.createdAt).toLocaleString()} />
+            </div>
+          )}
+        </ModalContent>
+      </Modal>
     </div>
   )
 }
@@ -382,5 +464,14 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
         className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
       />
     </label>
+  )
+}
+
+function Detail({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3">
+      <p className="text-xs uppercase tracking-wide text-[var(--text-soft)]">{label}</p>
+      <p className={`mt-1 text-[var(--text-strong)] ${mono ? 'font-mono text-xs break-all' : ''}`}>{value}</p>
+    </div>
   )
 }

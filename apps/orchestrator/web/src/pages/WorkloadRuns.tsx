@@ -9,6 +9,7 @@ import {
 } from '../services/api'
 import { subscribeToRunProgress } from '../services/realtime'
 import type { Node, WorkloadDefinition, WorkloadRun, WorkloadRunStatus } from '../types'
+import { Modal, ModalContent, ModalDescription, ModalFooter, ModalHeader, ModalTitle } from '../components/ui/modal'
 
 const filterValues: Array<WorkloadRunStatus | 'all'> = [
   'all',
@@ -26,6 +27,7 @@ export default function WorkloadRuns() {
   const [workloads, setWorkloads] = useState<WorkloadDefinition[]>([])
   const [filter, setFilter] = useState<WorkloadRunStatus | 'all'>('all')
   const [selectedRun, setSelectedRun] = useState<WorkloadRun | null>(null)
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({
@@ -116,6 +118,7 @@ export default function WorkloadRuns() {
     try {
       await createWorkloadRun(form)
       await refresh(filter)
+      setIsCreateModalOpen(false)
     } catch (creationError) {
       setError(creationError instanceof Error ? creationError.message : 'Failed to create workload run.')
     } finally {
@@ -133,9 +136,24 @@ export default function WorkloadRuns() {
   }
 
   const openRunDetails = async (run: WorkloadRun) => {
-    const steps = await getWorkloadRunSteps(run.id)
-    setSelectedRun({ ...run, timeline: steps })
+    try {
+      const steps = await getWorkloadRunSteps(run.id)
+      setSelectedRun({ ...run, timeline: steps })
+    } catch {
+      setError('Failed to load run diagnostics.')
+    }
   }
+
+  const statusClasses: Record<WorkloadRunStatus, string> = {
+    pending: 'border-amber-200 bg-amber-50 text-amber-700',
+    assigned: 'border-sky-200 bg-sky-50 text-sky-700',
+    running: 'border-cyan-200 bg-cyan-50 text-cyan-700',
+    completed: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    failed: 'border-rose-200 bg-rose-50 text-rose-700',
+    cancelled: 'border-slate-200 bg-slate-100 text-slate-700',
+  }
+
+  const formatTimestamp = (value: string) => new Date(value).toLocaleString()
 
   if (loading) {
     return <div className="text-center py-8">Loading...</div>
@@ -159,87 +177,113 @@ export default function WorkloadRuns() {
 
       <section className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
         <h2 className="text-lg font-semibold text-[var(--text-strong)]">Create Workload Run</h2>
-        <form onSubmit={handleCreateRun} className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4 xl:items-end">
-          <label className="block text-sm text-[var(--text-soft)]">
-            Workload
-            <select
-              value={form.workloadId}
-              onChange={event => {
-                const workloadId = event.target.value
-                const workload = workloads.find(item => item.id === workloadId)
-                setForm(current => ({
-                  ...current,
-                  workloadId,
-                  workloadRevision: workload?.latestRevision?.revision ?? '',
-                }))
-              }}
-              className="mt-1 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2"
-              required
-            >
-              <option value="">Select workload...</option>
-              {workloads.map(workload => (
-                <option key={workload.id} value={workload.id}>
-                  {workload.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm text-[var(--text-soft)]">
-            Revision
-            <input
-              value={form.workloadRevision}
-              onChange={event => setForm(current => ({ ...current, workloadRevision: event.target.value }))}
-              className="mt-1 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2"
-              required
-            />
-          </label>
-          <label className="block text-sm text-[var(--text-soft)]">
-            Mode
-            <select
-              value={form.mode}
-              onChange={event => setForm(current => ({ ...current, mode: event.target.value as WorkloadRun['mode'] }))}
-              className="mt-1 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2"
-            >
-              <option value="install">install</option>
-              <option value="update">update</option>
-              <option value="rollback">rollback</option>
-              <option value="cancel">cancel</option>
-            </select>
-          </label>
-          <label className="block text-sm text-[var(--text-soft)]">
-            Target nodes
-            <select
-              multiple
-              value={form.targetNodeIds}
-              onChange={event => {
-                const values = Array.from(event.target.selectedOptions).map(option => option.value)
-                setForm(current => ({ ...current, targetNodeIds: values }))
-              }}
-              className="mt-1 h-24 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2"
-            >
-              {nodes.map(node => (
-                <option key={node.id} value={node.id}>
-                  {node.hostname}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="md:col-span-2 xl:col-span-4">
-            <button
-              type="submit"
-              disabled={submitting}
-              className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {submitting ? 'Creating...' : 'Create Run'}
-            </button>
-          </div>
-        </form>
-        {selectedWorkload?.latestRevision?.packageSteps && (
-          <p className="mt-3 text-xs text-[var(--text-soft)]">
-            Latest revision template has {selectedWorkload.latestRevision.packageSteps.length} package steps.
-          </p>
-        )}
+        <p className="mt-1 text-sm text-[var(--text-soft)]">
+          Start a run from a centered popup with workload, revision, mode, and target selection.
+        </p>
+        <button
+          type="button"
+          onClick={() => setIsCreateModalOpen(true)}
+          className="mt-4 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)]"
+        >
+          Open Run Creator
+        </button>
       </section>
+
+      <Modal open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
+        <ModalContent className="w-[min(92vw,42rem)]">
+          <ModalHeader>
+            <ModalTitle>Create Workload Run</ModalTitle>
+            <ModalDescription>Pick a workload target and launch a run with existing run APIs.</ModalDescription>
+          </ModalHeader>
+          <form onSubmit={handleCreateRun} className="grid grid-cols-1 gap-4 px-4 pb-4 md:grid-cols-2">
+            <label className="block text-sm text-[var(--text-soft)]">
+              Workload
+              <select
+                value={form.workloadId}
+                onChange={event => {
+                  const workloadId = event.target.value
+                  const workload = workloads.find(item => item.id === workloadId)
+                  setForm(current => ({
+                    ...current,
+                    workloadId,
+                    workloadRevision: workload?.latestRevision?.revision ?? '',
+                  }))
+                }}
+                className="mt-1 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2"
+                required
+              >
+                <option value="">Select workload...</option>
+                {workloads.map(workload => (
+                  <option key={workload.id} value={workload.id}>
+                    {workload.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm text-[var(--text-soft)]">
+              Revision
+              <input
+                value={form.workloadRevision}
+                onChange={event => setForm(current => ({ ...current, workloadRevision: event.target.value }))}
+                className="mt-1 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2"
+                required
+              />
+            </label>
+            <label className="block text-sm text-[var(--text-soft)]">
+              Mode
+              <select
+                value={form.mode}
+                onChange={event => setForm(current => ({ ...current, mode: event.target.value as WorkloadRun['mode'] }))}
+                className="mt-1 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2"
+              >
+                <option value="install">install</option>
+                <option value="update">update</option>
+                <option value="rollback">rollback</option>
+                <option value="cancel">cancel</option>
+              </select>
+            </label>
+            <label className="block text-sm text-[var(--text-soft)]">
+              Target nodes
+              <select
+                multiple
+                value={form.targetNodeIds}
+                onChange={event => {
+                  const values = Array.from(event.target.selectedOptions).map(option => option.value)
+                  setForm(current => ({ ...current, targetNodeIds: values }))
+                }}
+                className="mt-1 h-28 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2"
+              >
+                {nodes.map(node => (
+                  <option key={node.id} value={node.id}>
+                    {node.hostname}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {selectedWorkload?.latestRevision?.packageSteps && (
+              <p className="text-xs text-[var(--text-soft)] md:col-span-2">
+                Latest revision template has {selectedWorkload.latestRevision.packageSteps.length} package steps.
+              </p>
+            )}
+            <ModalFooter className="px-0 pb-0 pt-2 md:col-span-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setIsCreateModalOpen(false)}
+                className="rounded-lg border border-[var(--surface-border)] px-4 py-2 text-sm text-[var(--text-soft)] hover:bg-[var(--surface-subtle)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submitting ? 'Creating...' : 'Create Run'}
+              </button>
+            </ModalFooter>
+          </form>
+        </ModalContent>
+      </Modal>
 
       <div className="flex flex-wrap gap-2">
         {filterValues.map(value => (
@@ -262,33 +306,48 @@ export default function WorkloadRuns() {
           <p className="text-sm text-[var(--text-soft)]">No runs found.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-[var(--surface-border)]">
+            <table className="min-w-full border-separate border-spacing-y-2">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-[var(--text-soft)]">
-                  <th className="px-4 py-3">Workload</th>
-                  <th className="px-4 py-3">Mode</th>
-                  <th className="px-4 py-3">Revision</th>
-                  <th className="px-4 py-3">Nodes</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3 text-right">Actions</th>
+                  <th className="px-4 py-2">Workload</th>
+                  <th className="px-4 py-2">Mode</th>
+                  <th className="px-4 py-2">Revision</th>
+                  <th className="px-4 py-2">Nodes</th>
+                  <th className="px-4 py-2">Status</th>
+                  <th className="px-4 py-2 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[var(--surface-border)] text-sm">
+              <tbody className="text-sm">
                 {runs.map(run => (
-                  <tr key={run.id} className="cursor-pointer hover:bg-[var(--surface-subtle)]" onClick={() => openRunDetails(run)}>
-                    <td className="px-4 py-3 font-medium text-[var(--text-strong)]">{run.workloadName}</td>
-                    <td className="px-4 py-3 text-[var(--text-soft)]">{run.mode}</td>
-                    <td className="px-4 py-3 text-[var(--text-soft)]">{run.workloadRevision}</td>
+                  <tr
+                    key={run.id}
+                    className="cursor-pointer rounded-xl bg-[var(--surface-subtle)]/40 shadow-[inset_0_0_0_1px_var(--surface-border)] transition hover:bg-[var(--surface-subtle)]"
+                    onClick={() => openRunDetails(run)}
+                  >
+                    <td className="rounded-l-xl px-4 py-3 font-medium text-[var(--text-strong)]">
+                      <span className="block">{run.workloadName}</span>
+                      <span className="mt-1 block font-mono text-xs text-[var(--text-soft)]">{run.id}</span>
+                    </td>
+                    <td className="px-4 py-3 text-[var(--text-soft)]">
+                      <span className="rounded-full border border-[var(--surface-border)] bg-[var(--surface)] px-2 py-1 text-xs uppercase tracking-wide">
+                        {run.mode}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-[var(--text-soft)]">{run.workloadRevision}</td>
                     <td className="px-4 py-3 text-[var(--text-soft)]">{run.targetNodeHostnames.join(', ')}</td>
-                    <td className="px-4 py-3 text-[var(--text-soft)]">{run.status}</td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-[var(--text-soft)]">
+                      <span className={`rounded-full border px-2 py-1 text-xs font-medium uppercase tracking-wide ${statusClasses[run.status]}`}>
+                        {run.status}
+                      </span>
+                    </td>
+                    <td className="rounded-r-xl px-4 py-3 text-right">
                       {(run.status === 'running' || run.status === 'assigned' || run.status === 'pending') && (
                         <button
                           onClick={event => {
                             event.stopPropagation()
                             handleCancel(run.id)
                           }}
-                          className="text-red-600 hover:text-red-800"
+                          className="rounded-md px-2 py-1 text-red-700 hover:bg-red-50 hover:text-red-800"
                         >
                           Cancel
                         </button>
@@ -302,67 +361,82 @@ export default function WorkloadRuns() {
         )}
       </section>
 
-      {selectedRun && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
-            <h3 className="text-xl font-semibold text-[var(--text-strong)]">{selectedRun.id} diagnostics</h3>
-            <p className="mt-1 text-sm text-[var(--text-soft)]">
-              {selectedRun.workloadName} revision {selectedRun.workloadRevision} on {selectedRun.targetNodeHostnames.join(', ')}
-            </p>
+      <Modal
+        open={Boolean(selectedRun)}
+        onOpenChange={open => {
+          if (!open) {
+            setSelectedRun(null)
+          }
+        }}
+      >
+        {selectedRun && (
+          <ModalContent className="max-h-[90vh] w-[min(94vw,64rem)] overflow-y-auto">
+            <ModalHeader>
+              <ModalTitle>Run diagnostics</ModalTitle>
+              <ModalDescription>
+                {selectedRun.workloadName} revision {selectedRun.workloadRevision} on {selectedRun.targetNodeHostnames.join(', ')}
+              </ModalDescription>
+            </ModalHeader>
 
-            <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <span className="font-medium text-[var(--text-strong)]">Mode:</span> {selectedRun.mode}
+            <div className="grid grid-cols-1 gap-4 px-4 md:grid-cols-3">
+              <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3">
+                <p className="text-xs uppercase tracking-wide text-[var(--text-soft)]">Run ID</p>
+                <p className="mt-1 font-mono text-xs text-[var(--text-strong)]">{selectedRun.id}</p>
               </div>
-              <div>
-                <span className="font-medium text-[var(--text-strong)]">Status:</span> {selectedRun.status}
+              <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3">
+                <p className="text-xs uppercase tracking-wide text-[var(--text-soft)]">Mode</p>
+                <p className="mt-1 text-sm text-[var(--text-strong)]">{selectedRun.mode}</p>
               </div>
-              <div className="col-span-2">
-                <span className="font-medium text-[var(--text-strong)]">Reason:</span>{' '}
-                {selectedRun.diagnostics?.reasonCode ?? 'n/a'}
+              <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3">
+                <p className="text-xs uppercase tracking-wide text-[var(--text-soft)]">Status</p>
+                <p className="mt-1 text-sm text-[var(--text-strong)]">{selectedRun.status}</p>
               </div>
+            </div>
+
+            <div className="mt-4 px-4 text-sm">
+              <p className="text-[var(--text-soft)]">
+                <span className="font-medium text-[var(--text-strong)]">Reason:</span> {selectedRun.diagnostics?.reasonCode ?? 'n/a'}
+              </p>
               {selectedRun.diagnostics?.lastMessage && (
-                <div className="col-span-2 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] px-3 py-2 text-[var(--text-soft)]">
+                <p className="mt-2 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] px-3 py-2 text-[var(--text-soft)]">
                   {selectedRun.diagnostics.lastMessage}
-                </div>
+                </p>
               )}
             </div>
 
-            <h4 className="mt-6 text-sm font-semibold uppercase tracking-wide text-[var(--text-soft)]">Timeline</h4>
-            <div className="mt-3 overflow-x-auto rounded-xl border border-[var(--surface-border)]">
-              <table className="min-w-full divide-y divide-[var(--surface-border)] text-sm">
-                <thead>
-                  <tr className="text-left text-xs uppercase tracking-wide text-[var(--text-soft)]">
-                    <th className="px-3 py-2">Sequence</th>
-                    <th className="px-3 py-2">Message</th>
-                    <th className="px-3 py-2">Package Index</th>
-                    <th className="px-3 py-2">Step ID</th>
-                    <th className="px-3 py-2">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--surface-border)]">
+            <div className="mt-5 px-4 pb-2">
+              <h4 className="text-sm font-semibold uppercase tracking-wide text-[var(--text-soft)]">Timeline stream</h4>
+              <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950 p-3 font-mono text-xs text-slate-200">
+                <div className="mb-3 flex items-center gap-2 text-[11px] text-slate-400">
+                  <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
+                  workload run timeline
+                </div>
+                <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
                   {selectedRun.timeline.map(item => (
-                    <tr key={`${selectedRun.id}-${item.sequence}`}>
-                      <td className="px-3 py-2 text-[var(--text-soft)]">{item.sequence}</td>
-                      <td className="px-3 py-2 text-[var(--text-soft)]">{item.messageType}</td>
-                      <td className="px-3 py-2 text-[var(--text-soft)]">{item.packageIndex}</td>
-                      <td className="px-3 py-2 font-mono text-xs text-[var(--text-soft)]">{item.stepId}</td>
-                      <td className="px-3 py-2 text-[var(--text-soft)]">{item.status}</td>
-                    </tr>
+                    <div key={`${selectedRun.id}-${item.sequence}`} className="rounded-md border border-slate-800 bg-slate-900/80 px-2 py-1.5">
+                      <p className="text-slate-300">
+                        [{String(item.sequence).padStart(2, '0')}] {item.messageType} #{item.packageIndex} {item.stepId}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-400">
+                        {item.status} • {formatTimestamp(item.at)} • {item.detail}
+                      </p>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              </div>
             </div>
 
-            <button
-              onClick={() => setSelectedRun(null)}
-              className="mt-6 w-full rounded-lg bg-[var(--surface-muted)] px-4 py-2 text-sm font-medium text-[var(--text-soft)] hover:bg-[var(--surface-border)]"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+            <ModalFooter className="px-4 pb-4 pt-2 sm:flex-row sm:justify-end">
+              <button
+                onClick={() => setSelectedRun(null)}
+                className="rounded-lg bg-[var(--surface-muted)] px-4 py-2 text-sm font-medium text-[var(--text-soft)] hover:bg-[var(--surface-border)]"
+              >
+                Close
+              </button>
+            </ModalFooter>
+          </ModalContent>
+        )}
+      </Modal>
     </div>
   )
 }

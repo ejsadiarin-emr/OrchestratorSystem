@@ -20,35 +20,37 @@ export function buildWorkloadRows(data: OrchestratorHomeData | null): WorkloadRo
   >()
 
   data.nodes.forEach(node => {
-    node.workloads.forEach(workload => {
-      const existing = rows.get(workload.name) ?? {
-        name: workload.name,
-        revisions: new Set<string>(),
-        nodesAssigned: 0,
-        runningNodes: 0,
-        nodesWithRevisionUpdates: 0,
-        nodesWithPackageUpdates: 0,
-        packageUpdateSignals: 0,
-      }
+    if (!node.assignedWorkload) {
+      return
+    }
 
-      existing.revisions.add(workload.revision)
-      existing.nodesAssigned += 1
+    const existing = rows.get(node.assignedWorkload) ?? {
+      name: node.assignedWorkload,
+      revisions: new Set<string>(),
+      nodesAssigned: 0,
+      runningNodes: 0,
+      nodesWithRevisionUpdates: 0,
+      nodesWithPackageUpdates: 0,
+      packageUpdateSignals: 0,
+    }
 
-      if (workload.runState !== 'idle' && workload.runState !== 'success' && workload.runState !== 'failed') {
-        existing.runningNodes += 1
-      }
+    existing.revisions.add(node.workloadRevision)
+    existing.nodesAssigned += 1
 
-      if (node.revisionUpdateAvailable) {
-        existing.nodesWithRevisionUpdates += 1
-      }
+    if (node.runState !== 'idle' && node.runState !== 'success' && node.runState !== 'failed') {
+      existing.runningNodes += 1
+    }
 
-      if (node.packageUpdatesAvailable) {
-        existing.nodesWithPackageUpdates += 1
-        existing.packageUpdateSignals += node.packageUpdateCount ?? 1
-      }
+    if (node.revisionUpdateAvailable) {
+      existing.nodesWithRevisionUpdates += 1
+    }
 
-      rows.set(workload.name, existing)
-    })
+    if (node.packageUpdatesAvailable) {
+      existing.nodesWithPackageUpdates += 1
+      existing.packageUpdateSignals += node.packageUpdateCount ?? 1
+    }
+
+    rows.set(node.assignedWorkload, existing)
   })
 
   return Array.from(rows.values())

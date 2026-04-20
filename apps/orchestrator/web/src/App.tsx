@@ -20,6 +20,7 @@ export default function App() {
           <Route path="/nodes" element={<Nodes />} />
           <Route path="/packages" element={<Packages />} />
           <Route path="/install" element={<Install />} />
+          <Route path="*" element={<Dashboard />} />
         </Routes>
       </Layout>
     </BrowserRouter>

@@ -7,16 +7,16 @@ describe('Install page flow', () => {
     render(<Install />)
   })
 
-  it('shows channel validation error when channel is invalid', async () => {
-    await screen.findByText('Installer Artifact Ingestion')
+  it('prefills manifest via file picker and shows channel validation error when channel is invalid', async () => {
+    await screen.findByText('Artifact Store Console')
 
-    fireEvent.change(screen.getByPlaceholderText('EJ-Installer-1.13.0.msi'), {
-      target: { value: 'EJ-Installer-9.9.9.msi' },
+    const fileInput = screen.getByLabelText('Select local artifact file')
+    const pickedFile = new File(['installer-binary'], 'EJ-Installer-9.9.9.msi', {
+      type: 'application/x-msi',
     })
-    fireEvent.change(screen.getByLabelText('File size bytes'), {
-      target: { value: '43210' },
-    })
-    fireEvent.click(screen.getByText('Analyze and Prefill Metadata'))
+    fireEvent.change(fileInput, { target: { files: [pickedFile] } })
+
+    await screen.findByText(/Selected/)
 
     const channelSelect = await screen.findByLabelText('Channel')
     fireEvent.change(channelSelect, { target: { value: 'bad-channel' } })
@@ -24,18 +24,19 @@ describe('Install page flow', () => {
     expect(await screen.findByText('manifest.channel must be one of stable, canary, or test.')).toBeInTheDocument()
   })
 
-  it('stores artifact through mocked multipart flow', async () => {
-    await screen.findByText('Installer Artifact Ingestion')
+  it('prefills manifest from drag-drop and stores artifact through mocked multipart flow', async () => {
+    await screen.findByText('Artifact Store Console')
 
-    fireEvent.change(screen.getByPlaceholderText('EJ-Installer-1.13.0.msi'), {
-      target: { value: 'EJ-Installer-2.0.0.msi' },
+    const droppedFile = new File(['installer-binary-2'], 'EJ-Installer-2.0.0.msi', {
+      type: 'application/x-msi',
     })
-    fireEvent.change(screen.getByLabelText('File size bytes'), {
-      target: { value: '87654' },
+    fireEvent.drop(screen.getByTestId('artifact-dropzone'), {
+      dataTransfer: {
+        files: [droppedFile],
+      },
     })
-    fireEvent.click(screen.getByText('Analyze and Prefill Metadata'))
 
-    fireEvent.click(await screen.findByText('Verify and Store Artifact'))
+    fireEvent.click(await screen.findByText('Validate and Store Artifact'))
 
     await waitFor(() => {
       expect(screen.getByText(/Stored EJ-Installer-2.0.0.msi/)).toBeInTheDocument()

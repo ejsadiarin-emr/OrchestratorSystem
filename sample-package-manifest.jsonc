@@ -1,0 +1,12 @@
+{
+    "name": "EJ Installer",
+    "version": "1.12.0",
+    "slug": "EJ-Installer-1.12",
+    "channel": "stable",
+    "digest": "d6d801d2f2d7de6f8d",
+    "sourceUrl": "https://repo.local/installers/EJ-Installer-1.12.0.msi",
+    "installType": "msi",
+    "signingIdentity": "CN=Emerson Trusted Release",
+    "publisher": "Emerson",
+    "detachedSignature": "..."
+}

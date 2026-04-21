@@ -108,6 +108,8 @@ Core posture:
 - phase-1 persistence baseline is SQLite for canonical runtime entities
 - each workload revision in PoC contains 2-3 packages
 - workload revision content is immutable once published
+- update workflow is fully automatic: pre-check → risk detection → status display in orchestrator → proceed via pre-defined upgrade paths
+- operator views risk status in UI before update runs and can cancel, but no manual approval step is required
 
 ---
 
@@ -305,12 +307,11 @@ Default values when a field is not provided and no higher-precedence source reso
 - `policyTags.retryabilityClass`: `transient_only`
 - `policyTags.idempotencyMode`: `version_check`
 - `policyTags.riskLevel`: `medium`
-- `policyTags.approvalRequired`: `false`
 
 Security overrides:
 
 - verification result `fail` blocks ingest (fail-closed),
-- verification result `warn` forces `policyTags.riskLevel = high` and `policyTags.approvalRequired = true`.
+- verification result `warn` forces `policyTags.riskLevel = high` (risk status is displayed in UI but update proceeds automatically).
 
 Conditional requirements:
 
@@ -358,8 +359,7 @@ Post-ingest stored manifest record must validate against JSON schema equivalent 
   "policyTags": {
     "retryabilityClass": "transient_only",
     "idempotencyMode": "version_check",
-    "riskLevel": "medium",
-    "approvalRequired": false
+    "riskLevel": "medium"
   }
 }
 ```

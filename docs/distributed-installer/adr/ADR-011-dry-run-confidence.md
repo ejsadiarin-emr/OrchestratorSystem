@@ -24,8 +24,8 @@ Implement a **confidence level framework** where each pre-check reports its own 
 Overall deployment confidence is the **minimum** of all individual check confidences. Action thresholds:
 
 - 100%: proceed automatically
-- High (≥90%): proceed with warning
-- Medium (≥70%): require operator confirmation
+- High (≥90%): proceed automatically with risk status displayed in UI
+- Medium (≥70%): proceed automatically with risk status displayed in UI
 - Low (<70%): block deployment
 
 Confidence accuracy is tracked empirically over time to adjust levels based on real-world success rates.
@@ -34,13 +34,15 @@ Confidence accuracy is tracked empirically over time to adjust levels based on r
 
 ### Positive
 
-- Operators understand the risk level before deploying
-- Conservative by default — appropriate for industrial control systems
+- Operators see risk level before deploying (risk status visible in orchestrator UI)
+- Fully automatic workflow: pre-check → risk detection → status display → proceed via pre-defined upgrade paths
+- No manual approval bottleneck — operator can cancel if needed
+- Conservative blocking at Low confidence protects production systems
 - Empirical tracking improves confidence accuracy over time
 - Clear, structured interface for adding new pre-checks
 
 ### Negative
 
-- May block deployments that would have succeeded (false negatives)
+- May proceed with risks that could cause issues (requires good pre-defined upgrade paths)
 - Requires discipline in assigning confidence levels to new checks
 - Empirical tracking requires sufficient deployment volume to be meaningful

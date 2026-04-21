@@ -241,9 +241,7 @@ UI modality constraint:
 ### Security and policy outcomes
 
 - verification `fail`: ingest rejected (fail-closed)
-- verification `warn`: ingest accepted only with elevated policy defaults:
-  - `riskLevel=high`
-  - `approvalRequired=true`
+- verification `warn`: ingest accepted with elevated riskLevel (`high`). Risk status is displayed in orchestrator UI but update proceeds automatically via pre-defined upgrade paths.
 
 ### Verification gates
 

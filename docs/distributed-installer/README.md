@@ -147,7 +147,7 @@ Deterministic field resolution chain:
 Policy/security outcomes:
 
 - Trust verification `fail` => reject ingest (fail-closed).
-- Trust verification `warn` => force elevated risk and approval-required posture.
+- Trust verification `warn` => force elevated riskLevel (`high`). Risk status displayed in UI but update proceeds automatically.
 
 Persisted manifest requirements:
 

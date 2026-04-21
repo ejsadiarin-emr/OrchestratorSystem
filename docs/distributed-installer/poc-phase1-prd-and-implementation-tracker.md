@@ -217,7 +217,7 @@ These tasks are retained as historical completion and are not reopened.
   - [ ] Resolved manifest persists per-field source provenance (`admin|template|analyzer|default`).
   - [ ] Conditional field escalation enforced when install adapter/detection cannot be resolved.
   - [ ] Missing minimal/conditional required fields fail with field-level validation errors.
-  - [ ] Signature/hash verification `fail` blocks ingest; `warn` elevates risk/approval defaults.
+  - [ ] Signature/hash verification `fail` blocks ingest; `warn` elevates riskLevel to `high` (status displayed in UI but update proceeds automatically).
   - [ ] Stored resolved manifest validates against schema-equivalent structure.
   - [ ] Optional/admin override fields are accepted without blocking ingest.
   - [ ] Orchestrator `/install` (artifact store management) supports drag-drop and file picker upload paths through the same ingest endpoint.
@@ -311,10 +311,9 @@ These tasks are retained as historical completion and are not reopened.
 
 - Owner: `TBD (Backend/Agent)`
 - Status: `Not Started`
-- Objective: enforce retry/idempotency/risk/approval decisions per package-step.
+- Objective: enforce retry/idempotency/risk detection and status display per package-step. Update workflow is automatic: pre-check detects risk → status reflected in orchestrator UI → proceed via pre-defined upgrade paths. No manual approval step.
 - Target modules:
   - `src/DeploymentPoC.Orchestrator/Runtime/PolicyEvaluationService.cs`
-  - `src/DeploymentPoC.Orchestrator/Runtime/ApprovalGateService.cs`
   - `src/DeploymentPoC.Agent/Pipeline/PipelineExecutor.cs`
 - Verification commands:
   - `dotnet test tests/DeploymentPoC.Orchestrator.Tests --filter Policy`

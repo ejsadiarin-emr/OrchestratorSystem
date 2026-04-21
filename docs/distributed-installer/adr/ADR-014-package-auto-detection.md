@@ -58,7 +58,7 @@ System Admin uploads binary
                    ▼
 ┌─────────────────────────────────────┐
 │  Admin Reviews & Fills Gaps         │
-│  (approvalRequired, custom policies) │
+│  (custom policies, optional overrides) │
 └──────────────────┬──────────────────┘
                    │
                    ▼
@@ -142,15 +142,15 @@ CREATE TABLE PackageVersionCache (
 
 **Built-in Templates:**
 
-| Template | retryabilityClass | idempotencyMode | riskLevel | approvalRequired | Use Case |
-|----------|-------------------|-----------------|-----------|------------------|----------|
-| Standard Install | transient_only | version_check | medium | false | General software |
-| Development Tool | transient_only | always | low | false | SDKs, build tools |
-| Runtime | bounded | version_check | medium | false | Node.js, .NET |
-| Database | bounded | detect | high | true | SQL Server, PostgreSQL |
-| Security Patch | transient_only | version_check | low | false | Hotfixes |
-| Critical Service | none | detect | high | true | Domain controllers, etc. |
-| Custom | operator-defined | operator-defined | operator-defined | operator-defined | Manual override |
+| Template | retryabilityClass | idempotencyMode | riskLevel | Use Case |
+|----------|-------------------|-----------------|-----------|----------|
+| Standard Install | transient_only | version_check | medium | General software |
+| Development Tool | transient_only | always | low | SDKs, build tools |
+| Runtime | bounded | version_check | medium | Node.js, .NET |
+| Database | bounded | detect | high | SQL Server, PostgreSQL |
+| Security Patch | transient_only | version_check | low | Hotfixes |
+| Critical Service | none | detect | high | Domain controllers, etc. |
+| Custom | operator-defined | operator-defined | operator-defined | Manual override |
 
 **Behavior:**
 - After auto-fill, System Administrator selects template
@@ -171,7 +171,7 @@ CREATE TABLE PackageVersionCache (
   "packageIdHint": "nodejs",          // optional, helps lookup
   "selectedTemplate": "runtime",       // optional, defaults to "standard-install"
   "policyOverrides": {                  // optional, merged with template
-    "approvalRequired": true
+    "riskLevel": "high"
   }
 }
 ```
@@ -191,10 +191,8 @@ CREATE TABLE PackageVersionCache (
   "policyTags": {
     "retryabilityClass": "transient_only",
     "idempotencyMode": "version_check",
-    "riskLevel": "medium",
-    "approvalRequired": false
-  },
-  "reviewRequired": ["approvalRequired"]  // fields needing admin confirmation
+    "riskLevel": "medium"
+  }
 }
 ```
 

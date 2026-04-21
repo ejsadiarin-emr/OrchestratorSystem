@@ -76,6 +76,7 @@ dist
 apps/orchestrator/backend/wwwroot/
 .artifacts/
 .superpowers/
+.worktrees/
 
 # Local data
 data/

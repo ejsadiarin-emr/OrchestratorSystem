@@ -135,6 +135,7 @@ When documents conflict, use this order:
 | Fresh orchestrator install | Bring up API/UI/Hub/persistence deterministically |
 | Agent install via WinRM | Enroll node and bind identity (`token -> mTLS`) |
 | Artifact ingestion | Ingest -> validate -> store immutable artifact record |
+| Local artifact-store management | Browse/version-check artifacts and upload via drag-drop or picker |
 | Workload lifecycle run | Submit run -> assign -> execute -> observe |
 | Workload update/rollback/cancel | Deterministic transition behavior and auditability |
 
@@ -187,6 +188,7 @@ DevOps CI             Signing Service         Artifact Repo         Operator
    - OTel exporter endpoint/export mode
 4. Orchestrator starts API, Hub, persistence, embedded UI host
 5. Startup checks run; bootstrap audit event emitted
+6. Operator can open local artifact-store management page in embedded UI
 
 ### Verification gates
 
@@ -195,6 +197,7 @@ DevOps CI             Signing Service         Artifact Repo         Operator
 - `GET /api/nodes` returns valid schema
 - SQLite file/schema initialize
 - Artifact path writable and access-controlled
+- Embedded UI exposes local artifact-store inventory and upload entrypoint
 
 ---
 
@@ -202,11 +205,13 @@ DevOps CI             Signing Service         Artifact Repo         Operator
 
 ### Upload/Ingestion flow
 
-1. Admin uploads installer media (or requests vendor import)
-2. Orchestrator runs template/analyzer enrichment pipeline
-3. Admin confirms minimal required fields and any unresolved conditional fields
-4. Orchestrator validates trust evidence and schema
-5. Orchestrator stores immutable artifact record and emits ingest audit event
+1. Admin opens local artifact-store management page and chooses upload method (drag-drop or file picker)
+2. Admin uploads installer media (or requests vendor import)
+3. Orchestrator runs template/analyzer enrichment pipeline
+4. Admin confirms minimal required fields and any unresolved conditional fields
+5. Orchestrator validates trust evidence and schema
+6. Orchestrator stores immutable artifact record and emits ingest audit event
+7. UI refreshes artifact list/detail metadata for operator verification and downstream workload revision authoring
 
 ### Request shape
 
@@ -217,6 +222,10 @@ DevOps CI             Signing Service         Artifact Repo         Operator
   - `manifest`
 - Optional part:
   - `detachedSignature`
+
+UI modality constraint:
+
+- drag-drop and picker flows are UX variants only; both must map to the same canonical multipart contract above
 
 ### Minimal required admin fields
 
@@ -242,6 +251,25 @@ DevOps CI             Signing Service         Artifact Repo         Operator
 - Conditional requirements enforced when unresolved fields remain
 - Resolved manifest includes field source provenance
 - Digest/signature trust evidence persisted and auditable
+- Drag-drop and picker uploads produce equivalent server-side validation outcomes
+
+---
+
+## Local Artifact-Store Management Storyboard
+
+### Operator flow
+
+1. Operator opens `/install` from primary orchestrator navigation.
+2. Operator views artifact inventory with package/version/channel/digest and origin metadata.
+3. Operator opens artifact detail to verify package/version suitability before workload revision drafting.
+4. Operator uploads new artifact via drag-drop zone or file picker.
+5. Operator confirms ingest result and sees updated inventory without leaving context.
+
+### Verification gates
+
+- Inventory view supports version/channel visibility needed for workload authoring decisions.
+- Artifact detail drilldown exposes digest and origin metadata for operator checks.
+- Drag-drop and picker upload paths both complete through canonical ingest endpoint and produce consistent outcomes.
 
 ---
 
@@ -274,13 +302,14 @@ DevOps CI             Signing Service         Artifact Repo         Operator
 ### Operator intent flow
 
 1. Sysadmin selects targets
-2. Sysadmin selects workload revision and operation (`install|update|rollback|cancel`)
-3. UI/CLI submits `POST /api/workload-runs`
-4. API validates auth, schema, lifecycle constraints, and policy gates
-5. Orchestrator persists workload run + node assignments
-6. Orchestrator enqueues/dispatches assignment
-7. Hub sends `AssignRun`, agent returns `AckClaim`, lease tracking starts
-8. UI/CLI opens timeline view: `GET /api/workload-runs/{runId}`, `GET /api/workload-runs/{runId}/steps`
+2. Sysadmin verifies workload revision and package-version context in UI prior to submission.
+3. Sysadmin selects workload revision and operation (`install|update|rollback|cancel`)
+4. UI/CLI submits `POST /api/workload-runs`
+5. API validates auth, schema, lifecycle constraints, and policy gates
+6. Orchestrator persists workload run + node assignments
+7. Orchestrator enqueues/dispatches assignment
+8. Hub sends `AssignRun`, agent returns `AckClaim`, lease tracking starts
+9. UI/CLI opens timeline view with visible workload revision/package progress: `GET /api/workload-runs/{runId}`, `GET /api/workload-runs/{runId}/steps`
 
 ### End-to-end sequence diagram
 
@@ -445,3 +474,4 @@ This aligned storyboard intentionally differs from `storyboard-phase1.md` in the
 - treats `/api/jobs` mutation as deprecated `410` path only
 - uses `runId/workloadId/workloadRevision` correlation identifiers
 - aligns lifecycle vocabulary to `install|update|rollback|cancel`
+- operator-facing copy should prefer node/workload wording over legacy fleet terminology

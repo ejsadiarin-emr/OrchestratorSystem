@@ -70,6 +70,7 @@ Core posture:
 - step-level telemetry with required workload correlation fields,
 - self-contained orchestrator executable with embedded React UI.
 - agent runtime includes a minimal embedded web UI for local workload visibility and guided update actions.
+- orchestrator embedded UI includes first-class local artifact store management with drag-and-drop upload while preserving canonical artifact ingest contracts.
 
 ---
 
@@ -85,6 +86,7 @@ Core posture:
 - typed adapter support for MSI/EXE execution paths
 - config snapshot/migration/restore contract for mutation safety
 - self-contained orchestrator packaging with embedded UI
+- orchestrator embedded UI includes workload lifecycle and local artifact-store management surfaces
 - agent packaging with embedded local web UI for customer-facing workload visibility
 - workload execution target may be an agent node or the orchestrator node
 
@@ -119,6 +121,8 @@ Core posture:
 6. As a reliability engineer, I can verify bounded retry, idempotent status ingest, and stale-lease handling under disconnect/reconnect.
 7. As a release/platform owner, I can run the orchestrator as a self-contained executable on a clean Windows host.
 8. As an auditor, I can reconstruct actor, target, sequence, workload revision, and outcome from linked audit/telemetry evidence.
+9. As an operator, I can manage local artifacts from a dedicated page, upload via drag-and-drop or file picker, and verify version metadata before creating workload revisions.
+10. As an operator, I can open large centered detail popups with terminal-like mini logs so node/workload diagnostics are visible without losing dashboard context.
 
 ---
 
@@ -157,7 +161,7 @@ Core posture:
 - **Orchestrator:** REST API, SignalR runtime hub, workload registry, run planner, policy/lease logic, persistence, embedded UI host.
 - **Agent:** persistent Windows service, runtime client, local typed execution pipeline, adapter execution, telemetry emission, embedded local web UI.
 - **Artifact store:** orchestrator-managed internal artifact source.
-- **Operator surfaces:** API/UI/CLI for runtime actions; scripts are provisioning-only.
+- **Operator surfaces:** API/UI/CLI for runtime actions; scripts are provisioning-only. Embedded orchestrator UI includes node/workload visibility, workload CRUD and run actions, workload-run timeline visibility, and local artifact-store management.
 
 ### Runtime transport boundaries
 
@@ -204,6 +208,8 @@ Core posture:
 | API-010 | GET | `/api/nodes` | list node health/registration |
 | API-011 | POST | `/api/nodes/enroll` | issue one-time enrollment token |
 | API-012 | POST | `/api/artifacts` | ingest artifact media + manifest |
+| API-015 | GET | `/api/artifacts` | list artifact records for local artifact-store management |
+| API-016 | GET | `/api/artifacts/{artifactId}` | fetch artifact detail/metadata for operator drilldown |
 | API-013 | POST | `/api/jobs` | removed from runtime API surface (historical migration reference only) |
 | API-014 | POST | `/api/jobs/{jobId}/cancel` | removed from runtime API surface (historical migration reference only) |
 
@@ -253,6 +259,7 @@ Status ingest/idempotency rules:
 - optional part: `detachedSignature`
 - manifest channel is strictly `stable|canary|test`
 - agents retrieve bytes through HTTP artifact endpoints only
+- orchestrator UI may use file picker or drag-and-drop input, but both map to the same canonical multipart ingest contract
 
 Minimal required admin fields (required at request validation):
 
@@ -416,6 +423,7 @@ All ADR content is represented in this PRD and linked tracker work.
 | FR-007 | [PoC Phase 1] Runtime lifecycle APIs use `/api/workload-runs` only; `/api/jobs` mutation endpoints are non-runtime historical context | Must | AC-008 |
 | FR-008 | [PoC Phase 1] Artifact ingest validates minimal required fields, injects deterministic defaults for prefillable fields, enforces conditional requirements when resolution fails, and persists schema-valid resolved manifests | Must | AC-009 |
 | FR-009 | [PoC Phase 1] Agent provides a minimal embedded web UI to show local workload status and support guided local update actions aligned with orchestrator policy | Should | AC-106 |
+| FR-010 | [PoC Phase 1] Orchestrator embedded UI provides clear operator ergonomics: centered opaque detail popups, terminal-style mini logs, workload/version/package visibility, no legacy fleet terminology in operator-facing labels, and local artifact-store management with drag-and-drop upload | Should | AC-107 |
 
 ---
 
@@ -450,6 +458,7 @@ All ADR content is represented in this PRD and linked tracker work.
 | AC-104 | NFR-004 | Runtime actions available through REST/CLI workload surfaces without script dependency | Integration/Manual |
 | AC-105 | NFR-005 | Orchestrator executable runs on clean Windows host with API and UI available | Integration/Manual |
 | AC-106 | FR-009 | Agent executable provides local embedded UI showing node/workload state and permitted guided update actions with auditable outcomes | Integration/Manual |
+| AC-107 | FR-010 | Orchestrator UI uses centered popups for node/workload details and create flows, includes terminal-like mini logs in details, preserves workload revision/package visibility, removes legacy fleet wording from operator-facing labels, and exposes local artifact-store management with drag-drop + picker upload | Integration/Manual/UI regression |
 
 ---
 
@@ -536,6 +545,7 @@ On-prem/air-gap realism requirements:
 | FR-007 | ADR-007, ADR-012 | deprecation contract integration checks |
 | FR-008 | ADR-014 | artifact ingest schema validation suite |
 | FR-009 | ADR-009 | agent embedded local UI workflow integration/manual suite |
+| FR-010 | ADR-001, ADR-012 | orchestrator embedded UI workflow and terminology regression suite |
 | NFR-001 | ADR-008 | lease stale + chaos suite |
 | NFR-002 | ADR-006, ADR-012 | security integration + negative tests |
 | NFR-003 | ADR-004 | observability query contract integration suite |
@@ -548,7 +558,7 @@ On-prem/air-gap realism requirements:
 
 PoC Phase 1 is complete only when all conditions are true:
 
-1. `AC-001..AC-009`, `AC-101..AC-106` each have linked evidence.
+1. `AC-001..AC-009`, `AC-101..AC-107` each have linked evidence.
 2. Security baseline controls are proven with negative tests.
 3. Contract consistency across PRD, tracker, and storyboard is verified.
 4. Packaging and deployment policy constraints are proven in CI evidence.

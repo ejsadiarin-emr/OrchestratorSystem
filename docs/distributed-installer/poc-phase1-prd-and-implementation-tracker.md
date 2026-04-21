@@ -3,7 +3,7 @@
 Date: 2026-04-17
 Status: In progress
 Source of truth: `poc-phase1-prd-final.md`
-Companion flow doc: `storyboard-phase1.md` (user will edit separately)
+Companion flow doc: `storyboard-phase1-workload-aligned.md` (canonical storyboard)
 
 ## Purpose
 
@@ -22,9 +22,12 @@ This document does not redefine policy. If policy language here conflicts with P
 - Runtime workstation operations remain API/UI/CLI-driven through orchestrator only.
 - Direct workstation deployment from Azure DevOps pipeline is out of scope.
 - Runtime artifact source is internal-only.
+- Local artifact store management UI is first-class in orchestrator embedded UI.
+- Artifact upload UX must support both drag-and-drop and file picker while preserving canonical `POST /api/artifacts` behavior.
 - Phase 1 assumes single orchestrator.
 - Workload revisions are immutable once published.
 - PoC workload revision size target is 2-3 packages.
+- Operator-facing UI terminology must avoid legacy "fleet" wording where equivalent node/workload terms exist.
 - Canonical runtime sequence is fixed:
   `Connect -> Register/Authenticate -> AssignRun -> AckClaim -> LeaseHeartbeat -> StepStatus* -> Complete/Fail -> LeaseClose`
 
@@ -70,6 +73,8 @@ These tasks are retained as historical completion and are not reopened.
 | W5-01 | Security baseline controls (RBAC/trust/audit/secrets) | S3 | W2-04, W3-02 | TBD (Security/Backend) | Not Started | AC-102, AC-002 |
 | W5-02 | Observability stack MVP (OTel Collector + Loki + Grafana) | S3 | W2-02 | TBD (Backend/DevOps) | Not Started | AC-103 |
 | W6-01 | Orchestrator UI workload screens + run timeline | S3 | W1-03, W2-01 | TBD (Frontend) | Not Started | AC-001, AC-002, AC-103, AC-105 |
+| W6-01A | Orchestrator UI interaction refresh (centered popups, terminal-like logs, info-hint stability, terminology pass) | S3 | W6-01 | TBD (Frontend) | Not Started | AC-107 |
+| W6-01B | Orchestrator local artifact-store management page with drag-drop upload and artifact/version visibility | S3 | W1-05, W6-01 | TBD (Frontend/Backend) | Not Started | AC-009, AC-107 |
 | W6-02 | Orchestrator UI deprecation UX for `/api/jobs` | S3 | W1-04 | TBD (Frontend) | Not Started | AC-008 |
 | W6-03 | Agent UI minimal workload status/update surface | S3 | W3-04 | TBD (Frontend/Agent) | Not Started | AC-001, AC-103 |
 | W6-04 | CLI workload command surface | S3 | W1-03 | TBD (Platform) | Not Started | AC-104, AC-001, AC-002 |
@@ -114,7 +119,7 @@ These tasks are retained as historical completion and are not reopened.
 
 ### Slice D - Operator visibility and closure
 
-- `W5-02` -> `W6-01` -> `W6-02` -> `W6-03` -> `W6-04` -> `W7-01` -> `W7-02` -> `W8-01`
+- `W5-02` -> `W6-01` -> `W6-01A` -> `W6-01B` -> `W6-02` -> `W6-03` -> `W6-04` -> `W7-01` -> `W7-02` -> `W8-01`
 
 ## Task details checklist
 
@@ -215,6 +220,51 @@ These tasks are retained as historical completion and are not reopened.
   - [ ] Signature/hash verification `fail` blocks ingest; `warn` elevates risk/approval defaults.
   - [ ] Stored resolved manifest validates against schema-equivalent structure.
   - [ ] Optional/admin override fields are accepted without blocking ingest.
+  - [ ] Orchestrator `/install` (artifact store management) supports drag-drop and file picker upload paths through the same ingest endpoint.
+  - [ ] Artifact list/detail data required by workload revision authoring and operator drilldown are exposed to UI consumers.
+
+### W6-01A - Orchestrator UI interaction refresh
+
+- Owner: `TBD (Frontend)`
+- Status: `Not Started`
+- Objective: apply Phase 1 interaction standards across orchestrator UI without changing runtime policy.
+- Target modules:
+  - `apps/orchestrator/web/src/pages/Dashboard.tsx`
+  - `apps/orchestrator/web/src/pages/dashboard/InfoHint.tsx`
+  - `apps/orchestrator/web/src/pages/Workloads.tsx`
+  - `apps/orchestrator/web/src/pages/WorkloadRuns.tsx`
+  - `apps/orchestrator/web/src/components/layout/Layout.tsx`
+  - `apps/orchestrator/web/src/pages/*.test.tsx`
+- Verification commands:
+  - `pnpm --dir apps/orchestrator/web test -- --runInBand`
+  - `pnpm --dir apps/orchestrator/web build`
+- Acceptance links: AC-107
+- Checklist:
+  - [ ] Node/workload detail interactions use centered opaque popups instead of right-side drawer.
+  - [ ] Workload and workload-run create flows launch from explicit action buttons into centered popup flows.
+  - [ ] Popup mini logs use terminal-like visual treatment and preserve severity visibility.
+  - [ ] Risk/reason info hint interactions no longer auto-open unexpectedly during row/detail interactions.
+  - [ ] Operator-facing UI copy removes legacy "fleet" labels where node/workload wording is available.
+
+### W6-01B - Local artifact-store management page
+
+- Owner: `TBD (Frontend/Backend)`
+- Status: `Not Started`
+- Objective: make `/install` a first-class local artifact-store management page aligned with workload-first operations.
+- Target modules:
+  - `apps/orchestrator/web/src/pages/Install.tsx`
+  - `apps/orchestrator/web/src/services/api.ts`
+  - `apps/orchestrator/web/src/types.ts`
+  - `apps/orchestrator/web/src/pages/Install.test.tsx`
+- Verification commands:
+  - `pnpm --dir apps/orchestrator/web test -- --runInBand`
+  - `pnpm --dir apps/orchestrator/web build`
+- Acceptance links: AC-009, AC-107
+- Checklist:
+  - [ ] `/install` presents artifact-store inventory with version/channel/digest metadata suitable for workload authoring.
+  - [ ] Upload supports drag-drop and file picker and maps to canonical multipart ingest request.
+  - [ ] Upload success/failure states are explicit and auditable in UI feedback.
+  - [ ] Artifact detail visibility supports operator verification before workload revision creation.
 
 ### W2-01 - Runtime contract updates (`AssignRun`)
 
@@ -334,7 +384,7 @@ These tasks are retained as historical completion and are not reopened.
 | Slice C | agent pipeline + migration tests | ordered package execution + restore behavior pass | TBD | Not Started |
 | Slice D | web + cli + observability tests | operator visibility and runtime operations pass | TBD | Not Started |
 | Packaging | self-contained publish + clean-host launch | AC-105 satisfied | TBD | Not Started |
-| Final | full tests + evidence review | AC-001..AC-009, AC-101..AC-105 closed with evidence | TBD | Not Started |
+| Final | full tests + evidence review | AC-001..AC-009, AC-101..AC-107 closed with evidence | TBD | Not Started |
 
 ## AC evidence tracker
 
@@ -354,6 +404,8 @@ These tasks are retained as historical completion and are not reopened.
 | AC-103 | Loki/Grafana query evidence | TBD | Not Started |
 | AC-104 | REST/CLI workload command evidence | TBD | Not Started |
 | AC-105 | clean-host orchestrator launch evidence | TBD | Not Started |
+| AC-106 | agent local UI workflow evidence | TBD | Not Started |
+| AC-107 | orchestrator UI interaction + artifact-store UX regression evidence | TBD | Not Started |
 
 ## Change control notes
 

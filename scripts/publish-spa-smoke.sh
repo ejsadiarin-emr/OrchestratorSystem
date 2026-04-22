@@ -11,8 +11,27 @@ AGENT_PROJECT="${ROOT_DIR}/apps/agent/backend/DeploymentPoC.Agent.csproj"
 ORCHESTRATOR_PUBLISH_DIR="${ARTIFACTS_DIR}/orchestrator"
 AGENT_PUBLISH_DIR="${ARTIFACTS_DIR}/agent"
 
-ORCHESTRATOR_BINARY="${ORCHESTRATOR_PUBLISH_DIR}/DeploymentPoC.Orchestrator"
-AGENT_BINARY="${AGENT_PUBLISH_DIR}/DeploymentPoC.Agent"
+# accept optional RID argument, default to current platform
+if [[ $# -ge 1 ]]; then
+  RID="$1"
+else
+  case "$(uname -s)" in
+    Linux*)     RID="linux-x64";;
+    Darwin*)    RID="osx-x64";;
+    CYGWIN*|MINGW32*|MSYS*|MINGW*) RID="win-x64";;
+    *)          RID="linux-x64";;
+  esac
+fi
+
+# windows binaries have .exe extension
+if [[ "${RID}" == win-* ]]; then
+  BINARY_EXT=".exe"
+else
+  BINARY_EXT=""
+fi
+
+ORCHESTRATOR_BINARY="${ORCHESTRATOR_PUBLISH_DIR}/DeploymentPoC.Orchestrator${BINARY_EXT}"
+AGENT_BINARY="${AGENT_PUBLISH_DIR}/DeploymentPoC.Agent${BINARY_EXT}"
 
 ORCHESTRATOR_PORT="5181"
 AGENT_PORT="5182"
@@ -38,7 +57,7 @@ publish_backend() {
 
   dotnet publish "${project_path}" \
     -c Release \
-    -r linux-x64 \
+    -r "${RID}" \
     --self-contained true \
     -p:PublishSingleFile=true \
     -o "${output_dir}" \

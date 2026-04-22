@@ -15,6 +15,8 @@ public sealed class WorkloadRunEntity
     public string? IdempotencyKey { get; set; }
     public string? IdempotencyRequestHash { get; set; }
     public string? CancelReason { get; set; }
+    public string? RiskLevel { get; set; }
+    public string? RevisionSnapshotJson { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAtUtc { get; set; }

@@ -192,6 +192,7 @@ public sealed class InstallerDbContext : DbContext
                 .WithMany(x => x.WorkloadRuns)
                 .HasForeignKey(x => x.NodeId)
                 .OnDelete(DeleteBehavior.Cascade);
+            entity.Property(x => x.RevisionSnapshotJson).HasMaxLength(8192);
             entity.HasIndex(x => x.IdempotencyKey).IsUnique();
             entity.HasIndex(x => new { x.NodeId, x.WorkloadId })
                 .HasDatabaseName("IX_WorkloadRuns_NodeId_WorkloadId_Active")

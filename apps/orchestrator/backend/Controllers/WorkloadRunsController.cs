@@ -5,6 +5,7 @@ using DeploymentPoC.Orchestrator.Contracts.Api;
 using DeploymentPoC.Orchestrator.Contracts.Api.WorkloadRuns;
 using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Data.Entities;
+using DeploymentPoC.Orchestrator.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
@@ -16,10 +17,12 @@ namespace DeploymentPoC.Orchestrator.Controllers;
 public sealed class WorkloadRunsController : ControllerBase
 {
     private readonly InstallerDbContext _db;
+    private readonly PolicyEvaluationService _policyEvaluation;
 
-    public WorkloadRunsController(InstallerDbContext db)
+    public WorkloadRunsController(InstallerDbContext db, PolicyEvaluationService policyEvaluation)
     {
         _db = db;
+        _policyEvaluation = policyEvaluation;
     }
 
     [HttpPost]
@@ -96,12 +99,17 @@ public sealed class WorkloadRunsController : ControllerBase
             return Ok(new CreateWorkloadRunResponse
             {
                 RunId = existingByIdempotency.RunId,
-                State = existingByIdempotency.State
+                State = existingByIdempotency.State,
+                RiskLevel = existingByIdempotency.RiskLevel
             });
         }
 
+        var riskLevel = await _policyEvaluation.EvaluateRunRiskAsync(request.RevisionId, _db, HttpContext.RequestAborted);
         var now = DateTime.UtcNow;
         var runId = Guid.NewGuid();
+        var snapshotJson = JsonSerializer.Serialize(revision.Packages
+            .OrderBy(p => p.PackageIndex)
+            .Select(p => new { p.PackageId, p.PackageIndex }));
         var created = new List<WorkloadRunEntity>();
         foreach (var nodeId in distinctNodeIds)
         {
@@ -111,11 +119,13 @@ public sealed class WorkloadRunsController : ControllerBase
                 RunId = runId,
                 WorkloadId = request.WorkloadId,
                 RevisionId = request.RevisionId,
+                RevisionSnapshotJson = snapshotJson,
                 NodeId = nodeId,
                 Mode = mode,
                 State = "Queued",
                 IdempotencyKey = normalizedKey,
                 IdempotencyRequestHash = requestHash,
+                RiskLevel = riskLevel,
                 CreatedAtUtc = now,
                 UpdatedAtUtc = now
             });
@@ -142,7 +152,8 @@ public sealed class WorkloadRunsController : ControllerBase
                 return Ok(new CreateWorkloadRunResponse
                 {
                     RunId = existingAfterConflict.RunId,
-                    State = existingAfterConflict.State
+                    State = existingAfterConflict.State,
+                    RiskLevel = existingAfterConflict.RiskLevel
                 });
             }
 
@@ -152,7 +163,8 @@ public sealed class WorkloadRunsController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { runId }, new CreateWorkloadRunResponse
         {
             RunId = runId,
-            State = "Queued"
+            State = "Queued",
+            RiskLevel = riskLevel
         });
     }
 
@@ -186,6 +198,7 @@ public sealed class WorkloadRunsController : ControllerBase
             CreatedAtUtc = runs.Min(r => r.CreatedAtUtc),
             UpdatedAtUtc = runs.Max(r => r.UpdatedAtUtc),
             CompletedAtUtc = runs.All(r => r.CompletedAtUtc.HasValue) ? runs.Max(r => r.CompletedAtUtc) : null,
+            RiskLevel = first.RiskLevel,
             NodeIds = runs.Select(r => r.NodeId).Distinct().ToList()
         });
     }
@@ -199,21 +212,41 @@ public sealed class WorkloadRunsController : ControllerBase
             return NotFound(new { message = $"Run {runId} not found" });
         }
 
-        var packages = await _db.WorkloadPackages
-            .AsNoTracking()
-            .Where(p => p.RevisionId == first.RevisionId)
-            .OrderBy(p => p.PackageIndex)
-            .ToListAsync();
-
-        return Ok(new WorkloadRunStepsResponse
+        List<WorkloadRunStepDto> stepDtos;
+        if (!string.IsNullOrEmpty(first.RevisionSnapshotJson))
         {
-            Steps = packages.Select((p, idx) => new WorkloadRunStepDto
+            var snapshot = JsonSerializer.Deserialize<List<RevisionSnapshotEntry>>(first.RevisionSnapshotJson);
+            stepDtos = (snapshot ?? new List<RevisionSnapshotEntry>())
+                .OrderBy(p => p.PackageIndex)
+                .Select((p, idx) => new WorkloadRunStepDto
+                {
+                    PackageId = p.PackageId,
+                    PackageIndex = p.PackageIndex,
+                    StepId = "install-or-upgrade",
+                    Sequence = idx + 1
+                })
+                .ToList();
+        }
+        else
+        {
+            var packages = await _db.WorkloadPackages
+                .AsNoTracking()
+                .Where(p => p.RevisionId == first.RevisionId)
+                .OrderBy(p => p.PackageIndex)
+                .ToListAsync();
+
+            stepDtos = packages.Select((p, idx) => new WorkloadRunStepDto
             {
                 PackageId = p.PackageId,
                 PackageIndex = p.PackageIndex,
                 StepId = "install-or-upgrade",
                 Sequence = idx + 1
-            }).ToList()
+            }).ToList();
+        }
+
+        return Ok(new WorkloadRunStepsResponse
+        {
+            Steps = stepDtos
         });
     }
 
@@ -303,6 +336,12 @@ public sealed class WorkloadRunsController : ControllerBase
         }
 
         return "Queued";
+    }
+
+    private sealed class RevisionSnapshotEntry
+    {
+        public Guid PackageId { get; set; }
+        public int PackageIndex { get; set; }
     }
 
     private static ValidationErrorResponse ToValidationErrorResponse(ModelStateDictionary modelState)

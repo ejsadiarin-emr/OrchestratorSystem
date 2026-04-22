@@ -239,6 +239,40 @@ public sealed class WorkloadRunsApiContractTests
         public string State { get; set; } = string.Empty;
     }
 
+    [Test]
+    public async Task WorkloadRunsApi_GetSteps_ReturnsSnapshotPackagesFromCreationTime()
+    {
+        await using var factory = new CustomWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var nodeId = await CreateNodeAsync(client, "W1-SNAP-NODE-01", "10.20.3.1");
+        var pkgA = await CreatePackageAsync(client, "snap-pkg-a");
+        var pkgB = await CreatePackageAsync(client, "snap-pkg-b");
+        var workload = await CreatePublishedWorkloadAsync(client, pkgA, pkgB);
+
+        var createResponse = await client.PostAsJsonAsync("/api/workload-runs", new
+        {
+            workloadId = workload.WorkloadId,
+            revisionId = workload.RevisionId,
+            mode = "install",
+            idempotencyKey = "snapshot-test-1",
+            nodeIds = new[] { nodeId }
+        });
+
+        Assert.That(createResponse.StatusCode, Is.EqualTo(HttpStatusCode.Created));
+        var created = await createResponse.Content.ReadFromJsonAsync<CreateWorkloadRunResponse>();
+        Assert.That(created, Is.Not.Null);
+
+        var stepsResponse = await client.GetAsync($"/api/workload-runs/{created!.RunId}/steps");
+        Assert.That(stepsResponse.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        var steps = await stepsResponse.Content.ReadFromJsonAsync<WorkloadRunStepsResponse>();
+        Assert.That(steps, Is.Not.Null);
+        Assert.That(steps!.Steps.Count, Is.EqualTo(2));
+        Assert.That(steps.Steps.Select(s => s.PackageIndex), Is.EqualTo(new[] { 1, 2 }));
+        Assert.That(steps.Steps.Select(s => s.PackageId).OrderBy(id => id),
+            Is.EquivalentTo(new[] { pkgA, pkgB }.OrderBy(id => id)));
+    }
+
     private sealed class ValidationErrorResponse
     {
         public string Code { get; set; } = string.Empty;

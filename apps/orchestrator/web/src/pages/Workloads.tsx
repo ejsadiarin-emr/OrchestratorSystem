@@ -310,7 +310,7 @@ export default function Workloads() {
               >
                 {artifacts.map(artifact => (
                   <option key={artifact.id} value={artifact.id}>
-                    {artifact.manifest.name} {artifact.manifest.version}
+                    {artifact.manifest.packageId} {artifact.manifest.version}
                   </option>
                 ))}
               </select>

@@ -3,6 +3,7 @@ using System;
 using DeploymentPoC.Orchestrator.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DeploymentPoC.Orchestrator.Migrations
 {
     [DbContext(typeof(InstallerDbContext))]
-    partial class InstallerDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260422101609_AddEnrollmentTokensAndNodeFields")]
+    partial class AddEnrollmentTokensAndNodeFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.4");
@@ -578,57 +581,6 @@ namespace DeploymentPoC.Orchestrator.Migrations
 
                             t.HasCheckConstraint("CK_WorkloadRuns_State", "\"State\" IN ('Queued','Running','Completed','Failed','Cancelled')");
                         });
-                });
-
-            modelBuilder.Entity("DeploymentPoC.Orchestrator.Data.Entities.WorkloadRunTimelineEntity", b =>
-                {
-                    b.Property<Guid>("TimelineId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("AtUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Detail")
-                        .HasMaxLength(2048)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("MessageType")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("NodeId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("PackageId")
-                        .HasMaxLength(128)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("PackageIndex")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<Guid>("RunId")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("Sequence")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Status")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("StepName")
-                        .HasMaxLength(128)
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("TimelineId");
-
-                    b.HasIndex("RunId");
-
-                    b.HasIndex("RunId", "NodeId");
-
-                    b.ToTable("WorkloadRunTimelines");
                 });
 
             modelBuilder.Entity("DeploymentPoC.Orchestrator.Data.Entities.AssignmentLeaseEntity", b =>

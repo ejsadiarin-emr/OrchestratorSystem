@@ -27,11 +27,11 @@ public class PersistenceTests
 
         var listResponse = await client.GetAsync("/api/nodes");
         listResponse.EnsureSuccessStatusCode();
-        var listNodes = await listResponse.Content.ReadFromJsonAsync<NodeListResponse>();
+        var listNodes = await listResponse.Content.ReadFromJsonAsync<List<NodeResponse>>();
 
         Assert.That(listNodes, Is.Not.Null);
-        var persistedFromList = listNodes!.Nodes.Single(n => n.Hostname == "NODE-PERSIST-01");
-        Assert.That(persistedFromList.NodeId, Is.EqualTo(createdNode!.Id));
+        var persistedFromList = listNodes!.Single(n => n.Hostname == "NODE-PERSIST-01");
+        Assert.That(persistedFromList.Id, Is.EqualTo(createdNode!.Id));
 
         var getResponse = await client.GetAsync($"/api/nodes/{createdNode!.Id}");
         getResponse.EnsureSuccessStatusCode();
@@ -113,17 +113,6 @@ public class PersistenceTests
         public Guid Id { get; set; }
         public string Name { get; set; } = string.Empty;
         public string Version { get; set; } = string.Empty;
-    }
-
-    private sealed class NodeListResponse
-    {
-        public List<NodeSummaryResponse> Nodes { get; set; } = new();
-    }
-
-    private sealed class NodeSummaryResponse
-    {
-        public Guid NodeId { get; set; }
-        public string Hostname { get; set; } = string.Empty;
     }
 
 }

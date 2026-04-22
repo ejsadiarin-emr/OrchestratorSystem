@@ -20,6 +20,8 @@ public sealed class InstallerDbContext : DbContext
     public DbSet<WorkloadPackageEntity> WorkloadPackages => Set<WorkloadPackageEntity>();
     public DbSet<WorkloadRunEntity> WorkloadRuns => Set<WorkloadRunEntity>();
     public DbSet<NodeWorkloadStateEntity> NodeWorkloadStates => Set<NodeWorkloadStateEntity>();
+    public DbSet<EnrollmentTokenEntity> EnrollmentTokens => Set<EnrollmentTokenEntity>();
+    public DbSet<WorkloadRunTimelineEntity> WorkloadRunTimelines => Set<WorkloadRunTimelineEntity>();
 
     public override int SaveChanges()
     {
@@ -84,11 +86,21 @@ public sealed class InstallerDbContext : DbContext
             entity.Property(x => x.IpAddress).HasMaxLength(64);
             entity.Property(x => x.Description).HasMaxLength(512);
             entity.Property(x => x.AgentVersion).HasMaxLength(64);
+            entity.Property(x => x.OsVersion).HasMaxLength(255);
             entity.Property(x => x.Status).HasMaxLength(64);
             entity.ToTable(t =>
             {
                 t.HasCheckConstraint("CK_Nodes_Status", "\"Status\" IN ('Offline','Online')");
             });
+        });
+
+        modelBuilder.Entity<EnrollmentTokenEntity>(entity =>
+        {
+            entity.HasKey(x => x.TokenId);
+            entity.HasIndex(x => x.Token).IsUnique();
+            entity.Property(x => x.Token).HasMaxLength(128);
+            entity.Property(x => x.RequestedBy).HasMaxLength(255);
+            entity.Property(x => x.OrchestratorUrl).HasMaxLength(512);
         });
 
         modelBuilder.Entity<PackageEntity>(entity =>
@@ -222,6 +234,18 @@ public sealed class InstallerDbContext : DbContext
                 .HasForeignKey(x => x.CurrentRevisionId)
                 .OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(x => new { x.NodeId, x.WorkloadId }).IsUnique();
+        });
+
+        modelBuilder.Entity<WorkloadRunTimelineEntity>(entity =>
+        {
+            entity.HasKey(x => x.TimelineId);
+            entity.HasIndex(x => x.RunId);
+            entity.HasIndex(x => new { x.RunId, x.NodeId });
+            entity.Property(x => x.MessageType).HasMaxLength(64);
+            entity.Property(x => x.PackageId).HasMaxLength(128);
+            entity.Property(x => x.StepName).HasMaxLength(128);
+            entity.Property(x => x.Status).HasMaxLength(64);
+            entity.Property(x => x.Detail).HasMaxLength(2048);
         });
     }
 

@@ -23,20 +23,25 @@ public class NodesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<NodeListResponse>> GetAll()
+    public async Task<ActionResult<List<Node>>> GetAll()
     {
         var nodes = await _db.Nodes
             .OrderBy(n => n.Hostname)
-            .Select(n => new NodeSummaryDto
+            .Select(n => new Node
             {
-                NodeId = n.NodeId,
+                Id = n.NodeId,
                 Hostname = n.Hostname,
+                IpAddress = n.IpAddress,
                 Status = n.Status,
-                LastSeenUtc = n.LastSeenUtc
+                LastSeenAt = n.LastSeenUtc,
+                FirstConnectedAt = n.FirstConnectedUtc,
+                Description = n.Description,
+                OsVersion = n.OsVersion,
+                AgentVersion = n.AgentVersion,
             })
             .ToListAsync();
 
-        return Ok(new NodeListResponse { Nodes = nodes });
+        return Ok(nodes);
     }
 
     [HttpGet("{id:guid}")]
@@ -148,6 +153,36 @@ public class NodesController : ControllerBase
 
         _logger.LogInformation("Deleted node {Id}", id);
         return NoContent();
+    }
+
+    [HttpGet("workload-states")]
+    public async Task<ActionResult<List<NodeWorkloadStateResponse>>> GetWorkloadStates()
+    {
+        var states = await _db.NodeWorkloadStates
+            .AsNoTracking()
+            .Include(s => s.CurrentRevision)
+            .Include(s => s.Workload)
+            .Select(s => new NodeWorkloadStateResponse
+            {
+                NodeId = s.NodeId,
+                WorkloadId = s.WorkloadId,
+                WorkloadRevision = s.CurrentRevision != null ? s.CurrentRevision.Version : "",
+                RunId = Guid.Empty,
+                Status = InferStatus(s),
+                UpdatedAt = s.UpdatedAtUtc.ToString("O")
+            })
+            .ToListAsync();
+
+        return Ok(states);
+    }
+
+    private static string InferStatus(NodeWorkloadStateEntity state)
+    {
+        if (string.IsNullOrEmpty(state.PackageStatesJson) || state.PackageStatesJson == "{}")
+        {
+            return "pending";
+        }
+        return "running";
     }
 
     private static bool IsDuplicateHostnameConstraintViolation(DbUpdateException exception)

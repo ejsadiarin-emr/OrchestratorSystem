@@ -12,3 +12,13 @@ public sealed class NodeSummaryDto
     public string Status { get; set; } = string.Empty;
     public DateTime LastSeenUtc { get; set; }
 }
+
+public sealed class NodeWorkloadStateResponse
+{
+    public Guid NodeId { get; set; }
+    public Guid WorkloadId { get; set; }
+    public string WorkloadRevision { get; set; } = string.Empty;
+    public Guid RunId { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string UpdatedAt { get; set; } = string.Empty;
+}

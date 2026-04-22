@@ -1,5 +1,7 @@
 using DeploymentPoC.Orchestrator;
 using DeploymentPoC.Orchestrator.Data;
+using DeploymentPoC.Orchestrator.Hubs;
+using DeploymentPoC.Orchestrator.Runtime;
 using DeploymentPoC.Orchestrator.Services;
 using DeploymentPoC.Orchestrator.Steps;
 using Microsoft.AspNetCore.Builder;
@@ -64,8 +66,11 @@ builder.Services.AddDbContext<InstallerDbContext>(options =>
 
 builder.Services.AddSingleton<ArtifactStoreService>();
 builder.Services.AddSingleton<ArtifactIngestService>();
+builder.Services.AddSingleton<AgentConnectionTracker>();
 builder.Services.AddScoped<PolicyEvaluationService>();
 builder.Services.AddScoped<WorkloadImportService>();
+builder.Services.AddScoped<NodeWorkloadStateService>();
+builder.Services.AddSignalR();
 
 builder.Services.AddTransient<PreConditionCheckStep>();
 builder.Services.AddTransient<CopyFilesStep>();
@@ -101,6 +106,7 @@ app.UseStaticFiles();
 
 app.UseHttpsRedirection();
 app.MapControllers();
+app.MapHub<AgentRuntimeHub>("/hubs/agent");
 app.MapFallbackToFile("index.html");
 
 app.Run();

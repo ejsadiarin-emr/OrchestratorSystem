@@ -24,25 +24,25 @@ public class NodesApiContractTests
         var listResponse = await client.GetAsync("/api/nodes");
         Assert.That(listResponse.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
-        var body = await listResponse.Content.ReadFromJsonAsync<NodeListResponse>();
+        var body = await listResponse.Content.ReadFromJsonAsync<List<NodeResponse>>();
         Assert.That(body, Is.Not.Null);
-        var node = body!.Nodes.SingleOrDefault(n => n.Hostname == "NODE-API-01");
+        var node = body!.SingleOrDefault(n => n.Hostname == "NODE-API-01");
         Assert.That(node, Is.Not.Null);
-        Assert.That(node!.NodeId, Is.Not.EqualTo(Guid.Empty));
+        Assert.That(node!.Id, Is.Not.EqualTo(Guid.Empty));
         Assert.That(node.Status, Is.Not.Null.And.Not.Empty);
-        Assert.That(node.LastSeenUtc, Is.Not.EqualTo(default(DateTime)));
+        Assert.That(node.LastSeenAt, Is.Not.EqualTo(default(DateTime)));
     }
 
-    private sealed class NodeListResponse
+    private sealed class NodeResponse
     {
-        public List<NodeSummaryResponse> Nodes { get; set; } = new();
-    }
-
-    private sealed class NodeSummaryResponse
-    {
-        public Guid NodeId { get; set; }
+        public Guid Id { get; set; }
         public string Hostname { get; set; } = string.Empty;
+        public string IpAddress { get; set; } = string.Empty;
         public string Status { get; set; } = string.Empty;
-        public DateTime LastSeenUtc { get; set; }
+        public DateTime LastSeenAt { get; set; }
+        public DateTime? FirstConnectedAt { get; set; }
+        public string Description { get; set; } = string.Empty;
+        public string OsVersion { get; set; } = string.Empty;
+        public string AgentVersion { get; set; } = string.Empty;
     }
 }

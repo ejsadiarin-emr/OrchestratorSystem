@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, afterEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import type { ArtifactManifest, InstallAdapterInput, DetectionInput, PolicyTagsInput } from '../types'
 import {
   issueEnrollmentToken,
@@ -7,8 +7,12 @@ import {
   validateManifestChannel,
 } from './api'
 
+beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn())
+})
+
 afterEach(() => {
-  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe('api channel validation', () => {
@@ -20,8 +24,6 @@ describe('api channel validation', () => {
   })
 
   it('rejects upload when manifest has invalid channel', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({ resolvedManifest: {} }), { status: 201 }))
-
     const manifest = suggestManifestFromFile('Widget-2.4.1.msi', 2048)
     await expect(
       uploadArtifact({
@@ -182,7 +184,7 @@ describe('uploadArtifact sends real HTTP request with FormData', () => {
         originMetadata: { source: 'test', publisher: 'test', ingestedBy: 'anonymous', ingestedAtUtc: '2026-01-01T00:00:00Z', verificationResult: 'derived' },
       },
     }
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+    ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       new Response(JSON.stringify(mockResponse), { status: 201, headers: { 'Content-Type': 'application/json' } }),
     )
 
@@ -196,8 +198,8 @@ describe('uploadArtifact sends real HTTP request with FormData', () => {
 
     const result = await uploadArtifact({ file, manifest })
 
-    expect(fetch).toHaveBeenCalledTimes(1)
-    const [url, options] = (globalThis.fetch as ReturnType<typeof vi.spyOn>).mock.calls[0]
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    const [url, options] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
     expect(url).toBe('/api/artifacts')
     expect(options.method).toBe('POST')
 
@@ -219,7 +221,7 @@ describe('uploadArtifact sends real HTTP request with FormData', () => {
         { field: 'manifest.version', error: 'version is required' },
       ],
     }
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+    ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       new Response(JSON.stringify(errorBody), { status: 400, headers: { 'Content-Type': 'application/json' } }),
     )
 
@@ -232,6 +234,22 @@ describe('uploadArtifact sends real HTTP request with FormData', () => {
 
 describe('api enrollment semantics', () => {
   it('issues single-use token with requested URL via POST-style function', async () => {
+    ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          tokenId: 'token-new',
+          token: 'enroll-abc123',
+          issuedAtUtc: new Date().toISOString(),
+          expiresAtUtc: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+          requestedBy: 'qa.user',
+          orchestratorUrl: 'https://orch.example.local:5000',
+          singleUse: true,
+          used: false,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
     const token = await issueEnrollmentToken({
       requestedBy: 'qa.user',
       orchestratorUrl: 'https://orch.example.local:5000',

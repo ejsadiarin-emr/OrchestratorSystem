@@ -1,3 +1,4 @@
+using DeploymentPoC.Agent.Pipeline;
 using DeploymentPoC.Agent.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -12,6 +13,8 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
 
 var hostConfig = new HostPlatformConfiguration();
 hostConfig.ConfigureHostForPlatform(builder.Host);
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton<PipelineExecutor>();
 builder.Services.AddHostedService<AgentRuntimeService>();
 
 var app = builder.Build();

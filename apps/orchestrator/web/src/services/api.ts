@@ -32,11 +32,7 @@ const baseTime = new Date('2026-04-16T12:00:00.000Z').getTime()
 
 const channelValues: ManifestChannel[] = ['stable', 'canary', 'test']
 
-let nodeSeq = 2
-let tokenSeq = 1
-let workloadSeq = 3
-let revisionSeq = 5
-let runSeq = 3
+// Mock data sequences kept for functions still using local mock state
 
 const nodes: Node[] = [
   {
@@ -238,18 +234,7 @@ const runs: WorkloadRun[] = [
   },
 ]
 
-const nodeWorkloadStates: NodeWorkloadState[] = [
-  {
-    nodeId: 'node-001',
-    workloadId: 'workload-001',
-    workloadRevision: '1.0.0',
-    runId: 'run-001',
-    status: 'running',
-    updatedAt: at(35),
-  },
-]
-
-const enrollmentTokens: EnrollmentToken[] = []
+// Mock data kept for functions still using local state (dashboard, agent-local, etc.)
 
 const auditEvents: AuditEvent[] = [
   {
@@ -393,16 +378,6 @@ let agentLocalSummary: AgentLocalSummary = {
   riskLevel: 'low',
 }
 
-function hydrateWorkload(definition: WorkloadDefinition): WorkloadDefinition {
-  const revisions = revisionsByWorkload.get(definition.id) ?? []
-  const published = revisions.filter(item => item.state === 'published')
-  const latestRevision = published.length > 0 ? published[published.length - 1] : revisions[revisions.length - 1]
-  return {
-    ...definition,
-    latestRevision,
-  }
-}
-
 function writeWorkloadAudit(title: string, detail: string): void {
   auditEvents.unshift({
     id: `audit-${String(auditEvents.length + 1).padStart(3, '0')}`,
@@ -421,7 +396,7 @@ export function getSupportedChannels(): ManifestChannel[] {
   return [...channelValues]
 }
 
-export function suggestManifestFromFile(fileName: string, fileSizeBytes: number): ArtifactManifest {
+export function suggestManifestFromFile(fileName: string, _fileSizeBytes: number): ArtifactManifest {
   const ext = fileName.toLowerCase().split('.').pop()
   const artifactType = ext === 'exe' ? 'exe' : ext === 'zip' ? 'zip' : 'msi'
   const versionMatch = fileName.match(/(\d+\.\d+\.\d+)/)
@@ -531,220 +506,389 @@ export async function listArtifacts(): Promise<ArtifactRecord[]> {
 }
 
 export async function issueEnrollmentToken(request: IssueEnrollmentTokenRequest): Promise<EnrollmentToken> {
-  const token: EnrollmentToken = {
-    token: `enroll-${String(tokenSeq++).padStart(4, '0')}`,
-    issuedAt: new Date().toISOString(),
-    expiresAt: new Date(Date.now() + request.ttlMinutes * 60_000).toISOString(),
-    requestedBy: request.requestedBy,
-    orchestratorUrl: request.orchestratorUrl,
-    singleUse: true,
-    used: false,
+  const response = await fetch('/api/nodes/enroll', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+
+  if (!response.ok) {
+    let message = `Failed to issue token: ${response.status}`
+    try {
+      const body = await response.json() as { message?: string }
+      if (body.message) message = body.message
+    } catch {
+      // use default message
+    }
+    throw new Error(message)
   }
 
-  enrollmentTokens.unshift(token)
-  writeWorkloadAudit('Enrollment token issued', `POST /api/nodes/enroll issued ${token.token}.`)
-  return token
+  return response.json() as Promise<EnrollmentToken>
 }
 
 export async function listEnrollmentTokens(): Promise<EnrollmentToken[]> {
-  return [...enrollmentTokens]
+  const response = await fetch('/api/enrollment-tokens')
+  if (!response.ok) {
+    throw new Error(`Failed to load enrollment tokens: ${response.status}`)
+  }
+  return response.json() as Promise<EnrollmentToken[]>
 }
 
 export async function consumeEnrollmentToken(tokenValue: string): Promise<Node> {
-  const token = enrollmentTokens.find(item => item.token === tokenValue)
-  if (!token) {
-    throw new Error('Enrollment token not found')
-  }
-  if (token.used) {
-    throw new Error('Enrollment token already consumed')
+  const response = await fetch(`/api/enrollment-tokens/${encodeURIComponent(tokenValue)}/consume`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  })
+
+  if (!response.ok) {
+    let message = `Failed to consume token: ${response.status}`
+    try {
+      const body = await response.json() as { message?: string }
+      if (body.message) message = body.message
+    } catch {
+      // use default message
+    }
+    throw new Error(message)
   }
 
-  token.used = true
-  const now = new Date().toISOString()
-  const currentNodeSeq = nodeSeq++
-  const node: Node = {
-    id: `node-${String(currentNodeSeq).padStart(3, '0')}`,
-    hostname: `wj-node-${String(currentNodeSeq).padStart(2, '0')}`,
-    ipAddress: `10.30.2.${40 + currentNodeSeq}`,
-    status: 'online',
-    description: 'Auto-registered from bootstrap token',
-    osVersion: 'Windows Server 2022',
-    agentVersion: '0.1.0',
-    firstConnectedAt: now,
-    lastSeenAt: now,
-  }
-  nodes.unshift(node)
-  writeWorkloadAudit('Node auto-registered', `${node.hostname} connected using token bootstrap.`)
-  return node
+  return response.json() as Promise<Node>
 }
 
 export async function listNodes(): Promise<Node[]> {
-  return [...nodes]
+  const response = await fetch('/api/nodes')
+  if (!response.ok) {
+    throw new Error(`Failed to load nodes: ${response.status}`)
+  }
+  return response.json() as Promise<Node[]>
 }
 
 export async function listWorkloads(): Promise<WorkloadDefinition[]> {
-  return workloads.map(hydrateWorkload)
+  const response = await fetch('/api/workloads')
+  if (!response.ok) {
+    throw new Error(`Failed to load workloads: ${response.status}`)
+  }
+  const data = await response.json() as { workloads: Array<{ workloadId: string; name: string; description: string | null; publishedRevisionId: string | null; createdAtUtc: string; updatedAtUtc: string }> }
+  return data.workloads.map(w => ({
+    id: w.workloadId,
+    name: w.name,
+    description: w.description ?? '',
+    createdAt: w.createdAtUtc,
+  }))
 }
 
 export async function listWorkloadRevisions(workloadId: string): Promise<WorkloadRevision[]> {
-  return [...(revisionsByWorkload.get(workloadId) ?? [])]
+  const response = await fetch(`/api/workloads/${workloadId}`)
+  if (!response.ok) {
+    throw new Error(`Failed to load workload revisions: ${response.status}`)
+  }
+  const data = await response.json() as {
+    workloadId: string
+    revisions: Array<{
+      revisionId: string
+      version: string
+      isPublished: boolean
+      createdAtUtc: string
+      packages: Array<{ packageId: string; packageIndex: number }>
+    }>
+  }
+  return data.revisions.map(r => ({
+    id: r.revisionId,
+    workloadId: data.workloadId,
+    revision: r.version,
+    state: r.isPublished ? ('published' as const) : ('draft' as const),
+    createdAt: r.createdAtUtc,
+    publishedAt: r.isPublished ? r.createdAtUtc : undefined,
+    packageSteps: r.packages.map(p => ({
+      packageId: p.packageId,
+      packageName: '',
+      packageVersion: '',
+      packageIndex: p.packageIndex,
+      stepId: `step-${p.packageIndex}`,
+    })),
+  }))
 }
 
 export async function createWorkloadDefinitionDraft(
   request: CreateWorkloadDefinitionRequest,
 ): Promise<WorkloadDefinition> {
-  const definition: WorkloadDefinition = {
-    id: `workload-${String(workloadSeq++).padStart(3, '0')}`,
-    name: request.name,
-    description: request.description,
-    createdAt: new Date().toISOString(),
+  const response = await fetch('/api/workloads', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: request.name, description: request.description }),
+  })
+  if (!response.ok) {
+    let message = `Failed to create workload: ${response.status}`
+    try {
+      const body = await response.json() as { message?: string; errors?: ValidationFieldError[] }
+      if (body.errors && body.errors.length > 0) {
+        message = body.errors.map((e: ValidationFieldError) => `${e.field}: ${e.error}`).join('; ')
+      } else if (body.message) {
+        message = body.message
+      }
+    } catch {
+      // use default message
+    }
+    throw new Error(message)
   }
-  workloads.unshift(definition)
-  revisionsByWorkload.set(definition.id, [])
-  writeWorkloadAudit('WorkloadDefinition draft created', `${definition.id} created in draft state.`)
-  return hydrateWorkload(definition)
+  const data = await response.json() as { workloadId: string; name: string; description: string | null; createdAtUtc: string }
+  return {
+    id: data.workloadId,
+    name: data.name,
+    description: data.description ?? '',
+    createdAt: data.createdAtUtc,
+  }
 }
 
 export async function createWorkloadRevision(
   request: CreateWorkloadRevisionRequest,
 ): Promise<WorkloadRevision> {
-  const workload = workloads.find(item => item.id === request.workloadId)
-  if (!workload) {
-    throw new Error('WorkloadDefinition not found')
-  }
-
   const count = request.packageSteps.length
   if (count < 2 || count > 3) {
     throw new Error('PoC Phase 1 requires 2-3 package steps per WorkloadRevision')
   }
 
-  const revision: WorkloadRevision = {
-    id: `wrv-${String(revisionSeq++).padStart(3, '0')}`,
-    workloadId: request.workloadId,
-    revision: request.revision,
-    state: 'draft',
-    createdAt: new Date().toISOString(),
-    packageSteps: request.packageSteps
-      .map((step, index) => ({ ...step, packageIndex: index + 1 }))
-      .sort((a, b) => a.packageIndex - b.packageIndex),
+  const response = await fetch(`/api/workloads/${request.workloadId}/revisions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      version: request.revision,
+      packages: request.packageSteps.map(step => ({
+        packageId: step.packageId,
+        packageIndex: step.packageIndex,
+      })),
+    }),
+  })
+  if (!response.ok) {
+    let message = `Failed to create revision: ${response.status}`
+    try {
+      const body = await response.json() as { message?: string; errors?: ValidationFieldError[] }
+      if (body.errors && body.errors.length > 0) {
+        message = body.errors.map((e: ValidationFieldError) => `${e.field}: ${e.error}`).join('; ')
+      } else if (body.message) {
+        message = body.message
+      }
+    } catch {
+      // use default message
+    }
+    throw new Error(message)
   }
-
-  const existing = revisionsByWorkload.get(request.workloadId) ?? []
-  existing.push(revision)
-  revisionsByWorkload.set(request.workloadId, existing)
-  writeWorkloadAudit('WorkloadRevision draft created', `${revision.id} prepared for ${request.workloadId}.`)
-  return revision
+  const data = await response.json() as {
+    revisionId: string
+    version: string
+    isPublished: boolean
+    createdAtUtc: string
+    packages: Array<{ packageId: string; packageIndex: number }>
+  }
+  return {
+    id: data.revisionId,
+    workloadId: request.workloadId,
+    revision: data.version,
+    state: data.isPublished ? ('published' as const) : ('draft' as const),
+    createdAt: data.createdAtUtc,
+    packageSteps: data.packages.map(p => ({
+      packageId: p.packageId,
+      packageName: '',
+      packageVersion: '',
+      packageIndex: p.packageIndex,
+      stepId: `step-${p.packageIndex}`,
+    })),
+  }
 }
 
 export async function publishWorkloadRevision(workloadId: string, revisionId: string): Promise<WorkloadRevision> {
-  const revisions = revisionsByWorkload.get(workloadId) ?? []
-  const target = revisions.find(item => item.id === revisionId)
-  if (!target) {
-    throw new Error('WorkloadRevision not found')
+  const response = await fetch(`/api/workloads/${workloadId}/publish`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ revisionId, replacePublished: true }),
+  })
+  if (!response.ok) {
+    let message = `Failed to publish revision: ${response.status}`
+    try {
+      const body = await response.json() as { message?: string; errors?: ValidationFieldError[] }
+      if (body.errors && body.errors.length > 0) {
+        message = body.errors.map((e: ValidationFieldError) => `${e.field}: ${e.error}`).join('; ')
+      } else if (body.message) {
+        message = body.message
+      }
+    } catch {
+      // use default message
+    }
+    throw new Error(message)
   }
-  target.state = 'published'
-  target.publishedAt = new Date().toISOString()
-  writeWorkloadAudit('WorkloadRevision published', `${target.id} is immutable and publish-locked.`)
-  return target
+  const data = await response.json() as {
+    workloadId: string
+    revisions: Array<{
+      revisionId: string
+      version: string
+      isPublished: boolean
+      createdAtUtc: string
+      packages: Array<{ packageId: string; packageIndex: number }>
+    }>
+  }
+  const published = data.revisions.find(r => r.isPublished)
+  if (!published) {
+    throw new Error('No published revision found after publish')
+  }
+  return {
+    id: published.revisionId,
+    workloadId: data.workloadId,
+    revision: published.version,
+    state: 'published' as const,
+    createdAt: published.createdAtUtc,
+    publishedAt: published.createdAtUtc,
+    packageSteps: published.packages.map(p => ({
+      packageId: p.packageId,
+      packageName: '',
+      packageVersion: '',
+      packageIndex: p.packageIndex,
+      stepId: `step-${p.packageIndex}`,
+    })),
+  }
 }
 
 export async function listWorkloadRuns(status: WorkloadRunStatus | 'all' = 'all'): Promise<WorkloadRun[]> {
-  if (status === 'all') {
-    return [...runs]
+  const url = status === 'all' ? '/api/workload-runs' : `/api/workload-runs?status=${status}`
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Failed to load workload runs: ${response.status}`)
   }
-  return runs.filter(item => item.status === status)
+  const data = await response.json() as Array<{
+    runId: string
+    workloadId: string
+    revisionId: string
+    workloadVersion: string
+    mode: string
+    state: string
+    createdAtUtc: string
+    updatedAtUtc: string
+    completedAtUtc: string | null
+    riskLevel: string | null
+    nodeIds: string[]
+  }>
+  return data.map(r => ({
+    id: r.runId,
+    workloadId: r.workloadId,
+    workloadName: '',
+    workloadRevision: r.workloadVersion,
+    mode: r.mode as WorkloadRun['mode'],
+    targetNodeIds: r.nodeIds,
+    targetNodeHostnames: [],
+    status: r.state.toLowerCase() as WorkloadRunStatus,
+    createdAt: r.createdAtUtc,
+    startedAt: r.createdAtUtc,
+    completedAt: r.completedAtUtc ?? undefined,
+    timeline: [],
+  }))
 }
 
 export async function createWorkloadRun(request: CreateWorkloadRunRequest): Promise<WorkloadRun> {
-  const workload = workloads.find(item => item.id === request.workloadId)
-  if (!workload) {
-    throw new Error('WorkloadDefinition not found')
-  }
-  const revision = (revisionsByWorkload.get(request.workloadId) ?? []).find(item => item.revision === request.workloadRevision)
-  if (!revision) {
-    throw new Error('WorkloadRevision not found')
-  }
-  if (revision.state !== 'published') {
-    throw new Error('WorkloadRevision must be published before run creation')
-  }
-
-  const targetNodes = nodes.filter(node => request.targetNodeIds.includes(node.id))
-  if (targetNodes.length === 0) {
+  if (request.targetNodeIds.length === 0) {
     throw new Error('At least one target node is required')
   }
-  if (targetNodes.length !== 1) {
+  if (request.targetNodeIds.length !== 1) {
     throw new Error('Phase 1 supports exactly one target node per run')
   }
 
-  const now = new Date().toISOString()
-  const run: WorkloadRun = {
-    id: `run-${String(runSeq++).padStart(3, '0')}`,
-    workloadId: workload.id,
-    workloadName: workload.name,
-    workloadRevision: revision.revision,
-    mode: request.mode,
-    targetNodeIds: targetNodes.map(node => node.id),
-    targetNodeHostnames: targetNodes.map(node => node.hostname),
-    status: 'assigned',
-    createdAt: now,
-    startedAt: now,
-    timeline: [
-      timeline(1, revision.packageSteps[0].packageId, 1, 'assign', 'completed', 'AssignRun', now, 'AssignRun emitted from orchestrator runtime hub', targetNodes[0].id),
-    ],
-  }
-  runs.unshift(run)
+  const idempotencyKey = `${request.workloadId}-${request.revisionId}-${request.mode}-${request.targetNodeIds[0]}-${Date.now()}`
 
-  nodeWorkloadStates.unshift({
-    nodeId: targetNodes[0].id,
-    workloadId: workload.id,
-    workloadRevision: revision.revision,
-    runId: run.id,
-    status: 'assigned',
-    updatedAt: now,
+  const response = await fetch('/api/workload-runs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      workloadId: request.workloadId,
+      revisionId: request.revisionId,
+      mode: request.mode,
+      idempotencyKey,
+      nodeIds: request.targetNodeIds,
+    }),
   })
-
-  writeWorkloadAudit('WorkloadRun created', `${run.id} submitted via POST /api/workload-runs (${run.mode}).`)
-  return run
+  if (!response.ok) {
+    let message = `Failed to create run: ${response.status}`
+    try {
+      const body = await response.json() as { message?: string; errors?: ValidationFieldError[] }
+      if (body.errors && body.errors.length > 0) {
+        message = body.errors.map((e: ValidationFieldError) => `${e.field}: ${e.error}`).join('; ')
+      } else if (body.message) {
+        message = body.message
+      }
+    } catch {
+      // use default message
+    }
+    throw new Error(message)
+  }
+  const data = await response.json() as { runId: string; state: string; riskLevel: string | null }
+  return {
+    id: data.runId,
+    workloadId: request.workloadId,
+    workloadName: '',
+    workloadRevision: '',
+    mode: request.mode,
+    targetNodeIds: request.targetNodeIds,
+    targetNodeHostnames: [],
+    status: data.state.toLowerCase() as WorkloadRunStatus,
+    createdAt: new Date().toISOString(),
+    timeline: [],
+  }
 }
 
 export async function getWorkloadRunSteps(runId: string): Promise<WorkloadRunTimelineItem[]> {
-  const run = runs.find(item => item.id === runId)
-  if (!run) {
-    throw new Error('WorkloadRun not found')
+  const response = await fetch(`/api/workload-runs/${runId}/steps`)
+  if (!response.ok) {
+    throw new Error(`Failed to load run steps: ${response.status}`)
   }
-  return [...run.timeline].sort((a, b) => a.sequence - b.sequence)
+  const data = await response.json() as {
+    steps: Array<{
+      packageId: string
+      packageIndex: number
+      stepId: string
+      sequence: number
+      action: string
+    }>
+  }
+  return data.steps.map(s => ({
+    sequence: s.sequence,
+    packageId: s.packageId,
+    packageIndex: s.packageIndex,
+    stepId: s.stepId,
+    status: 'queued' as const,
+    messageType: 'AssignRun' as const,
+    at: new Date().toISOString(),
+    detail: `Action: ${s.action}`,
+    nodeId: '',
+  }))
 }
 
 export async function cancelWorkloadRun(runId: string): Promise<WorkloadRun> {
-  const run = runs.find(item => item.id === runId)
-  if (!run) {
-    throw new Error('WorkloadRun not found')
+  const response = await fetch(`/api/workload-runs/${runId}/cancel`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason: 'Operator cancelled from UI' }),
+  })
+  if (!response.ok) {
+    let message = `Failed to cancel run: ${response.status}`
+    try {
+      const body = await response.json() as { message?: string }
+      if (body.message) message = body.message
+    } catch {
+      // use default message
+    }
+    throw new Error(message)
   }
-  if (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') {
-    return run
+  const data = await response.json() as { runId: string; state: string; cancelledAtUtc: string }
+  return {
+    id: data.runId,
+    workloadId: '',
+    workloadName: '',
+    workloadRevision: '',
+    mode: 'cancel' as WorkloadRun['mode'],
+    targetNodeIds: [],
+    targetNodeHostnames: [],
+    status: data.state.toLowerCase() as WorkloadRunStatus,
+    createdAt: data.cancelledAtUtc,
+    completedAt: data.cancelledAtUtc,
+    timeline: [],
   }
-
-  run.status = 'cancelled'
-  run.completedAt = new Date().toISOString()
-  run.diagnostics = {
-    reasonCode: 'operator_cancelled',
-    lastMessage: 'Cancel accepted at safe interruption boundary.',
-  }
-  run.timeline.push(
-    timeline(
-      run.timeline.length + 1,
-      run.timeline[run.timeline.length - 1]?.packageId ?? 'pkg-unknown',
-      run.timeline[run.timeline.length - 1]?.packageIndex ?? 1,
-      'cancel',
-      'cancelled',
-      'Fail',
-      run.completedAt,
-      'Cancellation completed with explicit reason code.',
-      run.targetNodeIds[0],
-    ),
-  )
-  writeWorkloadAudit('WorkloadRun cancelled', `${run.id} transitioned to cancelled.`)
-  return run
 }
 
 export async function advanceWorkloadRun(runId: string): Promise<WorkloadRun> {
@@ -816,7 +960,19 @@ export async function advanceWorkloadRun(runId: string): Promise<WorkloadRun> {
 }
 
 export async function listNodeWorkloadStates(): Promise<NodeWorkloadState[]> {
-  return [...nodeWorkloadStates]
+  const response = await fetch('/api/nodes/workload-states')
+  if (!response.ok) {
+    throw new Error(`Failed to list node workload states: ${response.status}`)
+  }
+  const data = await response.json()
+  return data.map((s: any) => ({
+    nodeId: s.nodeId ?? s.node_id,
+    workloadId: s.workloadId ?? s.workload_id,
+    workloadRevision: s.currentRevisionId ?? s.current_revision_id,
+    runId: s.runId ?? '',
+    status: s.state ?? s.status ?? 'pending',
+    updatedAt: s.updatedAt ?? new Date().toISOString(),
+  }))
 }
 
 export async function getDashboardSummary(): Promise<DashboardSummary> {

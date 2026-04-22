@@ -1,13 +1,17 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using DeploymentPoC.Contracts.Runtime;
+using DeploymentPoC.Contracts.Runtime.RunPayloads;
 using DeploymentPoC.Orchestrator.Contracts.Api;
 using DeploymentPoC.Orchestrator.Contracts.Api.WorkloadRuns;
 using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Data.Entities;
+using DeploymentPoC.Orchestrator.Hubs;
 using DeploymentPoC.Orchestrator.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,11 +23,13 @@ public sealed class WorkloadRunsController : ControllerBase
 {
     private readonly InstallerDbContext _db;
     private readonly PolicyEvaluationService _policyEvaluation;
+    private readonly IHubContext<AgentRuntimeHub> _hubContext;
 
-    public WorkloadRunsController(InstallerDbContext db, PolicyEvaluationService policyEvaluation)
+    public WorkloadRunsController(InstallerDbContext db, PolicyEvaluationService policyEvaluation, IHubContext<AgentRuntimeHub> hubContext)
     {
         _db = db;
         _policyEvaluation = policyEvaluation;
+        _hubContext = hubContext;
     }
 
     [HttpPost]
@@ -183,12 +189,130 @@ public sealed class WorkloadRunsController : ControllerBase
             throw;
         }
 
+        // Send AssignRun via SignalR to each node's group
+        var workloadName = workload.Name;
+        var revisionVersion = revision.Version;
+        var packageEntities = await _db.Packages
+            .AsNoTracking()
+            .Where(p => revision.Packages.Select(wp => wp.PackageId).Contains(p.PackageId))
+            .ToListAsync();
+
+        var packageAssignments = revision.Packages
+            .OrderBy(p => p.PackageIndex)
+            .Select(wp =>
+            {
+                var pkg = packageEntities.FirstOrDefault(p => p.PackageId == wp.PackageId);
+                return new PackageAssignment
+                {
+                    PackageIndex = wp.PackageIndex,
+                    PackageId = wp.PackageId.ToString(),
+                    Version = pkg?.Version ?? "",
+                    Channel = "stable",
+                    InstallAdapter = new InstallAdapterConfig
+                    {
+                        Type = pkg?.InstallType ?? "exe",
+                        Command = pkg?.SourcePath ?? "",
+                        Arguments = pkg?.InstallArgs ?? "",
+                        ExpectedExitCodes = new List<int> { 0 },
+                        TimeoutSeconds = 300
+                    },
+                    Detection = new DetectionConfig
+                    {
+                        Type = "file",
+                        Path = pkg?.SourcePath ?? "",
+                        ExpectedVersion = pkg?.Version ?? ""
+                    }
+                };
+            })
+            .ToList();
+
+        foreach (var runEntity in created)
+        {
+            var payload = new AssignRunPayload
+            {
+                RunId = runEntity.RunId,
+                WorkloadId = runEntity.WorkloadId,
+                WorkloadName = workloadName,
+                RevisionId = runEntity.RevisionId,
+                RevisionVersion = revisionVersion,
+                Mode = runEntity.Mode,
+                NodeId = runEntity.NodeId,
+                Packages = packageAssignments,
+                PreUpgradeActions = new List<string>()
+            };
+
+            var envelope = new MessageEnvelope
+            {
+                MessageType = MessageTypes.AssignRun,
+                RunId = runEntity.RunId.ToString(),
+                AgentId = runEntity.NodeId.ToString(),
+                Sequence = 0,
+                Payload = payload
+            };
+
+            await _hubContext.Clients.Group($"node-{runEntity.NodeId}")
+                .SendAsync("AssignRun", envelope, HttpContext.RequestAborted);
+        }
+
         return CreatedAtAction(nameof(GetById), new { runId }, new CreateWorkloadRunResponse
         {
             RunId = runId,
             State = "Queued",
             RiskLevel = riskLevel
         });
+    }
+
+    [HttpGet]
+    public async Task<ActionResult<List<WorkloadRunDetailResponse>>> GetAll([FromQuery] string? status)
+    {
+        var query = _db.WorkloadRuns.AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(status) && status != "all")
+        {
+            var normalized = status.Trim().ToLowerInvariant();
+            query = query.Where(r => r.State.ToLower() == normalized);
+        }
+
+        var runs = await query
+            .OrderByDescending(r => r.CreatedAtUtc)
+            .ToListAsync();
+
+        var runGroups = runs.GroupBy(r => r.RunId).ToList();
+        var workloadIds = runGroups.Select(g => g.First().WorkloadId).Distinct().ToList();
+        var revisionIds = runGroups.Select(g => g.First().RevisionId).Distinct().ToList();
+
+        var workloads = await _db.WorkloadDefinitions
+            .AsNoTracking()
+            .Where(w => workloadIds.Contains(w.WorkloadId))
+            .ToDictionaryAsync(w => w.WorkloadId);
+
+        var revisions = await _db.WorkloadRevisions
+            .AsNoTracking()
+            .Where(r => revisionIds.Contains(r.RevisionId))
+            .ToDictionaryAsync(r => r.RevisionId);
+
+        var result = runGroups.Select(g =>
+        {
+            var first = g.First();
+            var workload = workloads.GetValueOrDefault(first.WorkloadId);
+            var revision = revisions.GetValueOrDefault(first.RevisionId);
+            return new WorkloadRunDetailResponse
+            {
+                RunId = first.RunId,
+                WorkloadId = first.WorkloadId,
+                RevisionId = first.RevisionId,
+                WorkloadVersion = revision?.Version ?? string.Empty,
+                Mode = first.Mode,
+                State = AggregateState(g.Select(r => r.State)),
+                CreatedAtUtc = g.Min(r => r.CreatedAtUtc),
+                UpdatedAtUtc = g.Max(r => r.UpdatedAtUtc),
+                CompletedAtUtc = g.All(r => r.CompletedAtUtc.HasValue) ? g.Max(r => r.CompletedAtUtc) : null,
+                RiskLevel = first.RiskLevel,
+                NodeIds = g.Select(r => r.NodeId).Distinct().ToList()
+            };
+        }).ToList();
+
+        return Ok(result);
     }
 
     [HttpGet("{runId:guid}")]

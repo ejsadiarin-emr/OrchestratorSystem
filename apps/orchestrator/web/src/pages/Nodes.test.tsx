@@ -1,6 +1,48 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Nodes from './Nodes'
+
+vi.mock('../services/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/api')>()
+  return {
+    ...actual,
+    listNodes: vi.fn().mockResolvedValue([
+      {
+        id: 'node-001',
+        hostname: 'wj-plant-01',
+        ipAddress: '10.30.2.41',
+        status: 'online',
+        description: 'Plant line A host',
+        osVersion: 'Windows Server 2022',
+        agentVersion: '0.1.0',
+        firstConnectedAt: new Date().toISOString(),
+        lastSeenAt: new Date().toISOString(),
+      },
+    ]),
+    listEnrollmentTokens: vi.fn().mockResolvedValue([]),
+    issueEnrollmentToken: vi.fn().mockResolvedValue({
+      tokenId: 'token-new',
+      token: 'enroll-abc123',
+      issuedAtUtc: new Date().toISOString(),
+      expiresAtUtc: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+      requestedBy: 'qa.user',
+      orchestratorUrl: 'https://orch.example.local:5000',
+      singleUse: true,
+      used: false,
+    }),
+    consumeEnrollmentToken: vi.fn().mockResolvedValue({
+      id: 'node-001',
+      hostname: 'wj-plant-01',
+      ipAddress: '10.30.2.41',
+      status: 'online',
+      description: 'Plant line A host',
+      osVersion: 'Windows Server 2022',
+      agentVersion: '0.1.0',
+      firstConnectedAt: new Date().toISOString(),
+      lastSeenAt: new Date().toISOString(),
+    }),
+  }
+})
 
 describe('Nodes page bootstrap flow', () => {
   beforeEach(async () => {

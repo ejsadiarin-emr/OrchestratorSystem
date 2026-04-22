@@ -32,7 +32,7 @@ export default function WorkloadRuns() {
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({
     workloadId: '',
-    workloadRevision: '',
+    revisionId: '',
     mode: 'install' as WorkloadRun['mode'],
     targetNodeIds: [] as string[],
   })
@@ -54,7 +54,7 @@ export default function WorkloadRuns() {
       setForm(current => ({
         ...current,
         workloadId: defaultWorkload.id,
-        workloadRevision: defaultWorkload.latestRevision?.revision ?? '',
+        revisionId: defaultWorkload.latestRevision?.id ?? '',
       }))
     }
 
@@ -206,7 +206,7 @@ export default function WorkloadRuns() {
                   setForm(current => ({
                     ...current,
                     workloadId,
-                    workloadRevision: workload?.latestRevision?.revision ?? '',
+                    revisionId: workload?.latestRevision?.id ?? '',
                   }))
                 }}
                 className="mt-1 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2"
@@ -223,8 +223,8 @@ export default function WorkloadRuns() {
             <label className="block text-sm text-[var(--text-soft)]">
               Revision
               <input
-                value={form.workloadRevision}
-                onChange={event => setForm(current => ({ ...current, workloadRevision: event.target.value }))}
+                value={form.revisionId}
+                onChange={event => setForm(current => ({ ...current, revisionId: event.target.value }))}
                 className="mt-1 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2"
                 required
               />

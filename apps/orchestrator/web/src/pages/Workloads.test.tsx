@@ -31,6 +31,14 @@ vi.mock('../services/api', async (importOriginal) => {
       },
     },
   ]
+  const mockWorkloads = [
+    {
+      id: 'workload-001',
+      name: 'Factory Base Install',
+      description: 'Baseline package set for production line nodes.',
+      createdAt: new Date().toISOString(),
+    },
+  ]
   return {
     ...actual,
     uploadArtifact: vi.fn().mockResolvedValue({
@@ -43,6 +51,40 @@ vi.mock('../services/api', async (importOriginal) => {
       ],
     }),
     listArtifacts: vi.fn().mockResolvedValue(mockArtifacts),
+    listWorkloads: vi.fn().mockResolvedValue(mockWorkloads),
+    listWorkloadRevisions: vi.fn().mockResolvedValue([
+      {
+        id: 'wrv-new',
+        workloadId: 'workload-001',
+        revision: '2.0.0',
+        state: 'draft',
+        createdAt: new Date().toISOString(),
+        packageSteps: [{ packageId: 'pkg-runtime', packageName: '', packageVersion: '', packageIndex: 1, stepId: 'step-1' }],
+      },
+    ]),
+    createWorkloadDefinitionDraft: vi.fn().mockResolvedValue({
+      id: 'workload-new',
+      name: 'Line-B Baseline',
+      description: 'Secondary line draft',
+      createdAt: new Date().toISOString(),
+    }),
+    createWorkloadRevision: vi.fn().mockResolvedValue({
+      id: 'wrv-new',
+      workloadId: 'workload-001',
+      revision: '2.0.0',
+      state: 'draft',
+      createdAt: new Date().toISOString(),
+      packageSteps: [{ packageId: 'pkg-runtime', packageName: '', packageVersion: '', packageIndex: 1, stepId: 'step-1' }],
+    }),
+    publishWorkloadRevision: vi.fn().mockResolvedValue({
+      id: 'wrv-new',
+      workloadId: 'workload-001',
+      revision: '2.0.0',
+      state: 'published',
+      createdAt: new Date().toISOString(),
+      publishedAt: new Date().toISOString(),
+      packageSteps: [{ packageId: 'pkg-runtime', packageName: '', packageVersion: '', packageIndex: 1, stepId: 'step-1' }],
+    }),
   }
 })
 
@@ -109,7 +151,7 @@ describe('Workloads page', () => {
     })
 
     const packageSelect = within(revisionDialog).getByLabelText('Package steps (2-3)') as HTMLSelectElement
-    const packageOptions = within(packageSelect).getAllByRole('option')
+    const packageOptions = within(packageSelect).getAllByRole('option') as HTMLOptionElement[]
     packageOptions[0].selected = true
     packageOptions[1].selected = true
     fireEvent.change(packageSelect)

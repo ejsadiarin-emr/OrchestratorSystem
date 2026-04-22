@@ -276,7 +276,7 @@ export interface CreateWorkloadRevisionRequest {
 
 export interface CreateWorkloadRunRequest {
   workloadId: string
-  workloadRevision: string
+  revisionId: string
   mode: WorkloadRunMode
   targetNodeIds: string[]
 }

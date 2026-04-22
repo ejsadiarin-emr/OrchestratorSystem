@@ -9,7 +9,10 @@ public class Node
     public string IpAddress { get; set; } = string.Empty;
     public string Status { get; set; } = "Offline";
     public DateTime LastSeenAt { get; set; } = DateTime.UtcNow;
+    public DateTime? FirstConnectedAt { get; set; }
     public string Description { get; set; } = string.Empty;
+    public string OsVersion { get; set; } = string.Empty;
+    public string AgentVersion { get; set; } = string.Empty;
 }
 
 public class CreateNodeRequest

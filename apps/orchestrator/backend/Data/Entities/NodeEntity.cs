@@ -10,6 +10,8 @@ public sealed class NodeEntity
     public string AgentVersion { get; set; } = string.Empty;
     public string Status { get; set; } = "Offline";
     public DateTime LastSeenUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? FirstConnectedUtc { get; set; }
+    public string OsVersion { get; set; } = string.Empty;
     public List<ConfigSnapshotEntity> ConfigSnapshots { get; set; } = new();
     public List<WorkloadRunEntity> WorkloadRuns { get; set; } = new();
     public List<NodeWorkloadStateEntity> NodeWorkloadStates { get; set; } = new();

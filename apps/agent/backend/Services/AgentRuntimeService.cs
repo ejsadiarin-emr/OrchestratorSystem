@@ -57,6 +57,11 @@ public sealed class AgentRuntimeService : BackgroundService
     {
         try
         {
+            if (string.IsNullOrWhiteSpace(envelope.RunId))
+            {
+                throw new InvalidOperationException("AssignRun message missing required RunId");
+            }
+
             var payload = ParseAssignRunPayload(envelope.Payload);
             _logger.LogInformation(
                 "Received AssignRun: Workload={WorkloadName}, Packages={PackageCount}, RunId={RunId}",

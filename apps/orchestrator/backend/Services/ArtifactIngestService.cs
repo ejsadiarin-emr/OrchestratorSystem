@@ -28,7 +28,7 @@ public sealed class ArtifactIngestService
 
         var now = DateTime.UtcNow;
         var artifactType = ResolveArtifactType(manifest, fileName);
-        var (installAdapter, installAdapterSources) = ResolveAdapter(manifest, fileName);
+        var (installAdapter, installAdapterSources) = ResolveAdapter(manifest, fileName, fileStream);
         var detection = ResolveDetection(manifest, artifactType);
 
         var resolved = new ResolvedManifest
@@ -124,21 +124,29 @@ public sealed class ArtifactIngestService
         return string.Empty;
     }
 
-    private static (InstallAdapter, InstallAdapterSourceBreakdown) ResolveAdapter(ArtifactIngestManifest manifest, string fileName)
+    private static (InstallAdapter, InstallAdapterSourceBreakdown) ResolveAdapter(ArtifactIngestManifest manifest, string fileName, Stream fileStream)
     {
         var adapter = manifest.InstallAdapter;
         if (adapter is not null)
         {
             var sources = new InstallAdapterSourceBreakdown();
+            var templateDefaults = TryGetTemplateDefaults(manifest.PackageId);
+            var analyzerType = TryAnalyzeFileContent(fileStream, fileName);
+
             var result = new InstallAdapter
             {
-                Type = string.IsNullOrWhiteSpace(adapter.Type) ? ResolveAdapterType(fileName) : adapter.Type.Trim().ToLowerInvariant(),
+                Type = string.IsNullOrWhiteSpace(adapter.Type)
+                    ? (analyzerType ?? templateDefaults?.Type ?? ResolveAdapterType(fileName))
+                    : adapter.Type.Trim().ToLowerInvariant(),
                 Command = string.IsNullOrWhiteSpace(adapter.Command) ? "artifact.bin" : adapter.Command.Trim(),
                 Arguments = adapter.Arguments ?? string.Empty,
                 ExpectedExitCodes = adapter.ExpectedExitCodes?.Count > 0 ? adapter.ExpectedExitCodes : new List<int> { 0, 3010 },
                 TimeoutSeconds = adapter.TimeoutSeconds > 0 ? adapter.TimeoutSeconds.Value : 1800
             };
-            sources.Type = string.IsNullOrWhiteSpace(adapter.Type) ? "default" : "admin";
+
+            sources.Type = string.IsNullOrWhiteSpace(adapter.Type)
+                ? (analyzerType is not null ? "analyzer" : (templateDefaults is not null ? "template" : "default"))
+                : "admin";
             sources.Command = string.IsNullOrWhiteSpace(adapter.Command) ? "default" : "admin";
             sources.Arguments = adapter.Arguments is null ? "default" : "admin";
             sources.ExpectedExitCodes = adapter.ExpectedExitCodes?.Count > 0 ? "admin" : "default";
@@ -265,6 +273,65 @@ public sealed class ArtifactIngestService
         }
 
         return string.Empty;
+    }
+
+    private static InstallAdapterInput? TryGetTemplateDefaults(string? packageId)
+    {
+        // TODO: Replace with real template resolution from template store
+        // For now, returns null unless packageId follows template naming convention
+        if (!string.IsNullOrWhiteSpace(packageId) && packageId.StartsWith("template-", StringComparison.OrdinalIgnoreCase))
+        {
+            return new InstallAdapterInput
+            {
+                Type = "msi",
+                Command = "msiexec.exe",
+                Arguments = "/qn /norestart",
+                ExpectedExitCodes = new List<int> { 0, 3010 },
+                TimeoutSeconds = 1800
+            };
+        }
+        return null;
+    }
+
+    private static string? TryAnalyzeFileContent(Stream? fileStream, string fileName)
+    {
+        if (fileStream is null || !fileStream.CanRead)
+        {
+            return null;
+        }
+
+        try
+        {
+            var position = fileStream.Position;
+            var buffer = new byte[8];
+            var read = fileStream.Read(buffer, 0, buffer.Length);
+            fileStream.Position = position;
+
+            if (read >= 4)
+            {
+                // PE executable magic: MZ header
+                if (buffer[0] == 0x4D && buffer[1] == 0x5A)
+                {
+                    return "exe";
+                }
+                // MSI magic: D0 CF 11 E0 (OLE compound document)
+                if (buffer[0] == 0xD0 && buffer[1] == 0xCF && buffer[2] == 0x11 && buffer[3] == 0xE0)
+                {
+                    return "msi";
+                }
+                // ZIP magic: PK
+                if (buffer[0] == 0x50 && buffer[1] == 0x4B)
+                {
+                    return "archive";
+                }
+            }
+        }
+        catch
+        {
+            // Analysis failure should not block ingest; fall back to extension-based detection
+        }
+
+        return null;
     }
 
     private static List<ValidationFieldError> ValidateResolvedManifestSchema(ResolvedManifest manifest)

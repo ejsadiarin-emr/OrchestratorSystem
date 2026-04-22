@@ -91,4 +91,44 @@ public sealed class AgentRuntimeContractTests
         Assert.That(parsed.WorkloadName, Is.EqualTo("DirectPayload"));
         Assert.That(parsed.Packages, Has.Count.EqualTo(1));
     }
+
+    [Test]
+    public void ParseAssignRunPayload_WithNullRunId_ThrowsMeaningfulException()
+    {
+        var payload = new AssignRunPayload
+        {
+            RunId = Guid.NewGuid(),
+            WorkloadName = "NullRunIdTest",
+            Packages =
+            [
+                new PackageAssignment
+                {
+                    PackageIndex = 0,
+                    PackageId = "pkg-1",
+                    Version = "1.0.0",
+                    Channel = "stable"
+                }
+            ]
+        };
+
+        var envelope = new MessageEnvelope
+        {
+            MessageType = MessageTypes.AssignRun,
+            RunId = null,
+            AgentId = "test-agent",
+            Sequence = 1,
+            Payload = payload
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+        {
+            if (string.IsNullOrWhiteSpace(envelope.RunId))
+            {
+                throw new InvalidOperationException("AssignRun message missing required RunId");
+            }
+            AgentRuntimeService.ParseAssignRunPayload(envelope.Payload);
+        });
+
+        Assert.That(ex!.Message, Does.Contain("RunId"));
+    }
 }

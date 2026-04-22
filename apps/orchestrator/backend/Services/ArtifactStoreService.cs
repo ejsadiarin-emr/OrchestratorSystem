@@ -48,6 +48,17 @@ public sealed class ArtifactStoreService
         await File.WriteAllTextAsync(manifestPath, manifestJson, Encoding.UTF8, cancellationToken);
     }
 
+    public async Task<string?> GetResolvedManifestAsync(string packageId, string version, CancellationToken cancellationToken = default)
+    {
+        var manifestPath = GetManifestPath(packageId, version);
+        if (!File.Exists(manifestPath))
+        {
+            return null;
+        }
+
+        return await File.ReadAllTextAsync(manifestPath, Encoding.UTF8, cancellationToken);
+    }
+
     public long GetSize(string packageId, string version)
     {
         return new FileInfo(GetArtifactPath(packageId, version)).Length;

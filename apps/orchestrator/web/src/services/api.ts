@@ -20,7 +20,7 @@ import type {
   NodeRunState,
   NodeWorkloadState,
   OrchestratorHomeData,
-  OriginMetadata,
+  ValidationFieldError,
   WorkloadDefinition,
   WorkloadRevision,
   WorkloadRun,
@@ -60,20 +60,28 @@ const artifacts: ArtifactRecord[] = [
     createdAt: at(0),
     detachedSignaturePresent: true,
     manifest: {
-      name: 'EJ Installer',
+      packageId: 'EJ-Installer',
       version: '1.12.0',
       channel: 'test',
-      installType: 'msi',
-      installArgs: '/quiet /norestart',
-      digestSha256: 'd6d801d2f2d7de6f8d7482d3f648e21684af8684c0f5aabf1fcf5f0109bc0a22',
-      signingIdentity: 'CN=Emerson Trusted Release',
-      originMetadata: {
-        sourceUrl: 'https://repo.local/installers/EJ-Installer-1.12.0.msi',
-        publisher: 'Emerson',
-        packageFamily: 'EJ-Installer',
-        collectedAt: at(0),
-        sourceConfidence: 'verified',
-        publisherConfidence: 'verified',
+      artifactType: 'msi',
+      verificationResult: 'verified',
+      installAdapter: {
+        type: 'msi',
+        command: 'msiexec',
+        arguments: '/quiet /norestart',
+        expectedExitCodes: [0],
+        timeoutSeconds: 300,
+      },
+      detection: {
+        type: 'registry',
+        path: 'HKLM\\Software\\EJ',
+        expectedVersion: '1.12.0',
+      },
+      policyTags: {
+        retryabilityClass: 'retryable',
+        idempotencyMode: 'enforced',
+        riskLevel: 'low',
+        approvalRequired: false,
       },
     },
   },
@@ -416,36 +424,95 @@ export function getSupportedChannels(): ManifestChannel[] {
 
 export function suggestManifestFromFile(fileName: string, fileSizeBytes: number): ArtifactManifest {
   const ext = fileName.toLowerCase().split('.').pop()
-  const installType = ext === 'exe' ? 'exe' : ext === 'zip' ? 'zip' : 'msi'
+  const artifactType = ext === 'exe' ? 'exe' : ext === 'zip' ? 'zip' : 'msi'
   const versionMatch = fileName.match(/(\d+\.\d+\.\d+)/)
   const version = versionMatch?.[1] ?? '1.0.0'
-  const name = fileName.replace(/\.[^.]+$/, '').replace(/[-_]?\d+\.\d+\.\d+$/, '') || 'Installer Package'
-  const source = `https://repo.local/installers/${fileName}`
-  const digest = `${fileName}:${fileSizeBytes}`
+  const packageId = fileName.replace(/\.[^.]+$/, '').replace(/[-_]?\d+\.\d+\.\d+$/, '') || 'Installer Package'
 
   return {
-    name,
+    packageId,
     version,
     channel: 'stable',
-    installType,
-    installArgs: installType === 'msi' ? '/quiet /norestart' : '/silent',
-    digestSha256: normalizeHash(digest),
-    signingIdentity: 'CN=Vendor Signature',
-    originMetadata: buildOriginMetadata(source, 'Unknown Vendor', name, 'derived'),
+    artifactType,
+    verificationResult: 'derived',
+    installAdapter: {
+      type: artifactType,
+      command: artifactType === 'msi' ? 'msiexec' : artifactType === 'exe' ? fileName : 'powershell',
+      arguments: artifactType === 'msi' ? '/quiet /norestart' : artifactType === 'exe' ? '/silent' : '',
+      expectedExitCodes: [0],
+      timeoutSeconds: 300,
+    },
+    detection: {
+      type: 'registry',
+      path: `HKLM\\Software\\${packageId}`,
+      expectedVersion: version,
+    },
+    policyTags: {
+      retryabilityClass: 'retryable',
+      idempotencyMode: 'enforced',
+      riskLevel: 'low',
+      approvalRequired: false,
+    },
   }
 }
 
 export async function uploadArtifact(request: ArtifactUploadRequest): Promise<ArtifactIngestResult> {
-  if (!request.fileName) {
-    throw new Error('file part is required for multipart upload')
+  if (!request.file) {
+    throw new Error('file is required for multipart upload')
   }
 
-  if (!request.manifest || !request.manifest.name || !request.manifest.version) {
+  if (!request.manifest || !request.manifest.packageId || !request.manifest.version) {
     throw new Error('manifest JSON part is required for multipart upload')
   }
 
-  if (!validateManifestChannel(request.manifest.channel)) {
+  if (request.manifest.channel && !validateManifestChannel(request.manifest.channel)) {
     throw new Error('manifest.channel must be one of stable, canary, test')
+  }
+
+  const formData = new FormData()
+  formData.append('file', request.file)
+  formData.append('manifest', JSON.stringify(request.manifest))
+  if (request.detachedSignature) {
+    formData.append('detachedSignature', request.detachedSignature)
+  }
+
+  const response = await fetch('/api/artifacts', {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    let message = `Upload failed with status ${response.status}`
+    try {
+      const body = await response.json() as { message?: string; errors?: ValidationFieldError[] }
+      if (body.errors && body.errors.length > 0) {
+        message = body.errors.map((e: ValidationFieldError) => `${e.field}: ${e.error}`).join('; ')
+      } else if (body.message) {
+        message = body.message
+      }
+    } catch {
+      // use default message
+    }
+    throw new Error(message)
+  }
+
+  const data = await response.json() as { resolvedManifest: { packageId: string; version: string; channel: string; artifactType: string; installAdapter: Record<string, unknown>; detection: Record<string, unknown>; policyTags: Record<string, unknown>; originMetadata: Record<string, unknown> } }
+
+  const artifact: ArtifactRecord = {
+    id: `${data.resolvedManifest.packageId}-${data.resolvedManifest.version}`,
+    fileName: request.file.name,
+    createdAt: new Date().toISOString(),
+    detachedSignaturePresent: Boolean(request.detachedSignature),
+    manifest: {
+      packageId: data.resolvedManifest.packageId,
+      version: data.resolvedManifest.version,
+      channel: data.resolvedManifest.channel,
+      artifactType: data.resolvedManifest.artifactType,
+      verificationResult: data.resolvedManifest.originMetadata?.verificationResult as string | undefined,
+      installAdapter: data.resolvedManifest.installAdapter as ArtifactManifest['installAdapter'],
+      detection: data.resolvedManifest.detection as ArtifactManifest['detection'],
+      policyTags: data.resolvedManifest.policyTags as ArtifactManifest['policyTags'],
+    },
   }
 
   const steps: IngestStep[] = [
@@ -454,17 +521,6 @@ export async function uploadArtifact(request: ArtifactUploadRequest): Promise<Ar
     { id: 'verify', label: 'Verify digest, signatures, and origin metadata', status: 'completed' },
     { id: 'store', label: 'Store immutable artifact and write audit record', status: 'completed' },
   ]
-
-  const artifact: ArtifactRecord = {
-    id: `artifact-${String(artifactSeq++).padStart(3, '0')}`,
-    fileName: request.fileName,
-    createdAt: new Date().toISOString(),
-    detachedSignaturePresent: Boolean(request.detachedSignature),
-    manifest: {
-      ...request.manifest,
-      digestSha256: request.manifest.digestSha256 || normalizeHash(`${request.fileName}:${request.fileSizeBytes}`),
-    },
-  }
 
   artifacts.unshift(artifact)
   writeWorkloadAudit('Artifact ingested', `${artifact.id} accepted and available for new WorkloadRevision drafts.`)
@@ -817,27 +873,6 @@ export async function listAgentLocalLogs(): Promise<MiniLogLine[]> {
 
 function at(minuteOffset: number): string {
   return new Date(baseTime + minuteOffset * 60_000).toISOString()
-}
-
-function normalizeHash(input: string): string {
-  const source = input.replace(/[^a-zA-Z0-9]/g, '').toLowerCase().padEnd(64, 'a')
-  return source.slice(0, 64)
-}
-
-function buildOriginMetadata(
-  sourceUrl: string,
-  publisher: string,
-  packageFamily: string,
-  confidence: OriginMetadata['sourceConfidence'],
-): OriginMetadata {
-  return {
-    sourceUrl,
-    publisher,
-    packageFamily,
-    collectedAt: new Date().toISOString(),
-    sourceConfidence: confidence,
-    publisherConfidence: confidence,
-  }
 }
 
 function timeline(

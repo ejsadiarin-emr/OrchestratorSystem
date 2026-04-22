@@ -74,17 +74,6 @@
                 "edit": true
             }
         },
-        "tdd-guide": {
-            "description": "Test-Driven Development specialist enforcing write-tests-first methodology. Use when writing new features, fixing bugs, or refactoring code. Ensures 80%+ test coverage.",
-            "mode": "subagent",
-            "prompt": "{file:prompts/agents/tdd-guide.txt}",
-            "tools": {
-                "read": true,
-                "write": true,
-                "edit": true,
-                "bash": true
-            }
-        },
         "build-error-resolver": {
             "description": "Build and TypeScript error resolution specialist. Use when build fails or type errors occur. Fixes build/type errors only with minimal diffs.",
             "mode": "subagent",
@@ -298,12 +287,6 @@
             "description": "Create a detailed implementation plan for complex features",
             "template": "{file:commands/plan.md}\n\n$ARGUMENTS",
             "agent": "planner",
-            "subtask": true
-        },
-        "tdd": {
-            "description": "Enforce TDD workflow with 80%+ test coverage",
-            "template": "{file:commands/tdd.md}\n\n$ARGUMENTS",
-            "agent": "tdd-guide",
             "subtask": true
         },
         "code-review": {

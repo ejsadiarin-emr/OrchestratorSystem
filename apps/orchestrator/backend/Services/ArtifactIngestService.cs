@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using DeploymentPoC.Orchestrator.Contracts.Api;
 
 namespace DeploymentPoC.Orchestrator.Services;
@@ -26,15 +27,18 @@ public sealed class ArtifactIngestService
         }
 
         var now = DateTime.UtcNow;
+        var artifactType = ResolveArtifactType(manifest, fileName);
+        var (installAdapter, installAdapterSources) = ResolveAdapter(manifest, fileName);
+        var detection = ResolveDetection(manifest, artifactType);
 
         var resolved = new ResolvedManifest
         {
             PackageId = manifest.PackageId!.Trim(),
             Version = manifest.Version!.Trim(),
             Channel = manifest.Channel!.Trim().ToLowerInvariant(),
-            ArtifactType = ResolveArtifactType(manifest, fileName),
-            InstallAdapter = ResolveAdapter(manifest, fileName),
-            Detection = ResolveDetection(manifest),
+            ArtifactType = artifactType,
+            InstallAdapter = installAdapter,
+            Detection = detection,
             OriginMetadata = new OriginMetadata
             {
                 Source = "internal-upload",
@@ -46,7 +50,10 @@ public sealed class ArtifactIngestService
                     : manifest.VerificationResult.Trim().ToLowerInvariant()
             },
             PolicyTags = ResolvePolicyTags(manifest),
-            Sources = new ResolvedManifestSources()
+            Sources = new ResolvedManifestSources
+            {
+                InstallAdapterSources = installAdapterSources
+            }
         };
 
         if (string.Equals(resolved.OriginMetadata.VerificationResult, "warn", StringComparison.Ordinal))
@@ -59,16 +66,16 @@ public sealed class ArtifactIngestService
             resolved.PolicyTagsSources.ApprovalRequired = "default";
         }
 
-        if (!CanResolveAdapterAndDetection(resolved))
+        var conditionalErrors = ValidateConditionalFields(resolved);
+        if (conditionalErrors.Count > 0)
         {
-            return ArtifactIngestResult.ValidationFailure(new List<ValidationFieldError>
-            {
-                new()
-                {
-                    Field = "manifest.artifactType",
-                    Error = "artifactType is required when adapter/detection cannot be inferred"
-                }
-            });
+            return ArtifactIngestResult.ValidationFailure(conditionalErrors);
+        }
+
+        var schemaErrors = ValidateResolvedManifestSchema(resolved);
+        if (schemaErrors.Count > 0)
+        {
+            return ArtifactIngestResult.ValidationFailure(schemaErrors);
         }
 
         return ArtifactIngestResult.Success(resolved);
@@ -117,12 +124,13 @@ public sealed class ArtifactIngestService
         return string.Empty;
     }
 
-    private static InstallAdapter ResolveAdapter(ArtifactIngestManifest manifest, string fileName)
+    private static (InstallAdapter, InstallAdapterSourceBreakdown) ResolveAdapter(ArtifactIngestManifest manifest, string fileName)
     {
         var adapter = manifest.InstallAdapter;
         if (adapter is not null)
         {
-            return new InstallAdapter
+            var sources = new InstallAdapterSourceBreakdown();
+            var result = new InstallAdapter
             {
                 Type = string.IsNullOrWhiteSpace(adapter.Type) ? ResolveAdapterType(fileName) : adapter.Type.Trim().ToLowerInvariant(),
                 Command = string.IsNullOrWhiteSpace(adapter.Command) ? "artifact.bin" : adapter.Command.Trim(),
@@ -130,10 +138,44 @@ public sealed class ArtifactIngestService
                 ExpectedExitCodes = adapter.ExpectedExitCodes?.Count > 0 ? adapter.ExpectedExitCodes : new List<int> { 0, 3010 },
                 TimeoutSeconds = adapter.TimeoutSeconds > 0 ? adapter.TimeoutSeconds.Value : 1800
             };
+            sources.Type = string.IsNullOrWhiteSpace(adapter.Type) ? "default" : "admin";
+            sources.Command = string.IsNullOrWhiteSpace(adapter.Command) ? "default" : "admin";
+            sources.Arguments = adapter.Arguments is null ? "default" : "admin";
+            sources.ExpectedExitCodes = adapter.ExpectedExitCodes?.Count > 0 ? "admin" : "default";
+            sources.TimeoutSeconds = adapter.TimeoutSeconds > 0 ? "admin" : "default";
+            return (result, sources);
         }
 
         var type = ResolveAdapterType(fileName);
-        return new InstallAdapter
+        if (string.IsNullOrWhiteSpace(type))
+        {
+            var emptySources = new InstallAdapterSourceBreakdown
+            {
+                Type = "default",
+                Command = "default",
+                Arguments = "default",
+                ExpectedExitCodes = "default",
+                TimeoutSeconds = "default"
+            };
+            return (new InstallAdapter
+            {
+                Type = string.Empty,
+                Command = string.Empty,
+                Arguments = string.Empty,
+                ExpectedExitCodes = new List<int>(),
+                TimeoutSeconds = 0
+            }, emptySources);
+        }
+
+        var defaultSources = new InstallAdapterSourceBreakdown
+        {
+            Type = "default",
+            Command = "default",
+            Arguments = "default",
+            ExpectedExitCodes = "default",
+            TimeoutSeconds = "default"
+        };
+        return (new InstallAdapter
         {
             Type = type,
             Command = "artifact.bin",
@@ -145,11 +187,21 @@ public sealed class ArtifactIngestService
             },
             ExpectedExitCodes = new List<int> { 0, 3010 },
             TimeoutSeconds = 1800
-        };
+        }, defaultSources);
     }
 
-    private static Detection ResolveDetection(ArtifactIngestManifest manifest)
+    private static Detection ResolveDetection(ArtifactIngestManifest manifest, string artifactType)
     {
+        if (string.IsNullOrWhiteSpace(artifactType) || artifactType == "unknown")
+        {
+            return new Detection
+            {
+                Type = manifest.Detection?.Type ?? string.Empty,
+                Path = manifest.Detection?.Path ?? string.Empty,
+                ExpectedVersion = manifest.Detection?.ExpectedVersion ?? string.Empty
+            };
+        }
+
         if (manifest.Detection is not null)
         {
             return new Detection
@@ -215,16 +267,134 @@ public sealed class ArtifactIngestService
         return string.Empty;
     }
 
-    private static bool CanResolveAdapterAndDetection(ResolvedManifest manifest)
+    private static List<ValidationFieldError> ValidateResolvedManifestSchema(ResolvedManifest manifest)
     {
-        return !string.IsNullOrWhiteSpace(manifest.ArtifactType)
-               && !string.IsNullOrWhiteSpace(manifest.InstallAdapter.Type)
-               && !string.IsNullOrWhiteSpace(manifest.InstallAdapter.Command)
-               && manifest.InstallAdapter.ExpectedExitCodes.Count > 0
-               && manifest.InstallAdapter.TimeoutSeconds > 0
-               && !string.IsNullOrWhiteSpace(manifest.Detection.Type)
-               && !string.IsNullOrWhiteSpace(manifest.Detection.Path)
-               && !string.IsNullOrWhiteSpace(manifest.Detection.ExpectedVersion);
+        var errors = new List<ValidationFieldError>();
+
+        if (string.IsNullOrWhiteSpace(manifest.PackageId))
+            errors.Add(new ValidationFieldError { Field = "resolvedManifest.packageId", Error = "packageId is required" });
+        if (string.IsNullOrWhiteSpace(manifest.Version))
+            errors.Add(new ValidationFieldError { Field = "resolvedManifest.version", Error = "version is required" });
+        if (string.IsNullOrWhiteSpace(manifest.Channel))
+            errors.Add(new ValidationFieldError { Field = "resolvedManifest.channel", Error = "channel is required" });
+        if (string.IsNullOrWhiteSpace(manifest.ArtifactType))
+            errors.Add(new ValidationFieldError { Field = "resolvedManifest.artifactType", Error = "artifactType is required" });
+
+        if (manifest.InstallAdapter is null)
+        {
+            errors.Add(new ValidationFieldError { Field = "resolvedManifest.installAdapter", Error = "installAdapter is required" });
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(manifest.InstallAdapter.Type))
+                errors.Add(new ValidationFieldError { Field = "resolvedManifest.installAdapter.type", Error = "installAdapter.type is required" });
+            if (string.IsNullOrWhiteSpace(manifest.InstallAdapter.Command))
+                errors.Add(new ValidationFieldError { Field = "resolvedManifest.installAdapter.command", Error = "installAdapter.command is required" });
+            if (manifest.InstallAdapter.ExpectedExitCodes is null || manifest.InstallAdapter.ExpectedExitCodes.Count == 0)
+                errors.Add(new ValidationFieldError { Field = "resolvedManifest.installAdapter.expectedExitCodes", Error = "installAdapter.expectedExitCodes is required" });
+            if (manifest.InstallAdapter.TimeoutSeconds <= 0)
+                errors.Add(new ValidationFieldError { Field = "resolvedManifest.installAdapter.timeoutSeconds", Error = "installAdapter.timeoutSeconds is required" });
+        }
+
+        if (manifest.Detection is null)
+        {
+            errors.Add(new ValidationFieldError { Field = "resolvedManifest.detection", Error = "detection is required" });
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(manifest.Detection.Type))
+                errors.Add(new ValidationFieldError { Field = "resolvedManifest.detection.type", Error = "detection.type is required" });
+            if (string.IsNullOrWhiteSpace(manifest.Detection.Path))
+                errors.Add(new ValidationFieldError { Field = "resolvedManifest.detection.path", Error = "detection.path is required" });
+            if (string.IsNullOrWhiteSpace(manifest.Detection.ExpectedVersion))
+                errors.Add(new ValidationFieldError { Field = "resolvedManifest.detection.expectedVersion", Error = "detection.expectedVersion is required" });
+        }
+
+        if (manifest.OriginMetadata is null)
+        {
+            errors.Add(new ValidationFieldError { Field = "resolvedManifest.originMetadata", Error = "originMetadata is required" });
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(manifest.OriginMetadata.Source))
+                errors.Add(new ValidationFieldError { Field = "resolvedManifest.originMetadata.source", Error = "originMetadata.source is required" });
+            if (string.IsNullOrWhiteSpace(manifest.OriginMetadata.Publisher))
+                errors.Add(new ValidationFieldError { Field = "resolvedManifest.originMetadata.publisher", Error = "originMetadata.publisher is required" });
+            if (string.IsNullOrWhiteSpace(manifest.OriginMetadata.IngestedBy))
+                errors.Add(new ValidationFieldError { Field = "resolvedManifest.originMetadata.ingestedBy", Error = "originMetadata.ingestedBy is required" });
+            if (string.IsNullOrWhiteSpace(manifest.OriginMetadata.VerificationResult))
+                errors.Add(new ValidationFieldError { Field = "resolvedManifest.originMetadata.verificationResult", Error = "originMetadata.verificationResult is required" });
+        }
+
+        if (manifest.PolicyTags is null)
+        {
+            errors.Add(new ValidationFieldError { Field = "resolvedManifest.policyTags", Error = "policyTags is required" });
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(manifest.PolicyTags.RiskLevel))
+                errors.Add(new ValidationFieldError { Field = "resolvedManifest.policyTags.riskLevel", Error = "policyTags.riskLevel is required" });
+            if (string.IsNullOrWhiteSpace(manifest.PolicyTags.RetryabilityClass))
+                errors.Add(new ValidationFieldError { Field = "resolvedManifest.policyTags.retryabilityClass", Error = "policyTags.retryabilityClass is required" });
+            if (string.IsNullOrWhiteSpace(manifest.PolicyTags.IdempotencyMode))
+                errors.Add(new ValidationFieldError { Field = "resolvedManifest.policyTags.idempotencyMode", Error = "policyTags.idempotencyMode is required" });
+        }
+
+        if (manifest.Sources is null)
+        {
+            errors.Add(new ValidationFieldError { Field = "resolvedManifest.sources", Error = "sources is required" });
+        }
+        else
+        {
+            if (manifest.Sources.PolicyTags is null)
+                errors.Add(new ValidationFieldError { Field = "resolvedManifest.sources.policyTags", Error = "sources.policyTags is required" });
+            if (manifest.Sources.InstallAdapterSources is null)
+                errors.Add(new ValidationFieldError { Field = "resolvedManifest.sources.installAdapterSources", Error = "sources.installAdapterSources is required" });
+            if (manifest.Sources.DetectionSources is null)
+                errors.Add(new ValidationFieldError { Field = "resolvedManifest.sources.detectionSources", Error = "sources.detectionSources is required" });
+        }
+
+        return errors;
+    }
+
+    private static List<ValidationFieldError> ValidateConditionalFields(ResolvedManifest manifest)
+    {
+        var errors = new List<ValidationFieldError>();
+
+        if (string.IsNullOrWhiteSpace(manifest.InstallAdapter.Type))
+        {
+            errors.Add(new ValidationFieldError { Field = "manifest.installAdapter.type", Error = "installAdapter.type is required when adapter cannot be resolved" });
+        }
+        if (string.IsNullOrWhiteSpace(manifest.InstallAdapter.Command))
+        {
+            errors.Add(new ValidationFieldError { Field = "manifest.installAdapter.command", Error = "installAdapter.command is required when adapter cannot be resolved" });
+        }
+        if (string.IsNullOrWhiteSpace(manifest.InstallAdapter.Arguments))
+        {
+            errors.Add(new ValidationFieldError { Field = "manifest.installAdapter.arguments", Error = "installAdapter.arguments is required when adapter cannot be resolved" });
+        }
+        if (manifest.InstallAdapter.ExpectedExitCodes.Count == 0)
+        {
+            errors.Add(new ValidationFieldError { Field = "manifest.installAdapter.expectedExitCodes", Error = "installAdapter.expectedExitCodes is required when adapter cannot be resolved" });
+        }
+        if (manifest.InstallAdapter.TimeoutSeconds <= 0)
+        {
+            errors.Add(new ValidationFieldError { Field = "manifest.installAdapter.timeoutSeconds", Error = "installAdapter.timeoutSeconds is required when adapter cannot be resolved" });
+        }
+        if (string.IsNullOrWhiteSpace(manifest.Detection.Type))
+        {
+            errors.Add(new ValidationFieldError { Field = "manifest.detection.type", Error = "detection.type is required when detection cannot be resolved" });
+        }
+        if (string.IsNullOrWhiteSpace(manifest.Detection.Path))
+        {
+            errors.Add(new ValidationFieldError { Field = "manifest.detection.path", Error = "detection.path is required when detection cannot be resolved" });
+        }
+        if (string.IsNullOrWhiteSpace(manifest.Detection.ExpectedVersion))
+        {
+            errors.Add(new ValidationFieldError { Field = "manifest.detection.expectedVersion", Error = "detection.expectedVersion is required when detection cannot be resolved" });
+        }
+
+        return errors;
     }
 }
 
@@ -343,6 +513,24 @@ public sealed class ResolvedManifestSources
     public ManifestFieldSource Detection { get; set; } = ManifestFieldSource.Default;
     public ManifestFieldSource PolicyTagsComposite { get; set; } = ManifestFieldSource.Default;
     public PolicyTagSourceBreakdown PolicyTags { get; set; } = new();
+    public InstallAdapterSourceBreakdown InstallAdapterSources { get; set; } = new();
+    public DetectionSourceBreakdown DetectionSources { get; set; } = new();
+}
+
+public sealed class InstallAdapterSourceBreakdown
+{
+    public string Type { get; set; } = "default";
+    public string Command { get; set; } = "default";
+    public string Arguments { get; set; } = "default";
+    public string ExpectedExitCodes { get; set; } = "default";
+    public string TimeoutSeconds { get; set; } = "default";
+}
+
+public sealed class DetectionSourceBreakdown
+{
+    public string Type { get; set; } = "default";
+    public string Path { get; set; } = "default";
+    public string ExpectedVersion { get; set; } = "default";
 }
 
 public sealed class PolicyTagSourceBreakdown
@@ -353,6 +541,42 @@ public sealed class PolicyTagSourceBreakdown
     public string ApprovalRequired { get; set; } = "default";
 }
 
+internal sealed class FlexibleEnumConverter<T> : JsonConverter<T> where T : struct, Enum
+{
+    public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Number)
+        {
+            var intValue = reader.GetInt32();
+            if (Enum.IsDefined(typeof(T), intValue))
+            {
+                return (T)(object)intValue;
+            }
+
+            throw new JsonException($"Value {intValue} is not defined for enum {typeof(T).Name}");
+        }
+
+        if (reader.TokenType == JsonTokenType.String)
+        {
+            var stringValue = reader.GetString();
+            if (Enum.TryParse<T>(stringValue, ignoreCase: true, out var result))
+            {
+                return result;
+            }
+
+            throw new JsonException($"Value \"{stringValue}\" is not defined for enum {typeof(T).Name}");
+        }
+
+        throw new JsonException($"Unexpected token type {reader.TokenType} when parsing enum {typeof(T).Name}");
+    }
+
+    public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(value.ToString());
+    }
+}
+
+[JsonConverter(typeof(FlexibleEnumConverter<ManifestFieldSource>))]
 public enum ManifestFieldSource
 {
     Admin,

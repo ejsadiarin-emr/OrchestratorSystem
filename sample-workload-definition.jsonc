@@ -7,5 +7,5 @@
         "grafana-13.0.1-24542347077-windows-amd64",
         "loki-windows-amd64"
     ],
-    "upgradePath": "..."
+    "preUpgradeActions": [...]
 }

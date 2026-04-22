@@ -1,30 +1,39 @@
 export type ManifestChannel = 'stable' | 'canary' | 'test'
 
-export type ConfidenceTag = 'declared' | 'derived' | 'verified'
+export interface InstallAdapterInput {
+  type?: string
+  command?: string
+  arguments?: string
+  expectedExitCodes?: number[]
+  timeoutSeconds?: number
+}
 
-export interface OriginMetadata {
-  sourceUrl: string
-  publisher: string
-  packageFamily: string
-  collectedAt: string
-  sourceConfidence: ConfidenceTag
-  publisherConfidence: ConfidenceTag
+export interface DetectionInput {
+  type?: string
+  path?: string
+  expectedVersion?: string
+}
+
+export interface PolicyTagsInput {
+  retryabilityClass?: string
+  idempotencyMode?: string
+  riskLevel?: string
+  approvalRequired?: boolean
 }
 
 export interface ArtifactManifest {
-  name: string
-  version: string
-  channel: ManifestChannel
-  installType: 'msi' | 'exe' | 'zip'
-  installArgs: string
-  digestSha256: string
-  signingIdentity: string
-  originMetadata: OriginMetadata
+  packageId?: string
+  version?: string
+  channel?: string
+  artifactType?: string
+  verificationResult?: string
+  installAdapter?: InstallAdapterInput
+  detection?: DetectionInput
+  policyTags?: PolicyTagsInput
 }
 
 export interface ArtifactUploadRequest {
-  fileName: string
-  fileSizeBytes: number
+  file: File
   manifest: ArtifactManifest
   detachedSignature?: string
 }
@@ -35,6 +44,11 @@ export interface IngestStep {
   id: string
   label: string
   status: IngestStepStatus
+}
+
+export interface ValidationFieldError {
+  field: string
+  error: string
 }
 
 export interface ArtifactRecord {

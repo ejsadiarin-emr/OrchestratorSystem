@@ -2,7 +2,7 @@ namespace DeploymentPoC.Contracts.Runtime;
 
 public static class MessageTypes
 {
-    public const string AssignJob = "AssignJob";
+    public const string AssignRun = "AssignRun";
     public const string AckClaim = "AckClaim";
     public const string LeaseHeartbeat = "LeaseHeartbeat";
     public const string StepStatus = "StepStatus";

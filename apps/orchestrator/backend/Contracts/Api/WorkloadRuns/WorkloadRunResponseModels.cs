@@ -4,6 +4,7 @@ public sealed class CreateWorkloadRunResponse
 {
     public Guid RunId { get; set; }
     public string State { get; set; } = string.Empty;
+    public string? RiskLevel { get; set; }
 }
 
 public sealed class WorkloadRunDetailResponse
@@ -17,6 +18,7 @@ public sealed class WorkloadRunDetailResponse
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
     public DateTime? CompletedAtUtc { get; set; }
+    public string? RiskLevel { get; set; }
     public List<Guid> NodeIds { get; set; } = new();
 }
 
@@ -31,6 +33,7 @@ public sealed class WorkloadRunStepDto
     public int PackageIndex { get; set; }
     public string StepId { get; set; } = string.Empty;
     public int Sequence { get; set; }
+    public string Action { get; set; } = "install";
 }
 
 public sealed class CancelWorkloadRunResponse

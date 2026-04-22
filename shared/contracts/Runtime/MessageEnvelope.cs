@@ -8,7 +8,7 @@ public class MessageEnvelope
     public DateTime TimestampUtc { get; set; } = DateTime.UtcNow;
     public string? AssignmentId { get; set; }
     public string? LeaseId { get; set; }
-    public string? JobId { get; set; }
+    public string? RunId { get; set; }
     public string? AgentId { get; set; }
     public int Sequence { get; set; }
     public object Payload { get; set; } = new();

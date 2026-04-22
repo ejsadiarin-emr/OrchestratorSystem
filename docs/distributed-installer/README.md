@@ -1,5 +1,25 @@
 # Distributed Installer Project — Unified Context (Phase 1)
 
+> **DEPRECATED — Legacy Archive**
+> This directory is a read-only historical snapshot. **Do not edit these files.**
+>
+> Canonical documentation now lives in the domain-model structure:
+> - **PRD**: `docs/prd-phase1.md`
+> - **Tracker**: `docs/implementation-tracker-phase1.md`
+> - **Contexts**: `docs/orchestrator-control-plane/CONTEXT.md`, `docs/agent-runtime/CONTEXT.md`, `docs/artifact-workload-catalog/CONTEXT.md`
+> - **Context map**: `docs/CONTEXT-MAP.md`
+> - **System ADRs**: `docs/adr/`
+> - **Context ADRs**: Each context's `docs/adr/` subdirectory
+>
+> Key decisions from April 21, 2026 have been applied to the canonical docs:
+> 1. Agent is headless (no local UI)
+> 2. Browser-based bootstrap replaces WinRM
+> 3. Single update workflow (no major/minor split)
+> 4. `upgradePath` renamed to `preUpgradeActions`
+> 5. Simplified manifest: only `riskLevel` (removed `retryabilityClass` and `idempotencyMode`)
+> 6. Global workload JSON file for workload definitions
+> 7. FR-009 (Agent UI) and AC-106 removed; all visibility via Orchestrator UI
+
 ## 1) Project Purpose and Outcome
 
 Build a Windows-first, on-prem distributed installer platform that lets operators centrally install, update, rollback, cancel, and observe software deployments (called "Workloads") across multiple nodes on a LAN (including air-gapped environments), with no cloud dependency.
@@ -90,7 +110,7 @@ Determinism rules:
 ### Components
 
 - **Orchestrator**: API, runtime hub, planning/policy, persistence, embedded UI.
-- **Agent**: persistent Windows service, local typed pipeline executor, with embedded UI.
+- **Agent**: persistent Windows service, local typed pipeline executor, headless (no UI).
 - **Artifact store**: internal artifact source with digest/signature metadata.
 - **Operator surfaces**: API/UI/CLI.
 

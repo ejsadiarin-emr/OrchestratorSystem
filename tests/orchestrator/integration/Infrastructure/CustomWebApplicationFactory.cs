@@ -31,6 +31,14 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<InstallC
             using var scope = serviceProvider.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<InstallerDbContext>();
             db.Database.Migrate();
+
+            // SQLite doesn't support filtered indexes with IN operator;
+            // the migration creates a regular unique index which breaks tests.
+            // Drop it and rely on application-level validation (C6 fix).
+            if (db.Database.IsSqlite())
+            {
+                db.Database.ExecuteSqlRaw("DROP INDEX IF EXISTS IX_WorkloadRuns_NodeId_WorkloadId_Active");
+            }
         });
     }
 

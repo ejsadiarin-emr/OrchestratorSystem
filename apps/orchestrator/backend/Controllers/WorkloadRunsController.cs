@@ -110,6 +110,19 @@ public sealed class WorkloadRunsController : ControllerBase
             });
         }
 
+        var activeStates = new[] { "Queued", "Running" };
+        var hasActiveRun = await _db.WorkloadRuns
+            .AsNoTracking()
+            .Where(r => r.WorkloadId == request.WorkloadId
+                && distinctNodeIds.Contains(r.NodeId)
+                && activeStates.Contains(r.State))
+            .AnyAsync();
+
+        if (hasActiveRun)
+        {
+            return Conflict(new { message = "An active run already exists for this workload on one or more nodes" });
+        }
+
         var riskLevel = await _policyEvaluation.EvaluateRunRiskAsync(request.RevisionId, _db, HttpContext.RequestAborted);
         var now = DateTime.UtcNow;
         var runId = Guid.NewGuid();
@@ -463,6 +476,6 @@ public sealed class WorkloadRunsController : ControllerBase
     {
         return exception.InnerException is SqliteException sqliteEx
             && sqliteEx.SqliteErrorCode == 19
-            && sqliteEx.Message.Contains("IX_WorkloadRuns_NodeId_WorkloadId_Active", StringComparison.Ordinal);
+            && sqliteEx.Message.Contains("WorkloadRuns.NodeId, WorkloadRuns.WorkloadId", StringComparison.Ordinal);
     }
 }

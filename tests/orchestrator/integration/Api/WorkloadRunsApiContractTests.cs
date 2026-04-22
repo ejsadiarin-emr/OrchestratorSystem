@@ -457,7 +457,8 @@ public sealed class WorkloadRunsApiContractTests
 
         var nodeId = await CreateNodeAsync(client, "W1-CONFLICT-NODE-01", "10.20.5.1");
         var pkgA = await CreatePackageAsync(client, "conflict-pkg-a");
-        var workload = await CreatePublishedWorkloadAsync(client, pkgA, Guid.NewGuid());
+        var pkgB = await CreatePackageAsync(client, "conflict-pkg-b");
+        var workload = await CreatePublishedWorkloadAsync(client, pkgA, pkgB);
 
         var createResponse = await client.PostAsJsonAsync("/api/workload-runs", new
         {
@@ -490,6 +491,7 @@ public sealed class WorkloadRunsApiContractTests
 
         var nodeId = await CreateNodeAsync(client, "W1-UNPUB-NODE-01", "10.20.5.2");
         var pkgA = await CreatePackageAsync(client, "unpub-pkg-a");
+        var pkgB = await CreatePackageAsync(client, "unpub-pkg-b");
 
         var createWorkload = await client.PostAsJsonAsync("/api/workloads", new
         {
@@ -504,7 +506,8 @@ public sealed class WorkloadRunsApiContractTests
             version = "1.0.0",
             packages = new[]
             {
-                new { packageId = pkgA, packageIndex = 1 }
+                new { packageId = pkgA, packageIndex = 1 },
+                new { packageId = pkgB, packageIndex = 2 }
             }
         });
         createRevision.EnsureSuccessStatusCode();

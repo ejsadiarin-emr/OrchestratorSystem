@@ -117,7 +117,8 @@ public sealed class WorkloadsApiContractTests
             version = "1.0.0",
             packages = new[]
             {
-                new { packageId = pkgA, packageIndex = 1 }
+                new { packageId = pkgA, packageIndex = 1 },
+                new { packageId = pkgB, packageIndex = 2 }
             }
         });
         rev1Response.EnsureSuccessStatusCode();
@@ -129,7 +130,8 @@ public sealed class WorkloadsApiContractTests
             version = "2.0.0",
             packages = new[]
             {
-                new { packageId = pkgB, packageIndex = 1 }
+                new { packageId = pkgA, packageIndex = 1 },
+                new { packageId = pkgB, packageIndex = 2 }
             }
         });
         rev2Response.EnsureSuccessStatusCode();

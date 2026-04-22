@@ -280,10 +280,10 @@ public sealed class ArtifactIngestApiContractTests
 
     private sealed class SourcesResponse
     {
-        public int ArtifactType { get; set; }
-        public int InstallAdapter { get; set; }
-        public int Detection { get; set; }
-        public int PolicyTagsComposite { get; set; }
+        public string ArtifactType { get; set; } = string.Empty;
+        public string InstallAdapter { get; set; } = string.Empty;
+        public string Detection { get; set; } = string.Empty;
+        public string PolicyTagsComposite { get; set; } = string.Empty;
         public PolicyTagSourcesResponse PolicyTags { get; set; } = new();
         public InstallAdapterSourceResponse InstallAdapterSources { get; set; } = new();
         public DetectionSourceResponse DetectionSources { get; set; } = new();

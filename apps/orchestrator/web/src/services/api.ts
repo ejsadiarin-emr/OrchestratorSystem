@@ -32,7 +32,6 @@ const baseTime = new Date('2026-04-16T12:00:00.000Z').getTime()
 
 const channelValues: ManifestChannel[] = ['stable', 'canary', 'test']
 
-let artifactSeq = 2
 let nodeSeq = 2
 let tokenSeq = 1
 let workloadSeq = 3

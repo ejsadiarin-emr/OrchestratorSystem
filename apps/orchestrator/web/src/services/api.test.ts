@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ArtifactManifest, InstallAdapterInput, DetectionInput, PolicyTagsInput } from '../types'
 import {
   issueEnrollmentToken,
@@ -15,12 +15,13 @@ describe('api channel validation', () => {
     expect(validateManifestChannel('beta')).toBe(false)
   })
 
-  it('rejects upload when manifest.channel is invalid', async () => {
+  it('rejects upload when manifest has invalid channel', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({ resolvedManifest: {} }), { status: 201 }))
+
     const manifest = suggestManifestFromFile('Widget-2.4.1.msi', 2048)
     await expect(
       uploadArtifact({
-        fileName: 'Widget-2.4.1.msi',
-        fileSizeBytes: 2048,
+        file: new File(['x'], 'Widget-2.4.1.msi'),
         manifest: { ...manifest, channel: 'beta' as never },
       }),
     ).rejects.toThrow('manifest.channel must be one of stable, canary, test')
@@ -29,11 +30,19 @@ describe('api channel validation', () => {
   it('rejects upload when manifest JSON part is missing', async () => {
     await expect(
       uploadArtifact({
-        fileName: 'Widget-2.4.1.msi',
-        fileSizeBytes: 2048,
+        file: new File(['x'], 'Widget-2.4.1.msi'),
         manifest: undefined as never,
       }),
     ).rejects.toThrow('manifest JSON part is required for multipart upload')
+  })
+
+  it('rejects upload when file is missing', async () => {
+    await expect(
+      uploadArtifact({
+        file: undefined as never,
+        manifest: { packageId: 'test', version: '1.0.0', channel: 'stable' },
+      }),
+    ).rejects.toThrow('file is required for multipart upload')
   })
 })
 
@@ -118,6 +127,102 @@ describe('ArtifactManifest matches backend ArtifactIngestManifest contract', () 
     expect(policyTags).toHaveProperty('riskLevel')
     expect(policyTags).toHaveProperty('approvalRequired')
     expect(typeof policyTags.approvalRequired).toBe('boolean')
+  })
+})
+
+describe('suggestManifestFromFile produces backend-conformant shape', () => {
+  it('returns ArtifactManifest with packageId, version, channel, and installAdapter', () => {
+    const manifest = suggestManifestFromFile('EJ-Installer-2.4.1.msi', 2048)
+
+    expect(manifest.packageId).toBe('EJ-Installer')
+    expect(manifest.version).toBe('2.4.1')
+    expect(manifest.channel).toBe('stable')
+    expect(manifest.artifactType).toBe('msi')
+    expect(manifest.installAdapter).toBeDefined()
+    expect(manifest.installAdapter!.type).toBe('msi')
+    expect(manifest.installAdapter!.command).toBe('msiexec')
+    expect(manifest.detection).toBeDefined()
+    expect(manifest.detection!.expectedVersion).toBe('2.4.1')
+    expect(manifest.policyTags).toBeDefined()
+  })
+
+  it('infers msi artifact type from .msi extension', () => {
+    const manifest = suggestManifestFromFile('Package-1.0.0.msi', 1024)
+    expect(manifest.artifactType).toBe('msi')
+    expect(manifest.installAdapter!.type).toBe('msi')
+  })
+
+  it('infers exe artifact type from .exe extension', () => {
+    const manifest = suggestManifestFromFile('Setup-3.2.1.exe', 2048)
+    expect(manifest.artifactType).toBe('exe')
+    expect(manifest.installAdapter!.type).toBe('exe')
+  })
+
+  it('infers zip artifact type from .zip extension', () => {
+    const manifest = suggestManifestFromFile('Bundle-0.5.0.zip', 4096)
+    expect(manifest.artifactType).toBe('zip')
+  })
+})
+
+describe('uploadArtifact sends real HTTP request with FormData', () => {
+  it('POSTs to /api/artifacts with file and manifest in FormData', async () => {
+    const mockResponse = {
+      resolvedManifest: {
+        packageId: 'Widget',
+        version: '2.4.1',
+        channel: 'stable',
+        artifactType: 'msi',
+        installAdapter: { type: 'msi', command: 'msiexec', arguments: '/quiet', expectedExitCodes: [0], timeoutSeconds: 300 },
+        detection: { type: 'registry', path: 'HKLM\\Widget', expectedVersion: '2.4.1' },
+        policyTags: { retryabilityClass: 'retryable', idempotencyMode: 'enforced', riskLevel: 'low', approvalRequired: false },
+        originMetadata: { source: 'test', publisher: 'test', ingestedBy: 'anonymous', ingestedAtUtc: '2026-01-01T00:00:00Z', verificationResult: 'derived' },
+      },
+    }
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify(mockResponse), { status: 201, headers: { 'Content-Type': 'application/json' } }),
+    )
+
+    const file = new File(['fake content'], 'Widget-2.4.1.msi', { type: 'application/octet-stream' })
+    const manifest: ArtifactManifest = {
+      packageId: 'Widget',
+      version: '2.4.1',
+      channel: 'stable',
+      artifactType: 'msi',
+    }
+
+    const result = await uploadArtifact({ file, manifest })
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const [url, options] = (globalThis.fetch as ReturnType<typeof vi.spyOn>).mock.calls[0]
+    expect(url).toBe('/api/artifacts')
+    expect(options.method).toBe('POST')
+
+    const sentBody = options.body as FormData
+    expect(sentBody.get('file')).toBe(file)
+    expect(sentBody.get('manifest')).toBe(JSON.stringify(manifest))
+
+    expect(result.artifact).toBeDefined()
+    expect(result.artifact.fileName).toBe('Widget-2.4.1.msi')
+    expect(result.steps).toHaveLength(4)
+  })
+
+  it('throws with validation error details on 400 response', async () => {
+    const errorBody = {
+      code: 'validation_failed',
+      message: 'Validation failed',
+      errors: [
+        { field: 'manifest.packageId', error: 'packageId is required' },
+        { field: 'manifest.version', error: 'version is required' },
+      ],
+    }
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(JSON.stringify(errorBody), { status: 400, headers: { 'Content-Type': 'application/json' } }),
+    )
+
+    const file = new File(['x'], 'test.msi')
+    await expect(
+      uploadArtifact({ file, manifest: { packageId: '', version: '', channel: 'stable' } }),
+    ).rejects.toThrow('manifest.packageId: packageId is required; manifest.version: version is required')
   })
 })
 

@@ -137,8 +137,8 @@ export default function Workloads() {
         revision: revisionForm.revision,
         packageSteps: selectedPackages.map((artifact, index) => ({
           packageId: artifact.id,
-          packageName: artifact.manifest.name,
-          packageVersion: artifact.manifest.version,
+          packageName: artifact.manifest.packageId ?? artifact.fileName,
+          packageVersion: artifact.manifest.version ?? '0.0.0',
           packageIndex: index + 1,
           stepId: 'install-or-upgrade',
         })),

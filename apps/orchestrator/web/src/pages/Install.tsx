@@ -12,8 +12,7 @@ import type { ArtifactManifest, ArtifactRecord, IngestStep, ManifestChannel } fr
 type UploadStage = 'idle' | 'prefilled' | 'uploading' | 'stored'
 
 interface FileDraft {
-  fileName: string
-  fileSizeBytes: number
+  file: File | null
   detachedSignature?: string
 }
 
@@ -30,7 +29,7 @@ export default function Install() {
   const [artifacts, setArtifacts] = useState<ArtifactRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [stage, setStage] = useState<UploadStage>('idle')
-  const [fileDraft, setFileDraft] = useState<FileDraft>({ fileName: '', fileSizeBytes: 0, detachedSignature: '' })
+  const [fileDraft, setFileDraft] = useState<FileDraft>({ file: null, detachedSignature: '' })
   const [manifest, setManifest] = useState<ArtifactManifest | null>(null)
   const [steps, setSteps] = useState<IngestStep[]>(emptyIngestSteps)
   const [error, setError] = useState<string | null>(null)
@@ -50,13 +49,17 @@ export default function Install() {
       return null
     }
 
+    if (!manifest.channel) {
+      return null
+    }
+
     return validateManifestChannel(manifest.channel)
       ? null
       : 'manifest.channel must be one of stable, canary, or test.'
   }, [manifest])
 
-  const prefillFromFile = (fileName: string, fileSizeBytes: number) => {
-    if (!fileName || fileSizeBytes <= 0) {
+  const prefillFromFile = (fileName: string) => {
+    if (!fileName) {
       setError('Select a local installer file before prefilling metadata.')
       return
     }
@@ -64,7 +67,7 @@ export default function Install() {
     setError(null)
     setSuccessMessage(null)
 
-    const prefetched = suggestManifestFromFile(fileName, fileSizeBytes)
+    const prefetched = suggestManifestFromFile(fileName, 0)
     setManifest(prefetched)
     setSteps([
       { ...emptyIngestSteps[0], status: 'completed' },
@@ -82,10 +85,9 @@ export default function Install() {
 
     setFileDraft(current => ({
       ...current,
-      fileName: file.name,
-      fileSizeBytes: file.size,
+      file,
     }))
-    prefillFromFile(file.name, file.size)
+    prefillFromFile(file.name)
   }
 
   const handlePickerChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -109,8 +111,13 @@ export default function Install() {
       return
     }
 
-    if (!validateManifestChannel(manifest.channel)) {
+    if (manifest.channel && !validateManifestChannel(manifest.channel)) {
       setError('manifest.channel must be one of stable, canary, or test.')
+      return
+    }
+
+    if (!fileDraft.file) {
+      setError('Select a local installer file first.')
       return
     }
 
@@ -118,8 +125,7 @@ export default function Install() {
 
     try {
       const result = await uploadArtifact({
-        fileName: fileDraft.fileName,
-        fileSizeBytes: fileDraft.fileSizeBytes,
+        file: fileDraft.file,
         manifest,
         detachedSignature: fileDraft.detachedSignature?.trim() || undefined,
       })
@@ -134,7 +140,7 @@ export default function Install() {
   }
 
   const resetForm = () => {
-    setFileDraft({ fileName: '', fileSizeBytes: 0, detachedSignature: '' })
+    setFileDraft({ file: null, detachedSignature: '' })
     setManifest(null)
     setSteps(emptyIngestSteps)
     setStage('idle')
@@ -213,9 +219,9 @@ export default function Install() {
               </div>
             </div>
 
-            {fileDraft.fileName ? (
+            {fileDraft.file ? (
               <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm text-[var(--text-soft)]">
-                Selected <span className="font-medium text-[var(--text-strong)]">{fileDraft.fileName}</span> ({fileDraft.fileSizeBytes}{' '}
+                Selected <span className="font-medium text-[var(--text-strong)]">{fileDraft.file.name}</span> ({fileDraft.file.size}{' '}
                 bytes)
               </div>
             ) : (
@@ -240,16 +246,16 @@ export default function Install() {
             <form onSubmit={handleStore} className="space-y-4 border-t border-[var(--surface-border)] pt-5">
               <h3 className="font-semibold text-[var(--text-strong)]">Manifest Draft</h3>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <Field label="Name" value={manifest.name} onChange={value => setManifest({ ...manifest, name: value })} />
+                <Field label="Package ID" value={manifest.packageId ?? ''} onChange={value => setManifest({ ...manifest, packageId: value })} />
                 <Field
                   label="Version"
-                  value={manifest.version}
+                  value={manifest.version ?? ''}
                   onChange={value => setManifest({ ...manifest, version: value })}
                 />
                 <label className="text-sm text-[var(--text-soft)]">
                   Channel
                   <select
-                    value={manifest.channel}
+                    value={manifest.channel ?? 'stable'}
                     onChange={event => setManifest({ ...manifest, channel: event.target.value as ManifestChannel })}
                     className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
                   >
@@ -261,11 +267,9 @@ export default function Install() {
                   </select>
                 </label>
                 <Field
-                  label="Install type"
-                  value={manifest.installType}
-                  onChange={value =>
-                    setManifest({ ...manifest, installType: value === 'exe' || value === 'zip' ? value : 'msi' })
-                  }
+                  label="Artifact type"
+                  value={manifest.artifactType ?? ''}
+                  onChange={value => setManifest({ ...manifest, artifactType: value })}
                 />
               </div>
 
@@ -275,57 +279,35 @@ export default function Install() {
                 </div>
               )}
 
-              <label className="block text-sm text-[var(--text-soft)]">
-                Install args
-                <input
-                  type="text"
-                  value={manifest.installArgs}
-                  onChange={event => setManifest({ ...manifest, installArgs: event.target.value })}
-                  className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
+              <div className="space-y-2 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-4">
+                <h4 className="font-medium text-[var(--text-strong)]">Install adapter</h4>
+                <Field
+                  label="Command"
+                  value={manifest.installAdapter?.command ?? ''}
+                  onChange={value => setManifest({ ...manifest, installAdapter: { ...manifest.installAdapter, command: value } })}
                 />
-              </label>
-
-              <label className="block text-sm text-[var(--text-soft)]">
-                Digest SHA256
-                <input
-                  type="text"
-                  value={manifest.digestSha256}
-                  onChange={event => setManifest({ ...manifest, digestSha256: event.target.value })}
-                  className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
-                />
-              </label>
-
-              <label className="block text-sm text-[var(--text-soft)]">
-                Signing identity
-                <input
-                  type="text"
-                  value={manifest.signingIdentity}
-                  onChange={event => setManifest({ ...manifest, signingIdentity: event.target.value })}
-                  className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
-                />
-              </label>
+                <label className="block text-sm text-[var(--text-soft)]">
+                  Arguments
+                  <input
+                    type="text"
+                    value={manifest.installAdapter?.arguments ?? ''}
+                    onChange={event => setManifest({ ...manifest, installAdapter: { ...manifest.installAdapter, arguments: event.target.value } })}
+                    className="mt-1 w-full rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] px-3 py-2"
+                  />
+                </label>
+              </div>
 
               <div className="space-y-2 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-4">
-                <h4 className="font-medium text-[var(--text-strong)]">Origin metadata</h4>
+                <h4 className="font-medium text-[var(--text-strong)]">Detection</h4>
                 <Field
-                  label="Source URL"
-                  value={manifest.originMetadata.sourceUrl}
-                  onChange={value =>
-                    setManifest({
-                      ...manifest,
-                      originMetadata: { ...manifest.originMetadata, sourceUrl: value },
-                    })
-                  }
+                  label="Detection type"
+                  value={manifest.detection?.type ?? ''}
+                  onChange={value => setManifest({ ...manifest, detection: { ...manifest.detection, type: value } })}
                 />
                 <Field
-                  label="Publisher"
-                  value={manifest.originMetadata.publisher}
-                  onChange={value =>
-                    setManifest({
-                      ...manifest,
-                      originMetadata: { ...manifest.originMetadata, publisher: value },
-                    })
-                  }
+                  label="Detection path"
+                  value={manifest.detection?.path ?? ''}
+                  onChange={value => setManifest({ ...manifest, detection: { ...manifest.detection, path: value } })}
                 />
               </div>
 
@@ -388,8 +370,8 @@ export default function Install() {
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Artifact</th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Version</th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Channel</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Digest</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Origin</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Type</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Adapter</th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Details</th>
                 </tr>
               </thead>
@@ -397,16 +379,15 @@ export default function Install() {
                 {artifacts.map(artifact => (
                   <tr key={artifact.id}>
                     <td className="px-6 py-4">
-                      <p className="font-medium text-[var(--text-strong)]">{artifact.manifest.name}</p>
+                      <p className="font-medium text-[var(--text-strong)]">{artifact.manifest.packageId ?? artifact.fileName}</p>
                       <p className="text-xs text-[var(--text-soft)]">{artifact.fileName}</p>
                       <p className="text-xs text-[var(--text-soft)]">{artifact.id}</p>
                     </td>
-                    <td className="px-6 py-4 text-sm text-[var(--text-soft)]">{artifact.manifest.version}</td>
-                    <td className="px-6 py-4 text-sm text-[var(--text-soft)]">{artifact.manifest.channel}</td>
-                    <td className="px-6 py-4 font-mono text-xs text-[var(--text-soft)]">{artifact.manifest.digestSha256.slice(0, 18)}...</td>
+                    <td className="px-6 py-4 text-sm text-[var(--text-soft)]">{artifact.manifest.version ?? '-'}</td>
+                    <td className="px-6 py-4 text-sm text-[var(--text-soft)]">{artifact.manifest.channel ?? '-'}</td>
+                    <td className="px-6 py-4 font-mono text-xs text-[var(--text-soft)]">{artifact.manifest.artifactType ?? '-'}</td>
                     <td className="px-6 py-4 text-sm text-[var(--text-soft)]">
-                      {artifact.manifest.originMetadata.publisher}
-                      <div className="text-xs text-[var(--text-soft)]">{artifact.manifest.originMetadata.sourceUrl}</div>
+                      {artifact.manifest.installAdapter?.command ?? '-'}
                     </td>
                     <td className="px-6 py-4">
                       <button
@@ -429,21 +410,22 @@ export default function Install() {
         <ModalContent className="w-[min(94vw,44rem)]">
           <ModalHeader>
             <ModalTitle>Artifact details</ModalTitle>
-            <ModalDescription>Inspect full manifest and source metadata before attaching to a workload revision.</ModalDescription>
+            <ModalDescription>Inspect full manifest before attaching to a workload revision.</ModalDescription>
           </ModalHeader>
           {selectedArtifact && (
             <div className="grid grid-cols-1 gap-3 px-4 pb-4 text-sm md:grid-cols-2">
               <Detail label="Artifact id" value={selectedArtifact.id} mono />
               <Detail label="File" value={selectedArtifact.fileName} />
-              <Detail label="Name" value={selectedArtifact.manifest.name} />
-              <Detail label="Version" value={selectedArtifact.manifest.version} />
-              <Detail label="Channel" value={selectedArtifact.manifest.channel} />
-              <Detail label="Install type" value={selectedArtifact.manifest.installType} />
-              <Detail label="Digest" value={selectedArtifact.manifest.digestSha256} mono />
+              <Detail label="Package ID" value={selectedArtifact.manifest.packageId ?? '-'} />
+              <Detail label="Version" value={selectedArtifact.manifest.version ?? '-'} />
+              <Detail label="Channel" value={selectedArtifact.manifest.channel ?? '-'} />
+              <Detail label="Artifact type" value={selectedArtifact.manifest.artifactType ?? '-'} />
+              <Detail label="Verification" value={selectedArtifact.manifest.verificationResult ?? '-'} />
               <Detail label="Detached signature" value={selectedArtifact.detachedSignaturePresent ? 'Present' : 'Not provided'} />
-              <Detail label="Signing identity" value={selectedArtifact.manifest.signingIdentity} />
-              <Detail label="Publisher" value={selectedArtifact.manifest.originMetadata.publisher} />
-              <Detail label="Source URL" value={selectedArtifact.manifest.originMetadata.sourceUrl} mono />
+              <Detail label="Adapter command" value={selectedArtifact.manifest.installAdapter?.command ?? '-'} />
+              <Detail label="Adapter args" value={selectedArtifact.manifest.installAdapter?.arguments ?? '-'} />
+              <Detail label="Detection type" value={selectedArtifact.manifest.detection?.type ?? '-'} />
+              <Detail label="Detection path" value={selectedArtifact.manifest.detection?.path ?? '-'} />
               <Detail label="Stored at" value={new Date(selectedArtifact.createdAt).toLocaleString()} />
             </div>
           )}

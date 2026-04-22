@@ -212,20 +212,11 @@ public sealed class WorkloadRunsController : ControllerBase
             return NotFound(new { message = $"Run {runId} not found" });
         }
 
-        List<WorkloadRunStepDto> stepDtos;
+        List<RevisionSnapshotEntry> currentPackages;
         if (!string.IsNullOrEmpty(first.RevisionSnapshotJson))
         {
             var snapshot = JsonSerializer.Deserialize<List<RevisionSnapshotEntry>>(first.RevisionSnapshotJson);
-            stepDtos = (snapshot ?? new List<RevisionSnapshotEntry>())
-                .OrderBy(p => p.PackageIndex)
-                .Select((p, idx) => new WorkloadRunStepDto
-                {
-                    PackageId = p.PackageId,
-                    PackageIndex = p.PackageIndex,
-                    StepId = "install-or-upgrade",
-                    Sequence = idx + 1
-                })
-                .ToList();
+            currentPackages = (snapshot ?? new List<RevisionSnapshotEntry>()).OrderBy(p => p.PackageIndex).ToList();
         }
         else
         {
@@ -235,12 +226,100 @@ public sealed class WorkloadRunsController : ControllerBase
                 .OrderBy(p => p.PackageIndex)
                 .ToListAsync();
 
-            stepDtos = packages.Select((p, idx) => new WorkloadRunStepDto
+            currentPackages = packages.Select(p => new RevisionSnapshotEntry
+            {
+                PackageId = p.PackageId,
+                PackageIndex = p.PackageIndex
+            }).ToList();
+        }
+
+        List<WorkloadRunStepDto> stepDtos;
+
+        if (first.Mode == "update")
+        {
+            var previousRevisionId = await _db.WorkloadRevisions
+                .AsNoTracking()
+                .Where(r => r.WorkloadId == first.WorkloadId && r.RevisionId != first.RevisionId && r.CreatedAtUtc < first.CreatedAtUtc)
+                .OrderByDescending(r => r.CreatedAtUtc)
+                .Select(r => r.RevisionId)
+                .FirstOrDefaultAsync();
+
+            List<RevisionSnapshotEntry> previousPackages;
+            if (previousRevisionId != Guid.Empty)
+            {
+                previousPackages = await _db.WorkloadPackages
+                    .AsNoTracking()
+                    .Where(p => p.RevisionId == previousRevisionId)
+                    .OrderBy(p => p.PackageIndex)
+                    .Select(p => new RevisionSnapshotEntry
+                    {
+                        PackageId = p.PackageId,
+                        PackageIndex = p.PackageIndex
+                    })
+                    .ToListAsync();
+            }
+            else
+            {
+                previousPackages = new List<RevisionSnapshotEntry>();
+            }
+
+            var previousById = previousPackages.ToDictionary(p => p.PackageIndex);
+            var steps = new List<WorkloadRunStepDto>();
+            var seq = 1;
+
+            foreach (var pkg in currentPackages)
+            {
+                if (!previousById.TryGetValue(pkg.PackageIndex, out var prev))
+                {
+                    steps.Add(new WorkloadRunStepDto
+                    {
+                        PackageId = pkg.PackageId,
+                        PackageIndex = pkg.PackageIndex,
+                        StepId = "install-or-upgrade",
+                        Sequence = seq++,
+                        Action = "add"
+                    });
+                }
+                else if (prev.PackageId != pkg.PackageId)
+                {
+                    steps.Add(new WorkloadRunStepDto
+                    {
+                        PackageId = pkg.PackageId,
+                        PackageIndex = pkg.PackageIndex,
+                        StepId = "install-or-upgrade",
+                        Sequence = seq++,
+                        Action = "change"
+                    });
+                }
+            }
+
+            var currentByIndex = currentPackages.ToDictionary(p => p.PackageIndex);
+            foreach (var prev in previousPackages)
+            {
+                if (!currentByIndex.ContainsKey(prev.PackageIndex))
+                {
+                    steps.Add(new WorkloadRunStepDto
+                    {
+                        PackageId = prev.PackageId,
+                        PackageIndex = prev.PackageIndex,
+                        StepId = "remove",
+                        Sequence = seq++,
+                        Action = "remove"
+                    });
+                }
+            }
+
+            stepDtos = steps;
+        }
+        else
+        {
+            stepDtos = currentPackages.Select((p, idx) => new WorkloadRunStepDto
             {
                 PackageId = p.PackageId,
                 PackageIndex = p.PackageIndex,
                 StepId = "install-or-upgrade",
-                Sequence = idx + 1
+                Sequence = idx + 1,
+                Action = "install"
             }).ToList();
         }
 

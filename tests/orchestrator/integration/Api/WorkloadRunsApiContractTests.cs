@@ -159,6 +159,215 @@ public sealed class WorkloadRunsApiContractTests
         return body!.Id;
     }
 
+    [Test]
+    public async Task WorkloadRunsApi_GetSteps_UpdateMode_ReturnsDeltaSteps()
+    {
+        await using var factory = new CustomWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var nodeId = await CreateNodeAsync(client, "W1-DELTA-NODE-01", "10.20.4.1");
+        var pkgA = await CreatePackageAsync(client, "delta-pkg-a");
+        var pkgB = await CreatePackageAsync(client, "delta-pkg-b");
+        var pkgC = await CreatePackageAsync(client, "delta-pkg-c");
+        var pkgD = await CreatePackageAsync(client, "delta-pkg-d");
+
+        var createWorkload = await client.PostAsJsonAsync("/api/workloads", new
+        {
+            name = $"workload-delta-{Guid.NewGuid():N}"
+        });
+        createWorkload.EnsureSuccessStatusCode();
+        var workload = await createWorkload.Content.ReadFromJsonAsync<WorkloadDetailResponse>();
+        Assert.That(workload, Is.Not.Null);
+
+        var createRev1 = await client.PostAsJsonAsync($"/api/workloads/{workload!.WorkloadId}/revisions", new
+        {
+            version = "1.0.0",
+            packages = new[]
+            {
+                new { packageId = pkgA, packageIndex = 1 },
+                new { packageId = pkgB, packageIndex = 2 }
+            }
+        });
+        createRev1.EnsureSuccessStatusCode();
+        var rev1 = await createRev1.Content.ReadFromJsonAsync<WorkloadRevisionResponse>();
+        Assert.That(rev1, Is.Not.Null);
+
+        var publish1 = await client.PostAsJsonAsync($"/api/workloads/{workload.WorkloadId}/publish", new
+        {
+            revisionId = rev1!.RevisionId
+        });
+        publish1.EnsureSuccessStatusCode();
+
+        var createRev2 = await client.PostAsJsonAsync($"/api/workloads/{workload.WorkloadId}/revisions", new
+        {
+            version = "2.0.0",
+            packages = new[]
+            {
+                new { packageId = pkgA, packageIndex = 1 },
+                new { packageId = pkgC, packageIndex = 2 },
+                new { packageId = pkgD, packageIndex = 3 }
+            }
+        });
+        createRev2.EnsureSuccessStatusCode();
+        var rev2 = await createRev2.Content.ReadFromJsonAsync<WorkloadRevisionResponse>();
+        Assert.That(rev2, Is.Not.Null);
+
+        var publish2 = await client.PostAsJsonAsync($"/api/workloads/{workload.WorkloadId}/publish", new
+        {
+            revisionId = rev2!.RevisionId
+        });
+        publish2.EnsureSuccessStatusCode();
+
+        var createRun = await client.PostAsJsonAsync("/api/workload-runs", new
+        {
+            workloadId = workload.WorkloadId,
+            revisionId = rev2.RevisionId,
+            mode = "update",
+            idempotencyKey = "delta-update-test-1",
+            nodeIds = new[] { nodeId }
+        });
+        Assert.That(createRun.StatusCode, Is.EqualTo(HttpStatusCode.Created));
+        var run = await createRun.Content.ReadFromJsonAsync<CreateWorkloadRunResponse>();
+        Assert.That(run, Is.Not.Null);
+
+        var stepsResponse = await client.GetAsync($"/api/workload-runs/{run!.RunId}/steps");
+        Assert.That(stepsResponse.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        var steps = await stepsResponse.Content.ReadFromJsonAsync<WorkloadRunStepsResponse>();
+        Assert.That(steps, Is.Not.Null);
+        Assert.That(steps!.Steps.Count, Is.EqualTo(2));
+
+        var index2Step = steps.Steps.Single(s => s.PackageIndex == 2);
+        Assert.That(index2Step.PackageId, Is.EqualTo(pkgC));
+        Assert.That(index2Step.Action, Is.EqualTo("change"));
+
+        var index3Step = steps.Steps.Single(s => s.PackageIndex == 3);
+        Assert.That(index3Step.PackageId, Is.EqualTo(pkgD));
+        Assert.That(index3Step.Action, Is.EqualTo("add"));
+
+        var removedSteps = steps.Steps.Where(s => s.Action == "remove").ToList();
+        Assert.That(removedSteps.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public async Task WorkloadRunsApi_GetSteps_InstallMode_ReturnsAllPackagesWithInstallAction()
+    {
+        await using var factory = new CustomWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var nodeId = await CreateNodeAsync(client, "W1-INSTALL-ACTION-NODE", "10.20.4.2");
+        var pkgA = await CreatePackageAsync(client, "install-action-pkg-a");
+        var pkgB = await CreatePackageAsync(client, "install-action-pkg-b");
+        var workload = await CreatePublishedWorkloadAsync(client, pkgA, pkgB);
+
+        var createResponse = await client.PostAsJsonAsync("/api/workload-runs", new
+        {
+            workloadId = workload.WorkloadId,
+            revisionId = workload.RevisionId,
+            mode = "install",
+            idempotencyKey = "install-action-test-1",
+            nodeIds = new[] { nodeId }
+        });
+
+        Assert.That(createResponse.StatusCode, Is.EqualTo(HttpStatusCode.Created));
+        var created = await createResponse.Content.ReadFromJsonAsync<CreateWorkloadRunResponse>();
+        Assert.That(created, Is.Not.Null);
+
+        var stepsResponse = await client.GetAsync($"/api/workload-runs/{created!.RunId}/steps");
+        Assert.That(stepsResponse.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        var steps = await stepsResponse.Content.ReadFromJsonAsync<WorkloadRunStepsResponse>();
+        Assert.That(steps, Is.Not.Null);
+        Assert.That(steps!.Steps.Count, Is.EqualTo(2));
+        Assert.That(steps.Steps.All(s => s.Action == "install"), Is.True);
+    }
+
+    [Test]
+    public async Task WorkloadRunsApi_GetSteps_UpdateMode_WithRemovedPackage_ReturnsRemoveAction()
+    {
+        await using var factory = new CustomWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var nodeId = await CreateNodeAsync(client, "W1-REMOVE-NODE-01", "10.20.4.3");
+        var pkgA = await CreatePackageAsync(client, "remove-pkg-a");
+        var pkgB = await CreatePackageAsync(client, "remove-pkg-b");
+        var pkgC = await CreatePackageAsync(client, "remove-pkg-c");
+
+        var createWorkload = await client.PostAsJsonAsync("/api/workloads", new
+        {
+            name = $"workload-remove-{Guid.NewGuid():N}"
+        });
+        createWorkload.EnsureSuccessStatusCode();
+        var workload = await createWorkload.Content.ReadFromJsonAsync<WorkloadDetailResponse>();
+        Assert.That(workload, Is.Not.Null);
+
+        var createRev1 = await client.PostAsJsonAsync($"/api/workloads/{workload!.WorkloadId}/revisions", new
+        {
+            version = "1.0.0",
+            packages = new[]
+            {
+                new { packageId = pkgA, packageIndex = 1 },
+                new { packageId = pkgB, packageIndex = 2 }
+            }
+        });
+        createRev1.EnsureSuccessStatusCode();
+        var rev1 = await createRev1.Content.ReadFromJsonAsync<WorkloadRevisionResponse>();
+        Assert.That(rev1, Is.Not.Null);
+
+        var publish1 = await client.PostAsJsonAsync($"/api/workloads/{workload.WorkloadId}/publish", new
+        {
+            revisionId = rev1!.RevisionId
+        });
+        publish1.EnsureSuccessStatusCode();
+
+        var createRev2 = await client.PostAsJsonAsync($"/api/workloads/{workload.WorkloadId}/revisions", new
+        {
+            version = "2.0.0",
+            packages = new[]
+            {
+                new { packageId = pkgA, packageIndex = 1 },
+                new { packageId = pkgC, packageIndex = 3 }
+            }
+        });
+        createRev2.EnsureSuccessStatusCode();
+        var rev2 = await createRev2.Content.ReadFromJsonAsync<WorkloadRevisionResponse>();
+        Assert.That(rev2, Is.Not.Null);
+
+        var publish2 = await client.PostAsJsonAsync($"/api/workloads/{workload.WorkloadId}/publish", new
+        {
+            revisionId = rev2!.RevisionId
+        });
+        publish2.EnsureSuccessStatusCode();
+
+        var createRun = await client.PostAsJsonAsync("/api/workload-runs", new
+        {
+            workloadId = workload.WorkloadId,
+            revisionId = rev2.RevisionId,
+            mode = "update",
+            idempotencyKey = "remove-test-1",
+            nodeIds = new[] { nodeId }
+        });
+        Assert.That(createRun.StatusCode, Is.EqualTo(HttpStatusCode.Created));
+        var run = await createRun.Content.ReadFromJsonAsync<CreateWorkloadRunResponse>();
+        Assert.That(run, Is.Not.Null);
+
+        var stepsResponse = await client.GetAsync($"/api/workload-runs/{run!.RunId}/steps");
+        Assert.That(stepsResponse.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        var steps = await stepsResponse.Content.ReadFromJsonAsync<WorkloadRunStepsResponse>();
+        Assert.That(steps, Is.Not.Null);
+
+        var unchangedSteps = steps.Steps.Where(s => s.PackageIndex == 1).ToList();
+        Assert.That(unchangedSteps.Count, Is.EqualTo(0), "Unchanged package at index 1 should not be in delta");
+
+        var addStep = steps.Steps.SingleOrDefault(s => s.PackageIndex == 3);
+        Assert.That(addStep, Is.Not.Null);
+        Assert.That(addStep!.PackageId, Is.EqualTo(pkgC));
+        Assert.That(addStep.Action, Is.EqualTo("add"));
+
+        var removeStep = steps.Steps.SingleOrDefault(s => s.Action == "remove");
+        Assert.That(removeStep, Is.Not.Null);
+        Assert.That(removeStep!.PackageId, Is.EqualTo(pkgB));
+        Assert.That(removeStep.PackageIndex, Is.EqualTo(2));
+    }
+
     private static async Task<(Guid WorkloadId, Guid RevisionId)> CreatePublishedWorkloadAsync(HttpClient client, Guid pkgA, Guid pkgB)
     {
         var createWorkload = await client.PostAsJsonAsync("/api/workloads", new
@@ -232,6 +441,7 @@ public sealed class WorkloadRunsApiContractTests
     {
         public Guid PackageId { get; set; }
         public int PackageIndex { get; set; }
+        public string Action { get; set; } = string.Empty;
     }
 
     private sealed class CancelWorkloadRunResponse

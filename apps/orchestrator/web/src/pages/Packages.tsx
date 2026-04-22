@@ -11,11 +11,11 @@ export default function Packages() {
       .then(data => {
         const mapped = data.map<Package>(artifact => ({
           id: artifact.id,
-          name: artifact.manifest.name,
-          version: artifact.manifest.version,
-          sourcePath: artifact.manifest.originMetadata.sourceUrl,
-          installType: artifact.manifest.installType,
-          installArgs: artifact.manifest.installArgs,
+          name: artifact.manifest.packageId ?? artifact.fileName,
+          version: artifact.manifest.version ?? '',
+          sourcePath: artifact.fileName,
+          installType: artifact.manifest.artifactType ?? 'msi',
+          installArgs: artifact.manifest.installAdapter?.arguments ?? '',
           createdAt: artifact.createdAt,
         }))
         setPackages(mapped)

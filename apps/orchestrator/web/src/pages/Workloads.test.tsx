@@ -1,50 +1,53 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it } from 'vitest'
-import { uploadArtifact } from '../services/api'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import * as api from '../services/api'
 import Workloads from './Workloads'
+
+vi.mock('../services/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/api')>()
+  return {
+    ...actual,
+    uploadArtifact: vi.fn().mockResolvedValue({
+      artifact: {
+        id: 'artifact-003',
+        fileName: 'EJ-Installer-2.0.0.msi',
+        createdAt: new Date().toISOString(),
+        detachedSignaturePresent: false,
+        manifest: {
+          packageId: 'EJ-Installer',
+          version: '2.0.0',
+          channel: 'test',
+          artifactType: 'msi',
+        },
+      },
+      steps: [
+        { id: 'upload', label: 'Receive multipart request', status: 'completed' },
+        { id: 'analyze', label: 'Analyze installer media', status: 'completed' },
+        { id: 'verify', label: 'Verify digest', status: 'completed' },
+        { id: 'store', label: 'Store artifact', status: 'completed' },
+      ],
+    }),
+  }
+})
 
 describe('Workloads page', () => {
   beforeEach(async () => {
-    await uploadArtifact({
-      fileName: 'EJ-Installer-2.0.0.msi',
-      fileSizeBytes: 12000,
+    await api.uploadArtifact({
+      file: new File(['fake'], 'EJ-Installer-2.0.0.msi', { type: 'application/octet-stream' }),
       manifest: {
-        name: 'EJ Installer',
+        packageId: 'EJ-Installer',
         version: '2.0.0',
         channel: 'test',
-        installType: 'msi',
-        installArgs: '/quiet /norestart',
-        digestSha256: 'a'.repeat(64),
-        signingIdentity: 'CN=Emerson Trusted Release',
-        originMetadata: {
-          sourceUrl: 'https://repo.local/installers/EJ-Installer-2.0.0.msi',
-          publisher: 'Emerson',
-          packageFamily: 'EJ-Installer',
-          collectedAt: new Date().toISOString(),
-          sourceConfidence: 'verified',
-          publisherConfidence: 'verified',
-        },
+        artifactType: 'msi',
       },
     })
-    await uploadArtifact({
-      fileName: 'EJ-Installer-2.1.0.msi',
-      fileSizeBytes: 13000,
+    await api.uploadArtifact({
+      file: new File(['fake'], 'EJ-Installer-2.1.0.msi', { type: 'application/octet-stream' }),
       manifest: {
-        name: 'EJ Installer',
+        packageId: 'EJ-Installer',
         version: '2.1.0',
         channel: 'test',
-        installType: 'msi',
-        installArgs: '/quiet /norestart',
-        digestSha256: 'b'.repeat(64),
-        signingIdentity: 'CN=Emerson Trusted Release',
-        originMetadata: {
-          sourceUrl: 'https://repo.local/installers/EJ-Installer-2.1.0.msi',
-          publisher: 'Emerson',
-          packageFamily: 'EJ-Installer',
-          collectedAt: new Date().toISOString(),
-          sourceConfidence: 'verified',
-          publisherConfidence: 'verified',
-        },
+        artifactType: 'msi',
       },
     })
 

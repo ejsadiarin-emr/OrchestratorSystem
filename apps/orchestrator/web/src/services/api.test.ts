@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi, afterEach } from 'vitest'
 import type { ArtifactManifest, InstallAdapterInput, DetectionInput, PolicyTagsInput } from '../types'
 import {
   issueEnrollmentToken,
@@ -6,6 +6,10 @@ import {
   uploadArtifact,
   validateManifestChannel,
 } from './api'
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('api channel validation', () => {
   it('accepts stable/canary/test and rejects others', () => {
@@ -221,7 +225,7 @@ describe('uploadArtifact sends real HTTP request with FormData', () => {
 
     const file = new File(['x'], 'test.msi')
     await expect(
-      uploadArtifact({ file, manifest: { packageId: '', version: '', channel: 'stable' } }),
+      uploadArtifact({ file, manifest: { packageId: 'Widget', version: '1.0.0', channel: 'stable' } }),
     ).rejects.toThrow('manifest.packageId: packageId is required; manifest.version: version is required')
   })
 })

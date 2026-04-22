@@ -5,21 +5,36 @@ import Workloads from './Workloads'
 
 vi.mock('../services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../services/api')>()
+  const mockArtifacts = [
+    {
+      id: 'EJ-Installer-2.0.0',
+      fileName: 'EJ-Installer-2.0.0.msi',
+      createdAt: new Date().toISOString(),
+      detachedSignaturePresent: false,
+      manifest: {
+        packageId: 'EJ-Installer',
+        version: '2.0.0',
+        channel: 'test',
+        artifactType: 'msi',
+      },
+    },
+    {
+      id: 'EJ-Installer-2.1.0',
+      fileName: 'EJ-Installer-2.1.0.msi',
+      createdAt: new Date().toISOString(),
+      detachedSignaturePresent: false,
+      manifest: {
+        packageId: 'EJ-Installer',
+        version: '2.1.0',
+        channel: 'test',
+        artifactType: 'msi',
+      },
+    },
+  ]
   return {
     ...actual,
     uploadArtifact: vi.fn().mockResolvedValue({
-      artifact: {
-        id: 'artifact-003',
-        fileName: 'EJ-Installer-2.0.0.msi',
-        createdAt: new Date().toISOString(),
-        detachedSignaturePresent: false,
-        manifest: {
-          packageId: 'EJ-Installer',
-          version: '2.0.0',
-          channel: 'test',
-          artifactType: 'msi',
-        },
-      },
+      artifact: mockArtifacts[0],
       steps: [
         { id: 'upload', label: 'Receive multipart request', status: 'completed' },
         { id: 'analyze', label: 'Analyze installer media', status: 'completed' },
@@ -27,6 +42,7 @@ vi.mock('../services/api', async (importOriginal) => {
         { id: 'store', label: 'Store artifact', status: 'completed' },
       ],
     }),
+    listArtifacts: vi.fn().mockResolvedValue(mockArtifacts),
   }
 })
 

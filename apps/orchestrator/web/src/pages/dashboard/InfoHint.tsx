@@ -13,12 +13,14 @@ export function InfoHint({ label, hintKey }: { label: string; hintKey: InfoHintK
       <button
         type="button"
         aria-label={`Info: ${label}`}
+        aria-describedby={`hint-${hintKey}`}
         className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-[var(--surface-border)] bg-[var(--surface-subtle)] text-[10px] font-semibold normal-case text-[var(--text-soft)] hover:bg-[var(--surface-muted)]"
       >
         i
       </button>
       {open && (
         <span
+          id={`hint-${hintKey}`}
           role="tooltip"
           className="absolute left-0 top-5 z-10 max-w-56 rounded-md border border-[var(--surface-border)] bg-[var(--surface)] px-2 py-1 text-[10px] normal-case tracking-normal text-[var(--text-soft)] shadow-[var(--surface-shadow)]"
         >

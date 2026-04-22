@@ -248,13 +248,13 @@ describe('Dashboard orchestrator home', () => {
     const nodesTable = screen.getByRole('table', { name: 'Nodes Live Table' })
     const riskHint = within(nodesTable).getByRole('button', { name: 'Info: Risk (Node)' })
 
-    fireEvent.focus(riskHint)
+    fireEvent.mouseEnter(riskHint)
 
     const tooltip = await screen.findByRole('tooltip')
     expect(tooltip).toHaveAttribute('id')
     expect(riskHint).toHaveAttribute('aria-describedby', tooltip.getAttribute('id'))
 
-    fireEvent.blur(riskHint)
+    fireEvent.mouseLeave(riskHint)
 
     await waitFor(() => {
       expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()

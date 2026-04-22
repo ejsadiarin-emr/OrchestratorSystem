@@ -13,6 +13,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
+    exclude: ['.worktrees/**', 'node_modules/**'],
   },
   build: {
     outDir: path.resolve(__dirname, '../backend/wwwroot'),

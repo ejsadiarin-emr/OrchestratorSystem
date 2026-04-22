@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Install from './Install'
 
 describe('Install page flow', () => {
@@ -18,13 +18,36 @@ describe('Install page flow', () => {
 
     await screen.findByText(/Selected/)
 
-    const channelSelect = await screen.findByLabelText('Channel')
+    const channelSelect = (await screen.findByLabelText('Channel')) as HTMLSelectElement
+    const option = document.createElement('option')
+    option.value = 'bad-channel'
+    channelSelect.appendChild(option)
+    channelSelect.value = 'bad-channel'
     fireEvent.change(channelSelect, { target: { value: 'bad-channel' } })
+    channelSelect.removeChild(option)
 
     expect(await screen.findByText('manifest.channel must be one of stable, canary, or test.')).toBeInTheDocument()
   })
 
   it('prefills manifest from drag-drop and stores artifact through mocked multipart flow', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          resolvedManifest: {
+            packageId: 'EJ-Installer',
+            version: '2.0.0',
+            channel: 'stable',
+            artifactType: 'msi',
+            installAdapter: { type: 'msi', command: 'msiexec', arguments: '/quiet /norestart', expectedExitCodes: [0], timeoutSeconds: 300 },
+            detection: { type: 'registry', path: 'HKLM\\Software\\EJ-Installer', expectedVersion: '2.0.0' },
+            policyTags: { retryabilityClass: 'retryable', idempotencyMode: 'enforced', riskLevel: 'low', approvalRequired: false },
+            originMetadata: { source: 'test', publisher: 'test', ingestedBy: 'anonymous', ingestedAtUtc: '2026-01-01T00:00:00Z', verificationResult: 'derived' },
+          },
+        }),
+        { status: 201, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+
     await screen.findByText('Artifact Store Console')
 
     const droppedFile = new File(['installer-binary-2'], 'EJ-Installer-2.0.0.msi', {

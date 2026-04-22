@@ -57,6 +57,8 @@ export interface ArtifactRecord {
   createdAt: string
   manifest: ArtifactManifest
   detachedSignaturePresent: boolean
+  sizeBytes?: number
+  digest?: string
 }
 
 export interface ArtifactIngestResult {

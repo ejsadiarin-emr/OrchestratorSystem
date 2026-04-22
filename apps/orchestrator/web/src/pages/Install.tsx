@@ -371,6 +371,8 @@ export default function Install() {
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Version</th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Channel</th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Type</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Size</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Digest</th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Adapter</th>
                   <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-[var(--text-soft)]">Details</th>
                 </tr>
@@ -386,6 +388,8 @@ export default function Install() {
                     <td className="px-6 py-4 text-sm text-[var(--text-soft)]">{artifact.manifest.version ?? '-'}</td>
                     <td className="px-6 py-4 text-sm text-[var(--text-soft)]">{artifact.manifest.channel ?? '-'}</td>
                     <td className="px-6 py-4 font-mono text-xs text-[var(--text-soft)]">{artifact.manifest.artifactType ?? '-'}</td>
+                    <td className="px-6 py-4 text-sm text-[var(--text-soft)]">{artifact.sizeBytes != null ? `${artifact.sizeBytes.toLocaleString()} bytes` : '-'}</td>
+                    <td className="px-6 py-4 font-mono text-xs text-[var(--text-soft)]">{artifact.digest ?? '-'}</td>
                     <td className="px-6 py-4 text-sm text-[var(--text-soft)]">
                       {artifact.manifest.installAdapter?.command ?? '-'}
                     </td>
@@ -426,6 +430,8 @@ export default function Install() {
               <Detail label="Adapter args" value={selectedArtifact.manifest.installAdapter?.arguments ?? '-'} />
               <Detail label="Detection type" value={selectedArtifact.manifest.detection?.type ?? '-'} />
               <Detail label="Detection path" value={selectedArtifact.manifest.detection?.path ?? '-'} />
+              <Detail label="Size" value={selectedArtifact.sizeBytes != null ? `${selectedArtifact.sizeBytes.toLocaleString()} bytes` : '-'} />
+              <Detail label="Digest" value={selectedArtifact.digest ?? '-'} mono />
               <Detail label="Stored at" value={new Date(selectedArtifact.createdAt).toLocaleString()} />
             </div>
           )}

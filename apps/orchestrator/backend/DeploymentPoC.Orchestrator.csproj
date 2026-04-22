@@ -10,6 +10,7 @@
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <AssemblyName>DeploymentPoC.Orchestrator</AssemblyName>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Tests/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

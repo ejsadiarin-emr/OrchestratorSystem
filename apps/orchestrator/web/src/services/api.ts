@@ -502,7 +502,66 @@ export async function uploadArtifact(request: ArtifactUploadRequest): Promise<Ar
 }
 
 export async function listArtifacts(): Promise<ArtifactRecord[]> {
-  return [...artifacts]
+  const response = await fetch('/api/artifacts')
+  if (!response.ok) {
+    throw new Error(`Failed to load artifacts: ${response.status}`)
+  }
+  const data = await response.json() as Array<{
+    id: string
+    packageId: string
+    version: string
+    fileName: string
+    channel?: string
+    artifactType?: string
+    verificationResult?: string
+    sizeBytes?: number
+    digest?: string
+    createdAt: string
+    installAdapterCommand?: string
+    detectionType?: string
+    detectionPath?: string
+    riskLevel?: string
+  }>
+
+  return data.map(item => ({
+    id: item.id,
+    fileName: item.fileName,
+    createdAt: item.createdAt,
+    sizeBytes: item.sizeBytes,
+    digest: item.digest,
+    detachedSignaturePresent: false,
+    manifest: {
+      packageId: item.packageId,
+      version: item.version,
+      channel: item.channel,
+      artifactType: item.artifactType,
+      verificationResult: item.verificationResult,
+      installAdapter: item.installAdapterCommand
+        ? {
+            type: item.artifactType ?? 'unknown',
+            command: item.installAdapterCommand,
+            arguments: '',
+            expectedExitCodes: [0],
+            timeoutSeconds: 300,
+          }
+        : undefined,
+      detection: item.detectionType
+        ? {
+            type: item.detectionType,
+            path: item.detectionPath ?? '',
+            expectedVersion: item.version,
+          }
+        : undefined,
+      policyTags: item.riskLevel
+        ? {
+            retryabilityClass: 'retryable',
+            idempotencyMode: 'enforced',
+            riskLevel: item.riskLevel,
+            approvalRequired: false,
+          }
+        : undefined,
+    },
+  }))
 }
 
 export async function issueEnrollmentToken(request: IssueEnrollmentTokenRequest): Promise<EnrollmentToken> {

@@ -103,6 +103,144 @@ public sealed class ArtifactStoreService
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
+    public List<ArtifactListItem> ListArtifacts()
+    {
+        var results = new List<ArtifactListItem>();
+        if (!Directory.Exists(_rootPath))
+        {
+            return results;
+        }
+
+        foreach (var packageDir in Directory.GetDirectories(_rootPath))
+        {
+            var packageId = Path.GetFileName(packageDir);
+            if (string.IsNullOrWhiteSpace(packageId))
+            {
+                continue;
+            }
+
+            foreach (var versionDir in Directory.GetDirectories(packageDir))
+            {
+                var version = Path.GetFileName(versionDir);
+                if (string.IsNullOrWhiteSpace(version))
+                {
+                    continue;
+                }
+
+                var manifestPath = Path.Combine(versionDir, "resolved-manifest.json");
+                var artifactPath = Path.Combine(versionDir, "artifact.bin");
+                if (!File.Exists(manifestPath) || !File.Exists(artifactPath))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var manifestJson = File.ReadAllText(manifestPath, Encoding.UTF8);
+                    var manifest = System.Text.Json.JsonSerializer.Deserialize<ResolvedManifestSummary>(manifestJson, new System.Text.Json.JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+
+                    long size = 0;
+                    try
+                    {
+                        size = new FileInfo(artifactPath).Length;
+                    }
+                    catch
+                    {
+                        // ignore size read failures
+                    }
+
+                    string? digest = null;
+                    try
+                    {
+                        digest = ComputeSha256(packageId, version);
+                    }
+                    catch
+                    {
+                        // ignore digest compute failures
+                    }
+
+                    results.Add(new ArtifactListItem
+                    {
+                        Id = $"{packageId}-{version}",
+                        PackageId = packageId,
+                        Version = version,
+                        FileName = manifest?.PackageId is not null ? $"{manifest.PackageId}-{version}.bin" : $"{packageId}-{version}.bin",
+                        Channel = manifest?.Channel,
+                        ArtifactType = manifest?.ArtifactType,
+                        VerificationResult = manifest?.OriginMetadata?.VerificationResult,
+                        SizeBytes = size,
+                        Digest = digest,
+                        CreatedAt = File.GetCreationTimeUtc(artifactPath).ToString("O"),
+                        InstallAdapterCommand = manifest?.InstallAdapter?.Command,
+                        DetectionType = manifest?.Detection?.Type,
+                        DetectionPath = manifest?.Detection?.Path,
+                        RiskLevel = manifest?.PolicyTags?.RiskLevel,
+                    });
+                }
+                catch
+                {
+                    // Skip corrupted entries
+                }
+            }
+        }
+
+        return results.OrderByDescending(a => a.CreatedAt).ToList();
+    }
+
+    public sealed class ArtifactListItem
+    {
+        public string Id { get; set; } = string.Empty;
+        public string PackageId { get; set; } = string.Empty;
+        public string Version { get; set; } = string.Empty;
+        public string FileName { get; set; } = string.Empty;
+        public string? Channel { get; set; }
+        public string? ArtifactType { get; set; }
+        public string? VerificationResult { get; set; }
+        public long SizeBytes { get; set; }
+        public string? Digest { get; set; }
+        public string CreatedAt { get; set; } = string.Empty;
+        public string? InstallAdapterCommand { get; set; }
+        public string? DetectionType { get; set; }
+        public string? DetectionPath { get; set; }
+        public string? RiskLevel { get; set; }
+    }
+
+    private sealed class ResolvedManifestSummary
+    {
+        public string? PackageId { get; set; }
+        public string? Version { get; set; }
+        public string? Channel { get; set; }
+        public string? ArtifactType { get; set; }
+        public InstallAdapterSummary? InstallAdapter { get; set; }
+        public DetectionSummary? Detection { get; set; }
+        public OriginMetadataSummary? OriginMetadata { get; set; }
+        public PolicyTagsSummary? PolicyTags { get; set; }
+    }
+
+    private sealed class InstallAdapterSummary
+    {
+        public string? Command { get; set; }
+    }
+
+    private sealed class DetectionSummary
+    {
+        public string? Type { get; set; }
+        public string? Path { get; set; }
+    }
+
+    private sealed class OriginMetadataSummary
+    {
+        public string? VerificationResult { get; set; }
+    }
+
+    private sealed class PolicyTagsSummary
+    {
+        public string? RiskLevel { get; set; }
+    }
+
     private string GetArtifactPath(string packageId, string version)
     {
         ValidatePathSegment(packageId, nameof(packageId));

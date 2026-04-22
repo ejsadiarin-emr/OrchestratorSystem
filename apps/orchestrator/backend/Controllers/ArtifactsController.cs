@@ -151,6 +151,13 @@ public sealed class ArtifactsController : ControllerBase
         }
     }
 
+    [HttpGet]
+    public IActionResult GetAll()
+    {
+        var artifacts = _artifactStore.ListArtifacts();
+        return Ok(artifacts);
+    }
+
     [HttpGet("{packageId}/{version}")]
     public IActionResult Get(string packageId, string version)
     {

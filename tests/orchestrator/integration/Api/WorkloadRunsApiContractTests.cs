@@ -450,6 +450,81 @@ public sealed class WorkloadRunsApiContractTests
     }
 
     [Test]
+    public async Task WorkloadRunsApi_Create_WithActiveRun_ReturnsConflict()
+    {
+        await using var factory = new CustomWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var nodeId = await CreateNodeAsync(client, "W1-CONFLICT-NODE-01", "10.20.5.1");
+        var pkgA = await CreatePackageAsync(client, "conflict-pkg-a");
+        var workload = await CreatePublishedWorkloadAsync(client, pkgA, Guid.NewGuid());
+
+        var createResponse = await client.PostAsJsonAsync("/api/workload-runs", new
+        {
+            workloadId = workload.WorkloadId,
+            revisionId = workload.RevisionId,
+            mode = "install",
+            idempotencyKey = "conflict-test-1",
+            nodeIds = new[] { nodeId }
+        });
+        Assert.That(createResponse.StatusCode, Is.EqualTo(HttpStatusCode.Created));
+
+        var conflictResponse = await client.PostAsJsonAsync("/api/workload-runs", new
+        {
+            workloadId = workload.WorkloadId,
+            revisionId = workload.RevisionId,
+            mode = "install",
+            idempotencyKey = "conflict-test-2",
+            nodeIds = new[] { nodeId }
+        });
+        Assert.That(conflictResponse.StatusCode, Is.EqualTo(HttpStatusCode.Conflict));
+        var body = await conflictResponse.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+        Assert.That(body!["message"], Does.Contain("active run already exists"));
+    }
+
+    [Test]
+    public async Task WorkloadRunsApi_Create_UnpublishedRevision_ReturnsBadRequest()
+    {
+        await using var factory = new CustomWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var nodeId = await CreateNodeAsync(client, "W1-UNPUB-NODE-01", "10.20.5.2");
+        var pkgA = await CreatePackageAsync(client, "unpub-pkg-a");
+
+        var createWorkload = await client.PostAsJsonAsync("/api/workloads", new
+        {
+            name = $"workload-unpub-{Guid.NewGuid():N}"
+        });
+        createWorkload.EnsureSuccessStatusCode();
+        var workload = await createWorkload.Content.ReadFromJsonAsync<WorkloadDetailResponse>();
+        Assert.That(workload, Is.Not.Null);
+
+        var createRevision = await client.PostAsJsonAsync($"/api/workloads/{workload!.WorkloadId}/revisions", new
+        {
+            version = "1.0.0",
+            packages = new[]
+            {
+                new { packageId = pkgA, packageIndex = 1 }
+            }
+        });
+        createRevision.EnsureSuccessStatusCode();
+        var revision = await createRevision.Content.ReadFromJsonAsync<WorkloadRevisionResponse>();
+        Assert.That(revision, Is.Not.Null);
+
+        var createRun = await client.PostAsJsonAsync("/api/workload-runs", new
+        {
+            workloadId = workload.WorkloadId,
+            revisionId = revision!.RevisionId,
+            mode = "install",
+            idempotencyKey = "unpub-test-1",
+            nodeIds = new[] { nodeId }
+        });
+        Assert.That(createRun.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
+        var body = await createRun.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+        Assert.That(body!["message"], Does.Contain("unpublished revision"));
+    }
+
+    [Test]
     public async Task WorkloadRunsApi_GetSteps_ReturnsSnapshotPackagesFromCreationTime()
     {
         await using var factory = new CustomWebApplicationFactory();

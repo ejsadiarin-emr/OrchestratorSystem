@@ -6,4 +6,6 @@ public sealed class PublishWorkloadRequest
 {
     [Required]
     public Guid RevisionId { get; set; }
+
+    public bool ReplacePublished { get; set; } = true;
 }

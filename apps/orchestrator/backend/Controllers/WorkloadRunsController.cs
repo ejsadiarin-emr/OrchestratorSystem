@@ -8,6 +8,7 @@ using DeploymentPoC.Orchestrator.Data.Entities;
 using DeploymentPoC.Orchestrator.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace DeploymentPoC.Orchestrator.Controllers;
@@ -64,6 +65,11 @@ public sealed class WorkloadRunsController : ControllerBase
         if (revision is null)
         {
             return NotFound(new { message = $"Revision {request.RevisionId} not found for workload {request.WorkloadId}" });
+        }
+
+        if (!revision.IsPublished)
+        {
+            return BadRequest(new { message = "Cannot create a run for an unpublished revision" });
         }
 
         var distinctNodeIds = request.NodeIds.Distinct().OrderBy(x => x).ToList();
@@ -135,6 +141,10 @@ public sealed class WorkloadRunsController : ControllerBase
         try
         {
             await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsActiveRunConstraintViolation(ex))
+        {
+            return Conflict(new { message = "An active run already exists for this workload on one or more nodes" });
         }
         catch (DbUpdateException)
         {
@@ -447,5 +457,12 @@ public sealed class WorkloadRunsController : ControllerBase
         {
             Errors = errors
         };
+    }
+
+    private static bool IsActiveRunConstraintViolation(DbUpdateException exception)
+    {
+        return exception.InnerException is SqliteException sqliteEx
+            && sqliteEx.SqliteErrorCode == 19
+            && sqliteEx.Message.Contains("IX_WorkloadRuns_NodeId_WorkloadId_Active", StringComparison.Ordinal);
     }
 }

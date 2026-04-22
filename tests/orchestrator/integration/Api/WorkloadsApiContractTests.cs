@@ -94,6 +94,71 @@ public sealed class WorkloadsApiContractTests
         Assert.That(error.Errors.Any(e => e.Field == "packages"), Is.True);
     }
 
+    [Test]
+    public async Task WorkloadsApi_Publish_WithReplacePublishedFalse_KeepsOtherRevisionsPublished()
+    {
+        await using var factory = new CustomWebApplicationFactory();
+        using var client = factory.CreateClient();
+
+        var pkgA = await CreatePackageAsync(client, "multi-pub-pkg-a");
+        var pkgB = await CreatePackageAsync(client, "multi-pub-pkg-b");
+
+        var createWorkloadResponse = await client.PostAsJsonAsync("/api/workloads", new
+        {
+            name = "multi-publish-workload",
+            description = "test"
+        });
+        Assert.That(createWorkloadResponse.StatusCode, Is.EqualTo(HttpStatusCode.Created));
+        var workload = await createWorkloadResponse.Content.ReadFromJsonAsync<WorkloadDetailResponse>();
+        Assert.That(workload, Is.Not.Null);
+
+        var rev1Response = await client.PostAsJsonAsync($"/api/workloads/{workload!.WorkloadId}/revisions", new
+        {
+            version = "1.0.0",
+            packages = new[]
+            {
+                new { packageId = pkgA, packageIndex = 1 }
+            }
+        });
+        rev1Response.EnsureSuccessStatusCode();
+        var rev1 = await rev1Response.Content.ReadFromJsonAsync<WorkloadRevisionResponse>();
+        Assert.That(rev1, Is.Not.Null);
+
+        var rev2Response = await client.PostAsJsonAsync($"/api/workloads/{workload.WorkloadId}/revisions", new
+        {
+            version = "2.0.0",
+            packages = new[]
+            {
+                new { packageId = pkgB, packageIndex = 1 }
+            }
+        });
+        rev2Response.EnsureSuccessStatusCode();
+        var rev2 = await rev2Response.Content.ReadFromJsonAsync<WorkloadRevisionResponse>();
+        Assert.That(rev2, Is.Not.Null);
+
+        var publish1 = await client.PostAsJsonAsync($"/api/workloads/{workload.WorkloadId}/publish", new
+        {
+            revisionId = rev1!.RevisionId,
+            replacePublished = true
+        });
+        publish1.EnsureSuccessStatusCode();
+
+        var publish2 = await client.PostAsJsonAsync($"/api/workloads/{workload.WorkloadId}/publish", new
+        {
+            revisionId = rev2!.RevisionId,
+            replacePublished = false
+        });
+        publish2.EnsureSuccessStatusCode();
+
+        var detailResponse = await client.GetAsync($"/api/workloads/{workload.WorkloadId}");
+        Assert.That(detailResponse.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        var detail = await detailResponse.Content.ReadFromJsonAsync<WorkloadDetailResponse>();
+        Assert.That(detail, Is.Not.Null);
+
+        var publishedRevisions = detail!.Revisions.Where(r => r.IsPublished).ToList();
+        Assert.That(publishedRevisions.Count, Is.EqualTo(2));
+    }
+
     private static async Task<Guid> CreatePackageAsync(HttpClient client, string name)
     {
         var response = await client.PostAsJsonAsync("/api/packages", new
@@ -135,6 +200,7 @@ public sealed class WorkloadsApiContractTests
     private sealed class WorkloadRevisionResponse
     {
         public Guid RevisionId { get; set; }
+        public bool IsPublished { get; set; }
         public List<WorkloadPackageResponse> Packages { get; set; } = new();
     }
 

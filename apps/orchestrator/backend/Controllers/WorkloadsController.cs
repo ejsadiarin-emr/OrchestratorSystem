@@ -176,12 +176,19 @@ public sealed class WorkloadsController : ControllerBase
             return NotFound(new { message = $"Revision {request.RevisionId} not found for workload {workloadId}" });
         }
 
-        var allRevisions = await _db.WorkloadRevisions
-            .Where(r => r.WorkloadId == workloadId)
-            .ToListAsync();
-        foreach (var item in allRevisions)
+        if (request.ReplacePublished)
         {
-            item.IsPublished = item.RevisionId == revision.RevisionId;
+            var allRevisions = await _db.WorkloadRevisions
+                .Where(r => r.WorkloadId == workloadId)
+                .ToListAsync();
+            foreach (var item in allRevisions)
+            {
+                item.IsPublished = item.RevisionId == revision.RevisionId;
+            }
+        }
+        else
+        {
+            revision.IsPublished = true;
         }
 
         workload.PublishedRevisionId = revision.RevisionId;

@@ -65,6 +65,7 @@ builder.Services.AddDbContext<InstallerDbContext>(options =>
 builder.Services.AddSingleton<ArtifactStoreService>();
 builder.Services.AddSingleton<ArtifactIngestService>();
 builder.Services.AddScoped<PolicyEvaluationService>();
+builder.Services.AddScoped<WorkloadImportService>();
 
 builder.Services.AddTransient<PreConditionCheckStep>();
 builder.Services.AddTransient<CopyFilesStep>();

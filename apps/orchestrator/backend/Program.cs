@@ -15,11 +15,7 @@ using System;
 using System.IO;
 using System.Linq;
 
-var builder = WebApplication.CreateBuilder(new WebApplicationOptions
-{
-    Args = args,
-    ContentRootPath = AppContext.BaseDirectory
-});
+var builder = WebApplication.CreateBuilder(args);
 
 var allowedCorsOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
@@ -66,6 +62,8 @@ builder.Services.AddDbContext<InstallerDbContext>(options =>
 
 builder.Services.AddSingleton<ArtifactStoreService>();
 builder.Services.AddSingleton<ArtifactIngestService>();
+builder.Services.AddSingleton<UploadSessionService>();
+builder.Services.AddSingleton<ArtifactZipService>();
 builder.Services.AddSingleton<AgentConnectionTracker>();
 builder.Services.AddScoped<PolicyEvaluationService>();
 builder.Services.AddScoped<WorkloadImportService>();
@@ -87,6 +85,25 @@ builder.Services.AddTransient<IPipeline<InstallContext>>(sp =>
 });
 
 var app = builder.Build();
+
+// startup cleanup: purge stale temp upload directories
+var artifactRoot = builder.Configuration["ArtifactStore:RootPath"]
+    ?? Path.Combine(AppContext.BaseDirectory, "artifacts");
+var tempRoot = Path.Combine(Path.GetFullPath(artifactRoot), "_temp");
+if (Directory.Exists(tempRoot))
+{
+    foreach (var dir in Directory.GetDirectories(tempRoot))
+    {
+        try
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+        catch
+        {
+            // never fail startup on cleanup
+        }
+    }
+}
 
 using (var scope = app.Services.CreateScope())
 {

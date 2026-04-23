@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
+using System.Linq;
 
 namespace DeploymentPoC.Orchestrator.Services;
 
@@ -31,9 +32,59 @@ public sealed class ArtifactStoreService
         return File.Exists(GetArtifactPath(packageId, version));
     }
 
+    public bool DeleteArtifactAsync(string packageId, string version)
+    {
+        try
+        {
+            var versionDir = Path.GetDirectoryName(GetArtifactPath(packageId, version));
+            if (Directory.Exists(versionDir))
+            {
+                Directory.Delete(versionDir, recursive: true);
+            }
+
+            // clean up empty package dirs
+            var packageDir = Path.GetDirectoryName(versionDir);
+            if (Directory.Exists(packageDir) && !Directory.EnumerateFileSystemEntries(packageDir).Any())
+            {
+                Directory.Delete(packageDir);
+            }
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private (string PackageId, string Version) GetUniquePath(string packageId, string version)
+    {
+        if (!Exists(packageId, version))
+        {
+            return (packageId, version);
+        }
+
+        var counter = 1;
+        while (true)
+        {
+            var candidateVersion = $"{version}-{counter}";
+            if (!Exists(packageId, candidateVersion))
+            {
+                return (packageId, candidateVersion);
+            }
+
+            counter++;
+            if (counter > 10000)
+            {
+                throw new InvalidOperationException("Could not find a unique version path.");
+            }
+        }
+    }
+
     public async Task SaveArtifactAsync(string packageId, string version, Stream source, CancellationToken cancellationToken = default)
     {
-        var artifactPath = GetArtifactPath(packageId, version);
+        var (actualPackageId, actualVersion) = GetUniquePath(packageId, version);
+        var artifactPath = GetArtifactPath(actualPackageId, actualVersion);
         Directory.CreateDirectory(Path.GetDirectoryName(artifactPath)!);
 
         await using var file = File.Create(artifactPath);
@@ -43,7 +94,8 @@ public sealed class ArtifactStoreService
 
     public async Task SaveResolvedManifestAsync(string packageId, string version, string manifestJson, CancellationToken cancellationToken = default)
     {
-        var manifestPath = GetManifestPath(packageId, version);
+        var (actualPackageId, actualVersion) = GetUniquePath(packageId, version);
+        var manifestPath = GetManifestPath(actualPackageId, actualVersion);
         Directory.CreateDirectory(Path.GetDirectoryName(manifestPath)!);
         await File.WriteAllTextAsync(manifestPath, manifestJson, Encoding.UTF8, cancellationToken);
     }
@@ -206,6 +258,7 @@ public sealed class ArtifactStoreService
         public string? DetectionType { get; set; }
         public string? DetectionPath { get; set; }
         public string? RiskLevel { get; set; }
+        public Guid? PackageEntityId { get; set; }
     }
 
     private sealed class ResolvedManifestSummary

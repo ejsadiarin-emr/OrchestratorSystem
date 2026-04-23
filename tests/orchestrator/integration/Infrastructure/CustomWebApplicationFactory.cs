@@ -1,10 +1,14 @@
 using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Controllers;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace DeploymentPoC.Orchestrator.IntegrationTests.Infrastructure;
 
@@ -12,20 +16,49 @@ public sealed class CustomWebApplicationFactory : WebApplicationFactory<InstallC
 {
     private SqliteConnection? _connection;
 
+    public string BaseUrl { get; private set; } = "";
+
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        _connection = new SqliteConnection("DataSource=:memory:");
+        _connection.Open();
+
+        var testHost = base.CreateHost(builder);
+
+        builder.ConfigureWebHost(webHostBuilder =>
+        {
+            webHostBuilder.UseKestrel();
+            webHostBuilder.UseUrls("http://0.0.0.0:0");
+        });
+
+        var host = builder.Build();
+        host.Start();
+
+        var server = host.Services.GetRequiredService<IServer>();
+        var addresses = server.Features.Get<IServerAddressesFeature>();
+        // retry until kestrel binds to a port
+        for (int i = 0; i < 50; i++)
+        {
+            if (addresses?.Addresses.Count > 0)
+                break;
+            Thread.Sleep(100);
+        }
+        BaseUrl = addresses!.Addresses.First().TrimEnd('/');
+
+        return testHost;
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureServices(services =>
         {
-            _connection = new SqliteConnection("DataSource=:memory:");
-            _connection.Open();
-
             var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<InstallerDbContext>));
             if (descriptor is not null)
             {
                 services.Remove(descriptor);
             }
 
-            services.AddDbContext<InstallerDbContext>(options => options.UseSqlite(_connection));
+            services.AddDbContext<InstallerDbContext>(options => options.UseSqlite(_connection!));
 
             var serviceProvider = services.BuildServiceProvider();
             using var scope = serviceProvider.CreateScope();

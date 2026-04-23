@@ -148,10 +148,10 @@ To view stored artifacts:
 
 ```bash
 # Production path (relative to executable)
-ls -la /path/to/DeploymentPoC.Orchestrator.exe/artifacts/
+ls -la apps/orchestrator/backend/bin/Release/net10.0/win-x64/artifacts/
 
 # View manifest for a specific artifact
-cat /path/to/DeploymentPoC.Orchestrator.exe/artifacts/{packageId}/{version}/resolved-manifest.json
+cat -la apps/orchestrator/backend/bin/Release/net10.0/win-x64/artifacts/{packageId}/{version}/resolved-manifest.json
 ```
 
 **Configuration:** Set `ArtifactStore:RootPath` in `appsettings.json` to customize the storage location.

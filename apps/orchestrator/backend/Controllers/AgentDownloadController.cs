@@ -1,3 +1,4 @@
+using DeploymentPoC.Orchestrator.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -10,11 +11,13 @@ public class AgentDownloadController : ControllerBase
 {
     private readonly ILogger<AgentDownloadController> _logger;
     private readonly IWebHostEnvironment _env;
+    private readonly InstallerDbContext _db;
 
-    public AgentDownloadController(ILogger<AgentDownloadController> logger, IWebHostEnvironment env)
+    public AgentDownloadController(ILogger<AgentDownloadController> logger, IWebHostEnvironment env, InstallerDbContext db)
     {
         _logger = logger;
         _env = env;
+        _db = db;
     }
 
     [HttpGet("download")]
@@ -22,11 +25,19 @@ public class AgentDownloadController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(token))
         {
-            return BadRequest(new { message = "Enrollment token is required." });
+            return Unauthorized(new { message = "Enrollment token is required." });
         }
 
-        // TODO: Validate token exists and is unused before allowing download (W3-02a follow-up)
-        // For PoC, we serve a placeholder agent binary.
+        var enrollmentToken = _db.EnrollmentTokens.FirstOrDefault(t => t.Token == token);
+        if (enrollmentToken is null || enrollmentToken.Used)
+        {
+            return Unauthorized(new { message = "Invalid or already used enrollment token." });
+        }
+
+        if (enrollmentToken.ExpiresAtUtc < DateTime.UtcNow)
+        {
+            return StatusCode(410, new { message = "Enrollment token has expired." });
+        }
 
         var agentPath = Path.Combine(_env.ContentRootPath, "data", "agent.exe");
         if (!System.IO.File.Exists(agentPath))

@@ -25,4 +25,9 @@ public sealed class AgentConnectionTracker
     {
         return _nodeToConnection.TryGetValue(nodeId, out connectionId);
     }
+
+    public bool TryGetNodeId(string connectionId, out Guid nodeId)
+    {
+        return _connectionToNode.TryGetValue(connectionId, out nodeId);
+    }
 }

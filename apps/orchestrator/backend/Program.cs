@@ -69,6 +69,9 @@ builder.Services.AddScoped<PolicyEvaluationService>();
 builder.Services.AddScoped<WorkloadImportService>();
 builder.Services.AddScoped<NodeWorkloadStateService>();
 builder.Services.AddSignalR();
+builder.Services.AddHealthChecks();
+
+builder.Services.AddHostedService<NodeHeartbeatMonitorService>();
 
 builder.Services.AddTransient<PreConditionCheckStep>();
 builder.Services.AddTransient<CopyFilesStep>();
@@ -124,6 +127,7 @@ app.UseStaticFiles();
 app.UseHttpsRedirection();
 app.MapControllers();
 app.MapHub<AgentRuntimeHub>("/hubs/agent");
+app.MapHealthChecks("/health");
 app.MapFallbackToFile("index.html");
 
 app.Run();

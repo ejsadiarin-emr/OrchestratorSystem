@@ -83,7 +83,7 @@ pnpm dev
 
 ## Production Build
 
-### Build the application
+### Build the Orchestrator
 
 ```bash
 # Build frontend
@@ -95,20 +95,32 @@ cd ../backend
 dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
 ```
 
-### Output
-
-The published executable and embedded static files are in:
-```
-apps/orchestrator/backend/bin/Release/net10.0/win-x64/
-```
+**Output:** `apps/orchestrator/backend/bin/Release/net10.0/win-x64/DeploymentPoC.Orchestrator.exe`
 
 The frontend is embedded in the backend's `wwwroot/` folder and served automatically.
 
-### Run production build
+### Build the Agent (per target node)
 
+```bash
+cd apps/agent/backend
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+```
+
+**Output:** `apps/agent/backend/bin/Release/net10.0/win-x64/DeploymentPoC.Agent.exe`
+
+### Run Production Builds
+
+**Orchestrator:**
 ```bash
 ./apps/orchestrator/backend/bin/Release/net10.0/win-x64/DeploymentPoC.Orchestrator.exe
 # Opens at http://localhost:5000
+```
+
+**Agent (on each target node):**
+```powershell
+.\apps\agent\backend\bin\Release\net10.0\win-x64\DeploymentPoC.Agent.exe
+# Defaults to http://localhost:5001
+# Override: --urls http://localhost:port
 ```
 
 ## Demo Flow

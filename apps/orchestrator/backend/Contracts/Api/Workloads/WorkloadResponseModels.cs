@@ -39,4 +39,6 @@ public sealed class WorkloadPackageDto
 {
     public Guid PackageId { get; set; }
     public int PackageIndex { get; set; }
+    public string PackageName { get; set; } = string.Empty;
+    public string PackageVersion { get; set; } = string.Empty;
 }

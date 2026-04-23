@@ -40,7 +40,7 @@ public sealed class WorkloadsController : ControllerBase
         _db.WorkloadDefinitions.Add(workload);
         await _db.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(GetById), new { workloadId = workload.WorkloadId }, MapWorkloadDetail(workload, Array.Empty<WorkloadRevisionEntity>()));
+        return CreatedAtAction(nameof(GetById), new { workloadId = workload.WorkloadId }, MapWorkloadDetail(workload, Array.Empty<WorkloadRevisionEntity>(), new Dictionary<Guid, Data.Entities.PackageEntity>()));
     }
 
     [HttpPost("{workloadId:guid}/revisions")]
@@ -86,8 +86,10 @@ public sealed class WorkloadsController : ControllerBase
         }
 
         var packageIds = request.Packages.Select(p => p.PackageId).Distinct().ToList();
-        var existingPackageCount = await _db.Packages.CountAsync(p => packageIds.Contains(p.PackageId));
-        if (existingPackageCount != packageIds.Count)
+        var existingPackages = await _db.Packages
+            .Where(p => packageIds.Contains(p.PackageId))
+            .ToDictionaryAsync(p => p.PackageId);
+        if (existingPackages.Count != packageIds.Count)
         {
             errors.Add(new ValidationFieldError
             {
@@ -133,10 +135,16 @@ public sealed class WorkloadsController : ControllerBase
             CreatedAtUtc = revision.CreatedAtUtc,
             Packages = revision.Packages
                 .OrderBy(p => p.PackageIndex)
-                .Select(p => new WorkloadPackageDto
+                .Select(p =>
                 {
-                    PackageId = p.PackageId,
-                    PackageIndex = p.PackageIndex
+                    var pkg = existingPackages.GetValueOrDefault(p.PackageId);
+                    return new WorkloadPackageDto
+                    {
+                        PackageId = p.PackageId,
+                        PackageIndex = p.PackageIndex,
+                        PackageName = pkg?.Name ?? string.Empty,
+                        PackageVersion = pkg?.Version ?? string.Empty
+                    };
                 })
                 .ToList()
         };
@@ -201,7 +209,11 @@ public sealed class WorkloadsController : ControllerBase
             .OrderByDescending(r => r.CreatedAtUtc)
             .ToListAsync();
 
-        return Ok(MapWorkloadDetail(workload, revisions));
+        var packageIds = revisions.SelectMany(r => r.Packages).Select(p => p.PackageId).Distinct().ToList();
+        var packages = await _db.Packages
+            .Where(p => packageIds.Contains(p.PackageId))
+            .ToDictionaryAsync(p => p.PackageId);
+        return Ok(MapWorkloadDetail(workload, revisions, packages));
     }
 
     [HttpGet]
@@ -238,10 +250,14 @@ public sealed class WorkloadsController : ControllerBase
             .OrderByDescending(r => r.CreatedAtUtc)
             .ToListAsync();
 
-        return Ok(MapWorkloadDetail(workload, revisions));
+        var packageIds = revisions.SelectMany(r => r.Packages).Select(p => p.PackageId).Distinct().ToList();
+        var packages = await _db.Packages
+            .Where(p => packageIds.Contains(p.PackageId))
+            .ToDictionaryAsync(p => p.PackageId);
+        return Ok(MapWorkloadDetail(workload, revisions, packages));
     }
 
-    private static WorkloadDetailResponse MapWorkloadDetail(WorkloadDefinitionEntity workload, IEnumerable<WorkloadRevisionEntity> revisions)
+    private static WorkloadDetailResponse MapWorkloadDetail(WorkloadDefinitionEntity workload, IEnumerable<WorkloadRevisionEntity> revisions, Dictionary<Guid, Data.Entities.PackageEntity> packages)
     {
         return new WorkloadDetailResponse
         {
@@ -261,10 +277,16 @@ public sealed class WorkloadsController : ControllerBase
                     CreatedAtUtc = r.CreatedAtUtc,
                     Packages = r.Packages
                         .OrderBy(p => p.PackageIndex)
-                        .Select(p => new WorkloadPackageDto
+                        .Select(p =>
                         {
-                            PackageId = p.PackageId,
-                            PackageIndex = p.PackageIndex
+                            var pkg = packages.GetValueOrDefault(p.PackageId);
+                            return new WorkloadPackageDto
+                            {
+                                PackageId = p.PackageId,
+                                PackageIndex = p.PackageIndex,
+                                PackageName = pkg?.Name ?? string.Empty,
+                                PackageVersion = pkg?.Version ?? string.Empty
+                            };
                         })
                         .ToList()
                 })

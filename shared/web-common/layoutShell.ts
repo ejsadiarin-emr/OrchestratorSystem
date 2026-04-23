@@ -5,6 +5,7 @@ export interface NavItem {
 
 export const layoutNavItems: NavItem[] = [
   { path: '/', label: 'Dashboard' },
+  { path: '/command-center', label: 'Command Center' },
   { path: '/agent-local', label: 'Agent Local' },
   { path: '/workloads', label: 'Workloads' },
   { path: '/workload-runs', label: 'Workload Runs' },

@@ -4,6 +4,112 @@ import { MemoryRouter } from 'react-router-dom'
 import Dashboard from './Dashboard'
 import * as api from '../services/api'
 
+vi.mock('../services/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../services/api')>()
+  return {
+    ...actual,
+    getOrchestratorHomeData: vi.fn().mockResolvedValue({
+      kpis: {
+        nodesOnline: 24,
+        nodesOffline: 2,
+        workloadDefinitions: 6,
+        runningWorkloads: 4,
+        artifactsStored: 1,
+        activeRuns24h: 14,
+        failedRuns24h: 3,
+        pendingApprovals: 2,
+        controlPlaneLatencyP95Ms: 182,
+      },
+      nodes: [
+        {
+          nodeId: 'node-001',
+          hostname: 'wj-plant-01',
+          health: 'online',
+          assignedWorkload: 'Factory Base Install',
+          workloadRevision: '1.1.0',
+          runState: 'update',
+          lastCheckInAge: '18s',
+          riskLevel: 'low',
+          revisionUpdateAvailable: true,
+          packageUpdatesAvailable: true,
+          packageUpdateCount: 2,
+        },
+        {
+          nodeId: 'node-002',
+          hostname: 'wj-plant-02',
+          health: 'warning',
+          assignedWorkload: 'Observer Stack',
+          workloadRevision: '0.9.0',
+          runState: 'pending-approval',
+          lastCheckInAge: '42s',
+          riskLevel: 'med',
+          revisionUpdateAvailable: true,
+          packageUpdatesAvailable: false,
+          reasonCode: 'approval_window_required',
+        },
+        {
+          nodeId: 'node-003',
+          hostname: 'wj-plant-03',
+          health: 'offline',
+          assignedWorkload: 'Factory Base Install',
+          workloadRevision: '1.0.0',
+          runState: 'failed',
+          lastCheckInAge: '6m',
+          riskLevel: 'high',
+          revisionUpdateAvailable: false,
+          packageUpdatesAvailable: true,
+          packageUpdateCount: 1,
+          reasonCode: 'heartbeat_timeout',
+        },
+      ],
+      events: [
+        {
+          id: 'evt-001',
+          severity: 'high',
+          title: 'Pending approval requires operator action',
+          detail: 'node-002 workload update is gated by approval_window_required.',
+          ageLabel: '1m ago',
+          nodeId: 'node-002',
+          runId: 'run-004',
+        },
+        {
+          id: 'evt-002',
+          severity: 'critical',
+          title: 'Node heartbeat timeout',
+          detail: 'node-003 missed lease heartbeat and transitioned to failed.',
+          ageLabel: '3m ago',
+          nodeId: 'node-003',
+          runId: 'run-005',
+        },
+        {
+          id: 'evt-003',
+          severity: 'info',
+          title: 'Workload package sequencing healthy',
+          detail: 'node-001 continues update progression with valid step ordering.',
+          ageLabel: '10s ago',
+          nodeId: 'node-001',
+          runId: 'run-001',
+        },
+      ],
+      selectedNodeId: 'node-001',
+      logsByNodeId: {
+        'node-001': [
+          { id: 'log-001', at: new Date().toISOString(), message: 'Workload run run-001 entered package index 2.', level: 'info' },
+          { id: 'log-002', at: new Date().toISOString(), message: 'StepStatus accepted for install-or-upgrade.', level: 'info' },
+        ],
+        'node-002': [
+          { id: 'log-003', at: new Date().toISOString(), message: 'Run paused pending explicit approval window.', level: 'warn' },
+          { id: 'log-004', at: new Date().toISOString(), message: 'Awaiting operator confirmation on node-local console.', level: 'info' },
+        ],
+        'node-003': [
+          { id: 'log-005', at: new Date().toISOString(), message: 'Lease heartbeat missed beyond threshold.', level: 'error' },
+          { id: 'log-006', at: new Date().toISOString(), message: 'Run marked failed with heartbeat_timeout.', level: 'error' },
+        ],
+      },
+    }),
+  }
+})
+
 describe('Dashboard orchestrator home', () => {
   it('renders locked KPI strip and nodes-first operational regions', async () => {
     render(

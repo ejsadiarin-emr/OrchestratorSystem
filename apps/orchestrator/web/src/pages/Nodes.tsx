@@ -30,6 +30,14 @@ export default function Nodes() {
     refresh()
       .catch(() => setError('Failed to load nodes and enrollment tokens.'))
       .finally(() => setLoading(false))
+
+    const timer = window.setInterval(() => {
+      void refresh()
+    }, 5_000)
+
+    return () => {
+      window.clearInterval(timer)
+    }
   }, [])
 
   const handleIssueToken = async (event: React.FormEvent) => {
@@ -239,7 +247,23 @@ export default function Nodes() {
                   <tr key={node.id}>
                     <td className="px-6 py-4 text-sm font-medium text-[var(--text-strong)]">{node.hostname}</td>
                     <td className="px-6 py-4 text-sm text-[var(--text-soft)]">{node.ipAddress}</td>
-                    <td className="px-6 py-4 text-sm text-[var(--text-soft)]">{node.status}</td>
+                    <td className="px-6 py-4 text-sm">
+                      <span
+                        className={`rounded-full px-2 py-1 text-xs font-medium ${
+                          node.status === 'online'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : node.status === 'offline'
+                              ? 'bg-slate-100 text-slate-800'
+                              : node.status === 'installing'
+                                ? 'bg-amber-100 text-amber-800'
+                                : node.status === 'enrolling'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-[var(--surface-muted)] text-[var(--text-soft)]'
+                        }`}
+                      >
+                        {node.status}
+                      </span>
+                    </td>
                     <td className="px-6 py-4 text-sm text-[var(--text-soft)]">
                       {node.firstConnectedAt ? new Date(node.firstConnectedAt).toLocaleString() : 'Pending'}
                     </td>

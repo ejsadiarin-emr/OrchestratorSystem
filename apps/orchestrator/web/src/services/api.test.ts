@@ -5,6 +5,7 @@ import {
   suggestManifestFromFile,
   uploadArtifact,
   validateManifestChannel,
+  getOrchestratorHomeData,
 } from './api'
 
 beforeEach(() => {
@@ -259,5 +260,111 @@ describe('api enrollment semantics', () => {
     expect(token.singleUse).toBe(true)
     expect(token.used).toBe(false)
     expect(token.orchestratorUrl).toBe('https://orch.example.local:5000')
+  })
+})
+
+describe('getOrchestratorHomeData', () => {
+  it('composes home data from real API endpoints', async () => {
+    const nodesResponse = [
+      {
+        id: 'node-001',
+        hostname: 'wj-plant-01',
+        ipAddress: '10.30.2.41',
+        status: 'online',
+        description: 'Plant line A host',
+        osVersion: 'Windows Server 2022',
+        agentVersion: '0.1.0',
+        firstConnectedAt: new Date().toISOString(),
+        lastSeenAt: new Date().toISOString(),
+      },
+      {
+        id: 'node-002',
+        hostname: 'wj-plant-02',
+        ipAddress: '10.30.2.42',
+        status: 'offline',
+        description: 'Plant line B host',
+        osVersion: 'Windows Server 2022',
+        agentVersion: '0.1.0',
+        firstConnectedAt: new Date().toISOString(),
+        lastSeenAt: new Date().toISOString(),
+      },
+    ]
+
+    const workloadStatesResponse = [
+      {
+        nodeId: 'node-001',
+        workloadId: 'workload-001',
+        workloadRevision: '1.1.0',
+        runId: 'run-001',
+        status: 'running',
+        updatedAt: new Date().toISOString(),
+      },
+    ]
+
+    const runsResponse = [
+      {
+        runId: 'run-001',
+        workloadId: 'workload-001',
+        revisionId: 'rev-001',
+        workloadVersion: '1.1.0',
+        mode: 'install',
+        state: 'Running',
+        createdAtUtc: new Date().toISOString(),
+        updatedAtUtc: new Date().toISOString(),
+        completedAtUtc: null,
+        riskLevel: 'low',
+        nodeIds: ['node-001'],
+      },
+    ]
+
+    const artifactsResponse = [
+      { id: 'artifact-001', packageId: 'pkg-001', version: '1.0.0', fileName: 'pkg.msi', createdAt: new Date().toISOString() },
+    ]
+
+    const workloadsResponse = {
+      workloads: [
+        { workloadId: 'workload-001', name: 'Factory Base Install', description: 'Baseline', publishedRevisionId: 'rev-001', createdAtUtc: new Date().toISOString(), updatedAtUtc: new Date().toISOString() },
+      ],
+    }
+
+    const mockFetch = globalThis.fetch as ReturnType<typeof vi.fn>
+    mockFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/nodes') {
+        return new Response(JSON.stringify(nodesResponse), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url === '/api/nodes/workload-states') {
+        return new Response(JSON.stringify(workloadStatesResponse), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url === '/api/workload-runs') {
+        return new Response(JSON.stringify(runsResponse), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url === '/api/artifacts') {
+        return new Response(JSON.stringify(artifactsResponse), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      if (url === '/api/workloads') {
+        return new Response(JSON.stringify(workloadsResponse), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      }
+      return new Response(null, { status: 404 })
+    })
+
+    const data = await getOrchestratorHomeData()
+
+    expect(mockFetch).toHaveBeenCalledWith('/api/nodes')
+    expect(mockFetch).toHaveBeenCalledWith('/api/workload-runs')
+    expect(mockFetch).toHaveBeenCalledWith('/api/artifacts')
+    expect(mockFetch).toHaveBeenCalledWith('/api/workloads')
+    expect(mockFetch).toHaveBeenCalledWith('/api/nodes/workload-states')
+
+    expect(data.kpis.nodesOnline).toBe(1)
+    expect(data.kpis.nodesOffline).toBe(1)
+    expect(data.kpis.workloadDefinitions).toBe(1)
+    expect(data.kpis.runningWorkloads).toBe(1)
+    expect(data.kpis.artifactsStored).toBe(1)
+    expect(data.nodes.length).toBe(2)
+    expect(data.nodes[0].nodeId).toBe('node-001')
+    expect(data.nodes[0].health).toBe('online')
+    expect(data.nodes[0].assignedWorkload).toBe('Factory Base Install')
+    expect(data.nodes[1].health).toBe('offline')
+    expect(data.selectedNodeId).toBe('node-001')
   })
 })

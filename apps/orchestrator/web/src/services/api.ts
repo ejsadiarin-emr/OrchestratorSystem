@@ -13,6 +13,7 @@ import type {
   DashboardKpiSummary,
   DashboardSummary,
   EnrollmentToken,
+  ImportantEvent,
   IngestStep,
   IssueEnrollmentTokenRequest,
   MiniLogLine,
@@ -255,112 +256,6 @@ const auditEvents: AuditEvent[] = [
     type: 'workload-run',
   },
 ]
-
-const orchestratorKpis: DashboardKpiSummary = {
-  nodesOnline: 24,
-  nodesOffline: 2,
-  artifactsStored: artifacts.length,
-  workloadDefinitions: 6,
-  runningWorkloads: 4,
-  activeRuns24h: 14,
-  failedRuns24h: 3,
-  pendingApprovals: 2,
-  controlPlaneLatencyP95Ms: 182,
-}
-
-const orchestratorNodes: DashboardNodeRow[] = [
-  {
-    nodeId: 'node-001',
-    hostname: 'wj-plant-01',
-    health: 'online',
-    assignedWorkload: 'Factory Base Install',
-    workloadRevision: '1.1.0',
-    runState: 'update',
-    lastCheckInAge: '18s',
-    riskLevel: 'low',
-    revisionUpdateAvailable: true,
-    packageUpdatesAvailable: true,
-    packageUpdateCount: 2,
-  },
-  {
-    nodeId: 'node-002',
-    hostname: 'wj-plant-02',
-    health: 'warning',
-    assignedWorkload: 'Observer Stack',
-    workloadRevision: '0.9.0',
-    runState: 'pending-approval',
-    lastCheckInAge: '42s',
-    riskLevel: 'med',
-    revisionUpdateAvailable: true,
-    packageUpdatesAvailable: false,
-    reasonCode: 'approval_window_required',
-  },
-  {
-    nodeId: 'node-003',
-    hostname: 'wj-plant-03',
-    health: 'offline',
-    assignedWorkload: 'Factory Base Install',
-    workloadRevision: '1.0.0',
-    runState: 'failed',
-    lastCheckInAge: '6m',
-    riskLevel: 'high',
-    revisionUpdateAvailable: false,
-    packageUpdatesAvailable: true,
-    packageUpdateCount: 1,
-    reasonCode: 'heartbeat_timeout',
-  },
-]
-
-const orchestratorLogsByNodeId: Record<string, MiniLogLine[]> = {
-  'node-001': [
-    { id: 'log-001', at: at(34), message: 'Workload run run-001 entered package index 2.', level: 'info' },
-    { id: 'log-002', at: at(35), message: 'StepStatus accepted for install-or-upgrade.', level: 'info' },
-  ],
-  'node-002': [
-    { id: 'log-003', at: at(33), message: 'Run paused pending explicit approval window.', level: 'warn' },
-    { id: 'log-004', at: at(34), message: 'Awaiting operator confirmation on node-local console.', level: 'info' },
-  ],
-  'node-003': [
-    { id: 'log-005', at: at(29), message: 'Lease heartbeat missed beyond threshold.', level: 'error' },
-    { id: 'log-006', at: at(30), message: 'Run marked failed with heartbeat_timeout.', level: 'error' },
-  ],
-}
-
-const orchestratorHome: OrchestratorHomeData = {
-  kpis: orchestratorKpis,
-  nodes: orchestratorNodes,
-  events: [
-    {
-      id: 'evt-001',
-      severity: 'high',
-      title: 'Pending approval requires operator action',
-      detail: 'node-002 workload update is gated by approval_window_required.',
-      ageLabel: '1m ago',
-      nodeId: 'node-002',
-      runId: 'run-004',
-    },
-    {
-      id: 'evt-002',
-      severity: 'critical',
-      title: 'Node heartbeat timeout',
-      detail: 'node-003 missed lease heartbeat and transitioned to failed.',
-      ageLabel: '3m ago',
-      nodeId: 'node-003',
-      runId: 'run-005',
-    },
-    {
-      id: 'evt-003',
-      severity: 'info',
-      title: 'Workload package sequencing healthy',
-      detail: 'node-001 continues update progression with valid step ordering.',
-      ageLabel: '10s ago',
-      nodeId: 'node-001',
-      runId: 'run-001',
-    },
-  ],
-  selectedNodeId: 'node-001',
-  logsByNodeId: orchestratorLogsByNodeId,
-}
 
 const agentLocalLogs: MiniLogLine[] = [
   { id: 'agent-log-001', at: at(34), message: 'Pre-check cache hydrated for target revision 1.1.0.', level: 'info' },
@@ -1246,8 +1141,123 @@ export async function listAuditEvents(limit = 8): Promise<AuditEvent[]> {
   return [...auditEvents].slice(0, limit)
 }
 
+function computeLastCheckInAge(lastSeenAt: string): string {
+  const elapsed = Date.now() - new Date(lastSeenAt).getTime()
+  const seconds = Math.floor(elapsed / 1_000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h`
+  return `${Math.floor(hours / 24)}d`
+}
+
 export async function getOrchestratorHomeData(): Promise<OrchestratorHomeData> {
-  return structuredClone(orchestratorHome)
+  const [nodes, workloadStates, runs, artifacts, workloads] = await Promise.all([
+    listNodes(),
+    listNodeWorkloadStates(),
+    listWorkloadRuns(),
+    listArtifacts(),
+    listWorkloads(),
+  ])
+
+  const stateByNodeId = new Map(workloadStates.map(s => [s.nodeId, s]))
+  const workloadById = new Map(workloads.map(w => [w.id, w]))
+
+  const now = new Date()
+  const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1_000)
+
+  const dashboardNodes: DashboardNodeRow[] = nodes.map(node => {
+    const state = stateByNodeId.get(node.id)
+    const workload = state ? workloadById.get(state.workloadId) : undefined
+
+    const health: DashboardNodeRow['health'] =
+      node.status === 'online' ? 'online' : node.status === 'offline' ? 'offline' : 'warning'
+
+    const runState: DashboardNodeRow['runState'] =
+      state?.status === 'running'
+        ? 'update'
+        : state?.status === 'pending'
+          ? 'pending-approval'
+          : node.status === 'offline'
+            ? 'failed'
+            : 'idle'
+
+    return {
+      nodeId: node.id,
+      hostname: node.hostname,
+      health,
+      assignedWorkload: workload?.name ?? '',
+      workloadRevision: state?.workloadRevision ?? '',
+      runState,
+      lastCheckInAge: computeLastCheckInAge(node.lastSeenAt),
+      riskLevel: 'low',
+      revisionUpdateAvailable: false,
+      packageUpdatesAvailable: false,
+      packageUpdateCount: 0,
+    }
+  })
+
+  const events: ImportantEvent[] = []
+
+  for (const node of dashboardNodes) {
+    if (node.health === 'offline') {
+      events.push({
+        id: `evt-offline-${node.nodeId}`,
+        severity: 'critical',
+        title: 'Node heartbeat timeout',
+        detail: `${node.nodeId} is offline and not reporting.`,
+        ageLabel: node.lastCheckInAge,
+        nodeId: node.nodeId,
+      })
+    }
+  }
+
+  for (const run of runs) {
+    if (run.status === 'failed') {
+      events.push({
+        id: `evt-failed-${run.id}`,
+        severity: 'high',
+        title: 'Workload run failed',
+        detail: `${run.id} failed for workload ${run.workloadName || run.workloadId}.`,
+        ageLabel: run.completedAt ? computeLastCheckInAge(run.completedAt) : 'recent',
+        runId: run.id,
+      })
+    }
+  }
+
+  if (events.length === 0) {
+    events.push({
+      id: 'evt-healthy',
+      severity: 'info',
+      title: 'System healthy',
+      detail: 'All nodes and workloads are operating normally.',
+      ageLabel: 'now',
+    })
+  }
+
+  const activeRuns24h = runs.filter(r => r.createdAt && new Date(r.createdAt) > dayAgo).length
+  const failedRuns24h = runs.filter(r => r.status === 'failed' && r.completedAt && new Date(r.completedAt) > dayAgo).length
+
+  const kpis: DashboardKpiSummary = {
+    nodesOnline: nodes.filter(n => n.status === 'online').length,
+    nodesOffline: nodes.filter(n => n.status === 'offline').length,
+    workloadDefinitions: workloads.length,
+    runningWorkloads: runs.filter(r => r.status === 'running').length,
+    artifactsStored: artifacts.length,
+    activeRuns24h,
+    failedRuns24h,
+    pendingApprovals: workloadStates.filter(s => s.status === 'pending').length,
+    controlPlaneLatencyP95Ms: 0,
+  }
+
+  return {
+    kpis,
+    nodes: dashboardNodes,
+    events,
+    selectedNodeId: dashboardNodes[0]?.nodeId ?? '',
+    logsByNodeId: {},
+  }
 }
 
 export async function getAgentLocalSummary(): Promise<AgentLocalSummary> {

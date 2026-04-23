@@ -148,10 +148,10 @@ To view stored artifacts:
 
 ```bash
 # List all artifacts
-ls -la artifacts/
+ls -la /path/to/artifacts/
 
 # View manifest for a specific artifact
-cat artifacts/{packageId}/{version}/resolved-manifest.json
+cat /path/to/artifacts/{packageId}/{version}/resolved-manifest.json
 ```
 
 **Configuration:** Set `ArtifactStore:RootPath` in `appsettings.json` to customize the storage location.

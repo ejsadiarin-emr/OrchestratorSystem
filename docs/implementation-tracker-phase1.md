@@ -69,6 +69,7 @@ These tasks are retained as historical completion and are not reopened.
 | W3-01   | Windows agent service scaffold + runtime loop hardening                                                           | S2     | W2-01        | TBD (Agent)                | Done        | AC-004                                 |
 | W3-02   | Bootstrap token -> mTLS steady-state auth flow                                                                   | S2     | W3-01        | TBD (Security/Agent)       | Not Started | AC-005, AC-102                         |
 | W3-02a  | Enrollment token generation + agent download endpoint                                                            | S2     | W3-01        | TBD (Backend/Frontend)      | Done        | AC-005                                 |
+| W3-02b  | Agent CLI enrollment (`--enroll`, `--reset-enrollment`) + config persistence                                     | S2     | W3-02a       | TBD (Agent)                | Not Started | AC-005                                 |
 | W3-03   | Agent workload pipeline (ordered package-step execution)                                                         | S2     | W3-01, W1-05 | TBD (Agent)                | Done        | AC-004, AC-006                         |
 | W3-04   | Node workload state persistence/reporting                                                                        | S2     | W3-03        | TBD (Agent/Backend)        | Done        | AC-001, AC-002                         |
 | W4-01   | Config snapshot/migration/restore linkage for mutation paths                                                     | S3     | W3-03        | TBD (Agent/Backend)        | Not Started | AC-007                                 |
@@ -86,6 +87,7 @@ These tasks are retained as historical completion and are not reopened.
 | W7-02   | CI/CD policy gates and orchestrator-only deploy boundary                                                         | S4     | W7-01, W6-03 | TBD (DevOps)               | Not Started | AC-104, AC-105                         |
 | W8-01a  | Integration/E2E suite - lifecycle ACs (001-009)                                                                  | S4     | W1-01..W7-02 | TBD (QA/All)               | Not Started | AC-001..AC-009                           |
 | W8-01b  | Integration/E2E/chaos suite - NFR ACs (101-105, 107)                                                            | S4     | W8-01a       | TBD (QA/All)               | Not Started | AC-101..AC-105, AC-107                   |
+| W8-02a  | Testcontainers agent enrollment integration tests                                                                | S4     | W3-02b, W3-04 | TBD (QA/Backend)          | Not Started | AC-005                                 |
 
 ## MVP execution slices (do first)
 
@@ -445,6 +447,29 @@ These tasks are retained as historical completion and are not reopened.
     - [x] Agent download endpoint serves placeholder agent.exe (`GET /api/agent/download?token=`).
     - [x] Enrollment token is single-use and invalidated after agent registration (`POST /api/enrollment-tokens/{token}/consume`).
 
+### W3-02b - Agent CLI enrollment + config persistence
+
+- Owner: `TBD (Agent)`
+- Status: `Not Started`
+- Depends on: W3-02a
+- Objective: implement agent-side enrollment CLI (`--enroll`, `--orchestrator-url`, `--reset-enrollment`) and cross-platform config persistence (`agent.json`).
+- Target modules:
+    - `apps/agent/backend/Program.cs` (CLI arg parsing, startup logic)
+    - `apps/agent/backend/Services/AgentEnrollmentService.cs` (new)
+    - `apps/agent/backend/Models/AgentConfig.cs` (new)
+- Verification commands:
+    - `dotnet test tests/agent/integration --filter Enrollment`
+- Acceptance links: AC-005
+- Checklist:
+    - [ ] Parse `--enroll <token>`, `--orchestrator-url <url>`, `--reset-enrollment`.
+    - [ ] `--reset-enrollment` wipes config file and exits.
+    - [ ] `--enroll` + existing config → fail fast with error message.
+    - [ ] `--enroll` + `--orchestrator-url` → consume token via HTTP, write `agent.json`, start runtime.
+    - [ ] No flags + config exists → read `agent.json`, auto-reconnect to SignalR.
+    - [ ] No flags + no config → exit with error.
+    - [ ] Config path: `%LOCALAPPDATA%/DeploymentPoC/agent.json` (Windows), `/var/lib/deploymentpoc/agent.json` (Linux).
+    - [ ] Enrollment HTTP client handles 410 (expired), 409 (consumed), 404 (missing) and exits non-zero.
+
 ### W3-03 - Agent workload pipeline (ordered packages)
 
 - Owner: `TBD (Agent)`
@@ -627,6 +652,34 @@ These tasks are retained as historical completion and are not reopened.
     - [ ] AC-105: orchestrator runs on clean Windows host without preinstalled runtime.
     - [ ] AC-107: UI uses centered popups, terminal-like logs, workload terminology, drag-drop upload.
 
+### W8-02a - Testcontainers agent enrollment integration tests
+
+- Owner: `TBD (QA/Backend)`
+- Status: `Not Started`
+- Depends on: W3-02b, W3-04
+- Objective: verify end-to-end agent enrollment using Testcontainers with real agent binary and orchestrator in-memory factory.
+- Target modules:
+    - `tests/orchestrator/integration/AgentEnrollment/AgentEnrollmentTests.cs` (new)
+    - `tests/orchestrator/integration/Infrastructure/CustomWebApplicationFactory.cs` (extend with real Kestrel endpoint)
+    - `tests/agent/Dockerfile` (new)
+    - `tests/orchestrator/integration/AgentEnrollment/AgentEnrollmentTestFixture.cs` (new)
+- Verification commands:
+    - `dotnet test tests/orchestrator/integration --filter Enrollment`
+- Acceptance links: AC-005
+- Checklist:
+    - [ ] Orchestrator factory binds real Kestrel endpoint on `0.0.0.0` for container reachability.
+    - [ ] Dynamic host IP detection (`host.docker.internal` vs bridge gateway).
+    - [ ] Agent Dockerfile uses pre-build + COPY into `runtime-deps:9.0`.
+    - [ ] Test issues enrollment token via `POST /api/nodes/enroll`.
+    - [ ] Test starts agent container with `--enroll <token> --orchestrator-url <url>`.
+    - [ ] Test polls `GET /api/nodes` until node `status == "Online"` (timeout 30s).
+    - [ ] **Happy path:** token consumed, config persisted, SignalR Identify called, node Online.
+    - [ ] **Auto-reconnect:** restart container without `--enroll`, node returns Online.
+    - [ ] **Reset + re-enroll:** `--reset-enrollment`, new token, new NodeId, Online.
+    - [ ] **Expired token:** container exits non-zero, no node created.
+    - [ ] **Consumed token:** container exits non-zero, no node created.
+    - [ ] **Enroll with existing config:** container exits non-zero.
+
 ## MVP demo slice (April 28 deadline)
 
 > **Deadline**: Tuesday April 28, 9-10am demo. Approximately 3 working days of implementation.
@@ -709,7 +762,7 @@ Day 3: W6-01 → W6-01B (UI) → integration smoke test → demo
 | AC-002 | `apps/orchestrator/backend/Services/PolicyEvaluationService.cs`, `WorkloadRunsRiskTests.cs` | TBD   | Done        |
 | AC-003 | `shared/contracts/Runtime/MessageTypes.cs`, `MessageEnvelope.cs`, `RunPayloads/AssignRunPayload.cs` | TBD   | Done        |
 | AC-004 | `apps/agent/backend/Services/AgentRuntimeService.cs`, `AgentRuntimeContractTests.cs` | TBD   | Done        |
-| AC-005 | TBD                                                                 | TBD   | Not Started |
+| AC-005 | `apps/agent/backend/Program.cs`, `AgentEnrollmentService.cs`, `tests/orchestrator/integration/AgentEnrollment/AgentEnrollmentTests.cs` | TBD   | Not Started |
 | AC-006 | `tests/orchestrator/integration/Artifacts/ArtifactIngestApiContractTests.cs`, `tests/orchestrator/integration/WorkloadRuns/WorkloadRunsRiskTests.cs` | TBD   | Done        |
 | AC-007 | TBD                                                                 | TBD   | Not Started |
 | AC-008 | ~~`/api/jobs` deprecation~~ — skipped (fresh project, no legacy endpoint) | TBD   | Skipped     |

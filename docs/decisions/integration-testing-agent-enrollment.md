@@ -95,12 +95,69 @@ We need integration tests that demonstrate how agents are installed on a "remote
 - **Additional complexities:** session TTL/cleanup, polling timeout, CLI fallback for headless environments.
 - **Rationale:** Consistent with ADR-0001 (headless agent, no local UI). All operator interaction stays in orchestrator React UI. Follows established pattern (GitHub CLI, Azure CLI, Tailscale).
 
-## Open Questions
+## Decisions (continued)
 
-1. What happens if enrollment token is expired or already consumed when the agent tries to consume it?
-2. What should the agent do if `--enroll` is passed but a config file already exists?
-3. Should the Dockerfile use a multi-stage build or a simple `dotnet publish` + `COPY`?
-4. How do we handle the agent's health endpoint (`/health`) in the container — do we use it for readiness checks in the test?
+### 13. Enrollment token failure handling
+- **Decision:** Orchestrator returns specific HTTP error codes; agent fails fast with non-zero exit code.
+- **Status codes:**
+  - `410 Gone` — token expired
+  - `409 Conflict` — token already consumed
+  - `404 Not Found` — token does not exist
+- **Agent behavior:** Logs the exact error reason and exits with code `1`. No retry loop — enrollment failures are permanent.
+- **Test assertion:** Container exits non-zero; orchestrator shows no new node.
+
+### 14. `--enroll` passed with existing config
+- **Decision:** Agent fails fast with error message.
+- **Agent behavior:** If `--enroll` is passed but `agent.json` already exists, exit with error: "Already enrolled. Use --reset-enrollment to re-enroll, or omit --enroll to auto-connect."
+- **Rationale:** Prevents accidental overwrite of active enrollment and orphaning the old node record in the orchestrator.
+
+### 15. Dockerfile build strategy
+- **Decision:** Pre-build on host + COPY into runtime-deps base image.
+- **Build flow:**
+  1. Host runs `dotnet publish -c Release -r linux-x64` for agent project.
+  2. Dockerfile uses `mcr.microsoft.com/dotnet/runtime-deps:9.0` as base.
+  3. `COPY ./publish/linux-x64/ /app/`
+  4. `ENTRYPOINT ["./DeploymentPoC.Agent"]`
+- **Rationale:** Host already has .NET SDK (test project). Faster builds, cached NuGet, trivial Dockerfile.
+- **Location:** `tests/agent/Dockerfile`
+
+### 16. Agent health endpoint / readiness probe
+- **Decision:** No health endpoint or readiness probe in the agent.
+- **Rationale:** Agent is a pure SignalR client with no HTTP listener (consistent with ADR-0001: headless, no local web UI/server). The integration test waits for container process start, then polls the orchestrator `GET /api/nodes` API for `status == "Online"`. This is the ultimate health signal.
+
+## Implementation Checklist
+
+### Orchestrator changes
+- [ ] Update `AgentRuntimeHub` to set `Node.Status = "Online"` and `Node.LastSeenUtc` on `Identify` (in addition to heartbeat path).
+- [ ] Ensure `EnrollmentController.ConsumeToken` returns `410 Gone` (expired), `409 Conflict` (consumed), `404 Not Found` (missing).
+
+### Agent changes
+- [ ] Parse CLI args in `Program.cs`: `--enroll`, `--orchestrator-url`, `--reset-enrollment`.
+- [ ] Implement config persistence: read/write `agent.json` with `NodeId` and `OrchestratorUrl`.
+- [ ] Implement startup logic: `--reset-enrollment` → wipe config, exit; `--enroll` + `--orchestrator-url` → consume token, write config, start runtime; no flags + config exists → auto-reconnect; no flags + no config → exit error.
+- [ ] Implement enrollment HTTP client: `POST /api/enrollment-tokens/{token}/consume` with error handling.
+- [ ] Fail fast if `--enroll` passed but config already exists.
+- [ ] Cross-platform config paths: `%LOCALAPPDATA%/DeploymentPoC/agent.json` (Windows), `/var/lib/deploymentpoc/agent.json` (Linux).
+
+### Test infrastructure
+- [ ] Add `Testcontainers` package to orchestrator integration test csproj.
+- [ ] Create `tests/agent/Dockerfile` (pre-build + COPY pattern).
+- [ ] Add agent publish step to test build pipeline (or on-demand in test setup).
+- [ ] Create `AgentEnrollmentIntegrationTests` class with `IAsyncLifetime`.
+- [ ] Implement dynamic host IP detection (`host.docker.internal` vs bridge gateway).
+- [ ] Implement orchestrator factory with real Kestrel endpoint bound to `0.0.0.0`.
+
+### Integration tests
+- [ ] **Test: Happy path enrollment** — Issue token, start container with `--enroll`, poll nodes API until Online.
+- [ ] **Test: Auto-reconnect after restart** — Enroll, stop container, restart without `--enroll`, poll until Online.
+- [ ] **Test: Reset and re-enroll** — Enroll, `--reset-enrollment`, enroll with new token, assert new NodeId.
+- [ ] **Test: Expired token** — Start container with expired token, assert exit code 1, assert no node created.
+- [ ] **Test: Already consumed token** — Start container with consumed token, assert exit code 1, assert no node created.
+- [ ] **Test: Enroll with existing config** — Start enrolled container with `--enroll`, assert exit code 1.
+
+## Status
+
+**Ready for implementation.** All decisions resolved. No open questions remain.
 
 ## Related Files
 

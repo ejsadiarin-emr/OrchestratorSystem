@@ -201,7 +201,10 @@ cat -la apps/orchestrator/backend/bin/Release/net10.0/win-x64/artifacts/{package
    ```powershell
    .\agent.exe --enroll <token> --orchestrator-url http://<orchestrator-host>:5124
    ```
-5. Verify the node appears in the Nodes table with status "Online"
+   - Agent defaults to `http://localhost:5001` (avoids port collision with orchestrator on 5000/5124)
+   - Override with `--urls http://localhost:port` if needed
+5. Verify the node appears in the Nodes table with status **"Online"** (refreshes automatically every 5s)
+6. The agent sends heartbeats every 15s; if stopped, node status changes to **"Offline"** within 30s
 
 ### Step 5: Run a workload
 
@@ -216,6 +219,7 @@ cat -la apps/orchestrator/backend/bin/Release/net10.0/win-x64/artifacts/{package
 5. Watch the run progress in the Workload Runs table:
    - Status cycles through: Queued → Running → Completed
    - Click the run to see step-by-step timeline
+6. The **Dashboard** now shows real node counts and KPIs (wired to backend APIs)
 
 ### Step 6: Observe execution (agent-side)
 
@@ -223,8 +227,9 @@ On the target node, the agent:
 1. Receives the workload assignment via SignalR
 2. Downloads each artifact from the orchestrator
 3. Executes packages in sequence
-4. Reports step status back to the orchestrator
+4. Reports step status back to the orchestrator (including LeaseHeartbeat every 15s)
 5. Completes or fails based on exit codes
+6. On disconnect, node status auto-changes to **"Offline"** within 30s (heartbeat monitor)
 
 ## API Reference
 
@@ -241,7 +246,7 @@ On the target node, the agent:
 | `/api/workload-runs/{id}/steps` | GET | Get run steps |
 | `/api/nodes` | GET | List nodes |
 | `/api/nodes/enroll` | POST | Issue enrollment token |
-| `/api/nodes/{id}/heartbeat` | POST | Node heartbeat |
+| `/hubs/agent` | SignalR | Agent runtime hub (identify, send messages, heartbeats) |
 
 ## Project Structure
 

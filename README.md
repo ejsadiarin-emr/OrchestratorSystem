@@ -147,14 +147,16 @@ artifacts/
 To view stored artifacts:
 
 ```bash
-# List all artifacts
-ls -la /path/to/artifacts/
+# Production path (relative to executable)
+ls -la /path/to/DeploymentPoC.Orchestrator.exe/artifacts/
 
 # View manifest for a specific artifact
-cat /path/to/artifacts/{packageId}/{version}/resolved-manifest.json
+cat /path/to/DeploymentPoC.Orchestrator.exe/artifacts/{packageId}/{version}/resolved-manifest.json
 ```
 
 **Configuration:** Set `ArtifactStore:RootPath` in `appsettings.json` to customize the storage location.
+
+**Production path:** The `artifacts/` folder is created next to the running executable (e.g., `bin/Release/net10.0/win-x64/artifacts/`).
 
 <nitpicks>
 - IMPORTANT features/functions for artifact ingestion: 

@@ -2,6 +2,7 @@ using DeploymentPoC.Orchestrator.Contracts.Api;
 using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Data.Entities;
 using DeploymentPoC.Orchestrator.Models;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -77,7 +78,7 @@ public class EnrollmentController : ControllerBase
 
         if (entity.ExpiresAtUtc < DateTime.UtcNow)
         {
-            return Conflict(new { message = "Enrollment token expired." });
+            return StatusCode(StatusCodes.Status410Gone, new { message = "Enrollment token expired." });
         }
 
         entity.Used = true;

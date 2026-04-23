@@ -25,7 +25,8 @@ public sealed class ArtifactZipService
 
         try
         {
-            using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read, leaveOpen: true);
+            using var seekableStream = EnsureSeekable(zipStream);
+            using var archive = new ZipArchive(seekableStream, ZipArchiveMode.Read, leaveOpen: true);
             var entries = archive.Entries
                 .Where(e => !string.IsNullOrWhiteSpace(e.FullName) && !e.FullName.EndsWith('/'))
                 .ToList();
@@ -116,7 +117,8 @@ public sealed class ArtifactZipService
 
         try
         {
-            using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read, leaveOpen: true);
+            using var seekableStream = EnsureSeekable(zipStream);
+            using var archive = new ZipArchive(seekableStream, ZipArchiveMode.Read, leaveOpen: true);
             var entries = archive.Entries
                 .Where(e => !string.IsNullOrWhiteSpace(e.FullName) && !e.FullName.EndsWith('/'))
                 .ToList();
@@ -233,6 +235,27 @@ public sealed class ArtifactZipService
         var ms = new MemoryStream();
         using var stream = entry.Open();
         stream.CopyTo(ms);
+        ms.Position = 0;
+        return ms;
+    }
+
+    private static Stream EnsureSeekable(Stream stream)
+    {
+        // always copy to a memory stream because ziparchive requires
+        // full bidirectional seeking, which streams like ReferenceReadStream
+        // do not support despite CanSeek returning true.
+        var ms = new MemoryStream();
+        if (stream.CanSeek)
+        {
+            var originalPosition = stream.Position;
+            stream.Position = 0;
+            stream.CopyTo(ms);
+            stream.Position = originalPosition;
+        }
+        else
+        {
+            stream.CopyTo(ms);
+        }
         ms.Position = 0;
         return ms;
     }

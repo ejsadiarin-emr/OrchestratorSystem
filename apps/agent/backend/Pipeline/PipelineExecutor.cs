@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 
 namespace DeploymentPoC.Agent.Pipeline;
 
-public sealed class PipelineExecutor
+public class PipelineExecutor
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<PipelineExecutor> _logger;
@@ -16,7 +16,7 @@ public sealed class PipelineExecutor
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task<PipelineResult> ExecuteAsync(
+    public virtual async Task<PipelineResult> ExecuteAsync(
         PipelineContext context,
         Func<MessageEnvelope, CancellationToken, Task> sendMessageAsync,
         CancellationToken ct = default)

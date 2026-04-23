@@ -5,6 +5,7 @@ import type {
   ArtifactRecord,
   ArtifactUploadRequest,
   AuditEvent,
+  BulkIngestResult,
   CreateWorkloadDefinitionRequest,
   CreateWorkloadRevisionRequest,
   CreateWorkloadRunRequest,
@@ -20,6 +21,8 @@ import type {
   NodeRunState,
   NodeWorkloadState,
   OrchestratorHomeData,
+  UploadProgressCallback,
+  UploadSession,
   ValidationFieldError,
   WorkloadDefinition,
   WorkloadRevision,
@@ -470,10 +473,11 @@ export async function uploadArtifact(request: ArtifactUploadRequest): Promise<Ar
     throw new Error(message)
   }
 
-  const data = await response.json() as { resolvedManifest: { packageId: string; version: string; channel: string; artifactType: string; installAdapter: Record<string, unknown>; detection: Record<string, unknown>; policyTags: Record<string, unknown>; originMetadata: Record<string, unknown> } }
+  const data = await response.json() as { packageEntityId?: string; resolvedManifest: { packageId: string; version: string; channel: string; artifactType: string; installAdapter: Record<string, unknown>; detection: Record<string, unknown>; policyTags: Record<string, unknown>; originMetadata: Record<string, unknown> } }
 
   const artifact: ArtifactRecord = {
     id: `${data.resolvedManifest.packageId}-${data.resolvedManifest.version}`,
+    packageEntityId: data.packageEntityId,
     fileName: request.file.name,
     createdAt: new Date().toISOString(),
     detachedSignaturePresent: Boolean(request.detachedSignature),
@@ -501,6 +505,189 @@ export async function uploadArtifact(request: ArtifactUploadRequest): Promise<Ar
   return { artifact, steps }
 }
 
+export async function createUploadSession(manifest?: ArtifactManifest): Promise<UploadSession> {
+  const response = await fetch('/api/artifacts/upload-session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: manifest ? JSON.stringify({ manifest }) : undefined,
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to create upload session: ${response.status}`)
+  }
+
+  return response.json() as Promise<UploadSession>
+}
+
+export async function uploadChunk(sessionId: string, index: number, totalChunks: number, chunk: Blob): Promise<void> {
+  const formData = new FormData()
+  formData.append('sessionId', sessionId)
+  formData.append('chunkIndex', String(index))
+  formData.append('totalChunks', String(totalChunks))
+  formData.append('chunk', chunk)
+
+  const response = await fetch('/api/artifacts/upload-chunk', {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to upload chunk ${index}: ${response.status}`)
+  }
+}
+
+export async function completeUploadSession(sessionId: string): Promise<ArtifactIngestResult> {
+  const response = await fetch('/api/artifacts/upload-complete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to complete upload session: ${response.status}`)
+  }
+
+  return response.json() as Promise<ArtifactIngestResult>
+}
+
+export async function uploadArtifactWithProgress(
+  request: ArtifactUploadRequest,
+  onProgress?: UploadProgressCallback,
+): Promise<ArtifactIngestResult> {
+  if (!request.file) {
+    throw new Error('file is required for multipart upload')
+  }
+
+  if (!request.manifest || !request.manifest.packageId || !request.manifest.version) {
+    throw new Error('manifest JSON part is required for multipart upload')
+  }
+
+  if (request.manifest.channel && !validateManifestChannel(request.manifest.channel)) {
+    throw new Error('manifest.channel must be one of stable, canary, test')
+  }
+
+  const formData = new FormData()
+  formData.append('file', request.file)
+  formData.append('manifest', JSON.stringify(request.manifest))
+  if (request.detachedSignature) {
+    formData.append('detachedSignature', request.detachedSignature)
+  }
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+
+    xhr.upload.addEventListener('progress', event => {
+      if (event.lengthComputable && onProgress) {
+        onProgress(event.loaded, event.total)
+      }
+    })
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText) as { packageEntityId?: string; resolvedManifest: { packageId: string; version: string; channel: string; artifactType: string; installAdapter: Record<string, unknown>; detection: Record<string, unknown>; policyTags: Record<string, unknown>; originMetadata: Record<string, unknown> } }
+
+          const artifact: ArtifactRecord = {
+            id: `${data.resolvedManifest.packageId}-${data.resolvedManifest.version}`,
+            packageEntityId: data.packageEntityId,
+            fileName: request.file.name,
+            createdAt: new Date().toISOString(),
+            detachedSignaturePresent: Boolean(request.detachedSignature),
+            manifest: {
+              packageId: data.resolvedManifest.packageId,
+              version: data.resolvedManifest.version,
+              channel: data.resolvedManifest.channel,
+              artifactType: data.resolvedManifest.artifactType,
+              verificationResult: data.resolvedManifest.originMetadata?.verificationResult as string | undefined,
+              installAdapter: data.resolvedManifest.installAdapter as ArtifactManifest['installAdapter'],
+              detection: data.resolvedManifest.detection as ArtifactManifest['detection'],
+              policyTags: data.resolvedManifest.policyTags as ArtifactManifest['policyTags'],
+            },
+          }
+
+          const steps: IngestStep[] = [
+            { id: 'upload', label: 'Receive multipart request (file + manifest + optional detachedSignature)', status: 'completed' },
+            { id: 'analyze', label: 'Analyze installer media and prefill metadata', status: 'completed' },
+            { id: 'verify', label: 'Verify digest, signatures, and origin metadata', status: 'completed' },
+            { id: 'store', label: 'Store immutable artifact and write audit record', status: 'completed' },
+          ]
+
+          artifacts.unshift(artifact)
+          writeWorkloadAudit('Artifact ingested', `${artifact.id} accepted and available for new WorkloadRevision drafts.`)
+          resolve({ artifact, steps })
+        } catch (err) {
+          reject(new Error('Failed to parse upload response'))
+        }
+      } else {
+        let message = `Upload failed with status ${xhr.status}`
+        try {
+          const body = JSON.parse(xhr.responseText) as { message?: string; errors?: ValidationFieldError[] }
+          if (body.errors && body.errors.length > 0) {
+            message = body.errors.map((e: ValidationFieldError) => `${e.field}: ${e.error}`).join('; ')
+          } else if (body.message) {
+            message = body.message
+          }
+        } catch {
+          // use default message
+        }
+        reject(new Error(message))
+      }
+    })
+
+    xhr.addEventListener('error', () => {
+      reject(new Error('Network error during upload'))
+    })
+
+    xhr.open('POST', '/api/artifacts')
+    xhr.send(formData)
+  })
+}
+
+export async function uploadBulkArtifacts(
+  file: File,
+  onProgress?: UploadProgressCallback,
+): Promise<BulkIngestResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+
+    xhr.upload.addEventListener('progress', event => {
+      if (event.lengthComputable && onProgress) {
+        onProgress(event.loaded, event.total)
+      }
+    })
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText) as BulkIngestResult
+          resolve(data)
+        } catch {
+          reject(new Error('Failed to parse bulk upload response'))
+        }
+      } else {
+        let message = `Bulk upload failed with status ${xhr.status}`
+        try {
+          const body = JSON.parse(xhr.responseText) as { message?: string }
+          if (body.message) message = body.message
+        } catch {
+          // use default message
+        }
+        reject(new Error(message))
+      }
+    })
+
+    xhr.addEventListener('error', () => {
+      reject(new Error('Network error during bulk upload'))
+    })
+
+    xhr.open('POST', '/api/artifacts/bulk')
+    xhr.send(formData)
+  })
+}
+
 export async function listArtifacts(): Promise<ArtifactRecord[]> {
   const response = await fetch('/api/artifacts')
   if (!response.ok) {
@@ -508,6 +695,7 @@ export async function listArtifacts(): Promise<ArtifactRecord[]> {
   }
   const data = await response.json() as Array<{
     id: string
+    packageEntityId?: string
     packageId: string
     version: string
     fileName: string
@@ -525,6 +713,7 @@ export async function listArtifacts(): Promise<ArtifactRecord[]> {
 
   return data.map(item => ({
     id: item.id,
+    packageEntityId: item.packageEntityId,
     fileName: item.fileName,
     createdAt: item.createdAt,
     sizeBytes: item.sizeBytes,
@@ -562,6 +751,15 @@ export async function listArtifacts(): Promise<ArtifactRecord[]> {
         : undefined,
     },
   }))
+}
+
+export async function deleteArtifact(packageId: string, version: string): Promise<void> {
+  const response = await fetch(`/api/artifacts/${encodeURIComponent(packageId)}/${encodeURIComponent(version)}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`Failed to delete artifact: ${response.status}`)
+  }
 }
 
 export async function issueEnrollmentToken(request: IssueEnrollmentTokenRequest): Promise<EnrollmentToken> {

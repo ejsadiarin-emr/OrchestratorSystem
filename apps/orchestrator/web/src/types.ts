@@ -53,12 +53,13 @@ export interface ValidationFieldError {
 
 export interface ArtifactRecord {
   id: string
+  packageEntityId?: string
   fileName: string
   createdAt: string
-  manifest: ArtifactManifest
-  detachedSignaturePresent: boolean
   sizeBytes?: number
   digest?: string
+  detachedSignaturePresent?: boolean
+  manifest: ArtifactManifest
 }
 
 export interface ArtifactIngestResult {
@@ -306,3 +307,24 @@ export interface Package {
   installArgs: string
   createdAt: string
 }
+
+
+export interface BulkIngestResultItem {
+  fileName: string
+  status: 'success' | 'failed'
+  reason?: string
+  artifact?: {
+    packageId: string
+    version: string
+  }
+}
+
+export interface BulkIngestResult {
+  results: BulkIngestResultItem[]
+}
+
+export interface UploadSession {
+  sessionId: string
+}
+
+export type UploadProgressCallback = (loaded: number, total: number) => void

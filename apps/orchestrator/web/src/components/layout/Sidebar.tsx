@@ -5,7 +5,7 @@ import {
   Server,
   FileText,
   Laptop,
-  Settings,
+  Package,
 } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
@@ -15,8 +15,8 @@ const navItems = [
   { to: '/workloads', icon: GitBranch, label: 'Workloads' },
   { to: '/workload-runs', icon: FileText, label: 'Workload Runs' },
   { to: '/nodes', icon: Server, label: 'Nodes' },
+  { to: '/artifacts', icon: Package, label: 'Artifacts' },
   { to: '/agent-local', icon: Laptop, label: 'Agent Local' },
-  { to: '/install', icon: Settings, label: 'Install' },
 ]
 
 export default function Sidebar() {

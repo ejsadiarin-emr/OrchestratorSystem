@@ -84,3 +84,8 @@ data/
 # Temporary session files
 session-*.md
 retain.md
+
+.playwright-mcp
+journal
+wiki
+.agents

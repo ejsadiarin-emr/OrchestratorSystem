@@ -808,6 +808,29 @@ PoC Phase 1 is complete only when all conditions are true:
 - Linux agent implementation
 - automatic package dependency solver and package removal policies
 
+## Phase 2 expansions and considerations
+
+### UI-based agent enrollment (device code flow)
+
+Phase 1 enrollment is CLI-only: the operator downloads a signed `agent.exe` and runs it with `--enroll <token> --orchestrator-url <url>`. This supports headless containers and server environments.
+
+Phase 2 may add a browser-driven enrollment flow that keeps the agent headless (consistent with ADR-0001) while removing the need to type tokens into a terminal:
+
+1. Operator runs `agent.exe` with no enrollment flags.
+2. Agent detects no config file, generates a random `sessionId`, and opens the system browser to `https://<orchestrator>/enroll?session=<sessionId>`.
+3. Agent begins polling `GET /api/enrollment-sessions/{sessionId}/status` every 5 seconds.
+4. On the orchestrator page, the user pastes the enrollment token and clicks authorize.
+5. The orchestrator consumes the token, creates the node, and stores `nodeId` against the session.
+6. The agent's next poll receives `{ status: "completed", nodeId: "...", orchestratorUrl: "..." }`.
+7. Agent writes `agent.json` and starts the runtime automatically.
+
+This follows the OAuth2 device-code pattern used by GitHub CLI, Azure CLI, and Tailscale. Required orchestrator endpoints:
+- `POST /api/enrollment-sessions` — agent creates a session
+- `GET /api/enrollment-sessions/{id}/status` — agent polls for completion
+- `POST /api/enrollment-sessions/{id}/complete` — UI submits token
+
+Additional Phase 2 concerns: session TTL/cleanup (e.g., 10 minutes), polling timeout, graceful fallback to `--enroll` CLI on Windows Server Core or air-gapped nodes where no browser is available.
+
 ---
 
 ## Further notes

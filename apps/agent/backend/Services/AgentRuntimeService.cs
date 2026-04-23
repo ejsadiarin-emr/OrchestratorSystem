@@ -14,13 +14,21 @@ public sealed class AgentRuntimeService : BackgroundService
     private readonly IConfiguration _configuration;
     private readonly ILogger<AgentRuntimeService> _logger;
     private readonly PipelineExecutor _pipelineExecutor;
-    private HubConnection? _connection;
+    private readonly IHubConnectionFactory _hubConnectionFactory;
+    private IHubConnection? _connection;
+    private Timer? _heartbeatTimer;
+    private Guid? _nodeId;
 
-    public AgentRuntimeService(IConfiguration configuration, ILogger<AgentRuntimeService> logger, PipelineExecutor pipelineExecutor)
+    public AgentRuntimeService(
+        IConfiguration configuration,
+        ILogger<AgentRuntimeService> logger,
+        PipelineExecutor pipelineExecutor,
+        IHubConnectionFactory hubConnectionFactory)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _pipelineExecutor = pipelineExecutor ?? throw new ArgumentNullException(nameof(pipelineExecutor));
+        _hubConnectionFactory = hubConnectionFactory ?? throw new ArgumentNullException(nameof(hubConnectionFactory));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -31,18 +39,39 @@ public sealed class AgentRuntimeService : BackgroundService
 
         _logger.LogInformation("AgentRuntimeService starting. Connecting to orchestrator at {HubUrl}", hubUrl);
 
-        _connection = new HubConnectionBuilder()
-            .WithUrl(hubUrl, options =>
-            {
-                options.AccessTokenProvider = () => Task.FromResult("placeholder-token")!;
-            })
-            .WithAutomaticReconnect()
-            .Build();
+        _connection = _hubConnectionFactory.Create(hubUrl);
 
         _connection.On<MessageEnvelope>(MessageTypes.AssignRun, async envelope =>
         {
             await HandleAssignRunAsync(envelope);
         });
+
+        _connection.Reconnecting += ex =>
+        {
+            _logger.LogWarning(ex, "SignalR connection reconnecting");
+            return Task.CompletedTask;
+        };
+
+        _connection.Reconnected += connectionId =>
+        {
+            _logger.LogInformation("SignalR connection reconnected. ConnectionId={ConnectionId}", connectionId);
+            if (_nodeId.HasValue)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _connection!.InvokeAsync("Identify", _nodeId.Value, stoppingToken);
+                        _logger.LogInformation("Re-identified with orchestrator as NodeId={NodeId}", _nodeId.Value);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to re-identify with orchestrator after reconnect");
+                    }
+                });
+            }
+            return Task.CompletedTask;
+        };
 
         await _connection.StartAsync(stoppingToken);
         _logger.LogInformation("Connected to orchestrator SignalR hub");
@@ -50,6 +79,7 @@ public sealed class AgentRuntimeService : BackgroundService
         // Identify with the orchestrator if we have a NodeId
         if (!string.IsNullOrWhiteSpace(nodeIdString) && Guid.TryParse(nodeIdString, out var nodeId))
         {
+            _nodeId = nodeId;
             try
             {
                 await _connection.InvokeAsync("Identify", nodeId, stoppingToken);
@@ -65,13 +95,56 @@ public sealed class AgentRuntimeService : BackgroundService
             _logger.LogWarning("No Agent:NodeId configured; cannot identify with orchestrator for targeted AssignRun delivery");
         }
 
+        if (_nodeId.HasValue)
+        {
+            var intervalSeconds = _configuration.GetValue<double?>("Agent:HeartbeatIntervalSeconds") ?? 15.0;
+            var interval = TimeSpan.FromSeconds(intervalSeconds);
+            _heartbeatTimer = new Timer(
+                async _ => await SendHeartbeatAsync(),
+                null,
+                interval,
+                interval);
+        }
+
         try
         {
             await Task.Delay(Timeout.Infinite, stoppingToken);
         }
         finally
         {
-            await _connection.DisposeAsync();
+            _heartbeatTimer?.Dispose();
+            if (_connection is not null)
+            {
+                await _connection.DisposeAsync();
+            }
+        }
+    }
+
+    private async Task SendHeartbeatAsync()
+    {
+        if (_connection?.State != HubConnectionState.Connected || !_nodeId.HasValue)
+        {
+            return;
+        }
+
+        var heartbeat = new MessageEnvelope
+        {
+            MessageType = MessageTypes.LeaseHeartbeat,
+            ProtocolVersion = "1.0",
+            MessageId = Guid.NewGuid().ToString(),
+            TimestampUtc = DateTime.UtcNow,
+            AgentId = _nodeId.Value.ToString(),
+            Sequence = 0
+        };
+
+        try
+        {
+            await _connection.InvokeAsync("SendMessage", heartbeat, CancellationToken.None);
+            _logger.LogDebug("Sent LeaseHeartbeat");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to send heartbeat");
         }
     }
 

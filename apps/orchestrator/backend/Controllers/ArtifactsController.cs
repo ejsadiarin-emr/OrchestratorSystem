@@ -99,12 +99,11 @@ public sealed class ArtifactsController : ControllerBase
                 });
             }
 
-            await _artifactStore.SaveArtifactAsync(result.ResolvedManifest!.PackageId, result.ResolvedManifest.Version, extracted.MediaStream, HttpContext.RequestAborted);
             var resolvedManifestJson = JsonSerializer.Serialize(result.ResolvedManifest, new JsonSerializerOptions
             {
                 WriteIndented = true
             });
-            await _artifactStore.SaveResolvedManifestAsync(result.ResolvedManifest.PackageId, result.ResolvedManifest.Version, resolvedManifestJson, HttpContext.RequestAborted);
+            await _artifactStore.SaveArtifactAndManifestAsync(result.ResolvedManifest!.PackageId, result.ResolvedManifest.Version, extracted.MediaStream, resolvedManifestJson, HttpContext.RequestAborted);
 
             var packageEntityId = DeterministicGuid($"{result.ResolvedManifest.PackageId}-{result.ResolvedManifest.Version}");
             var existingPackage = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId, HttpContext.RequestAborted);
@@ -180,12 +179,11 @@ public sealed class ArtifactsController : ControllerBase
             });
         }
 
-        await _artifactStore.SaveArtifactAsync(ingestResult.ResolvedManifest!.PackageId, ingestResult.ResolvedManifest.Version, stream, HttpContext.RequestAborted);
         var resolvedManifestJson2 = JsonSerializer.Serialize(ingestResult.ResolvedManifest, new JsonSerializerOptions
         {
             WriteIndented = true
         });
-        await _artifactStore.SaveResolvedManifestAsync(ingestResult.ResolvedManifest.PackageId, ingestResult.ResolvedManifest.Version, resolvedManifestJson2, HttpContext.RequestAborted);
+        await _artifactStore.SaveArtifactAndManifestAsync(ingestResult.ResolvedManifest!.PackageId, ingestResult.ResolvedManifest.Version, stream, resolvedManifestJson2, HttpContext.RequestAborted);
 
         var packageEntityId2 = DeterministicGuid($"{ingestResult.ResolvedManifest.PackageId}-{ingestResult.ResolvedManifest.Version}");
         var existingPackage2 = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId2, HttpContext.RequestAborted);
@@ -281,12 +279,11 @@ public sealed class ArtifactsController : ControllerBase
                 continue;
             }
 
-            await _artifactStore.SaveArtifactAsync(result.ResolvedManifest!.PackageId, result.ResolvedManifest.Version, artifact.MediaStream, HttpContext.RequestAborted);
             var resolvedManifestJson = JsonSerializer.Serialize(result.ResolvedManifest, new JsonSerializerOptions
             {
                 WriteIndented = true
             });
-            await _artifactStore.SaveResolvedManifestAsync(result.ResolvedManifest.PackageId, result.ResolvedManifest.Version, resolvedManifestJson, HttpContext.RequestAborted);
+            await _artifactStore.SaveArtifactAndManifestAsync(result.ResolvedManifest!.PackageId, result.ResolvedManifest.Version, artifact.MediaStream, resolvedManifestJson, HttpContext.RequestAborted);
 
             var packageEntityId = DeterministicGuid($"{result.ResolvedManifest.PackageId}-{result.ResolvedManifest.Version}");
             var existingPackage = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId, HttpContext.RequestAborted);
@@ -524,12 +521,11 @@ public sealed class ArtifactsController : ControllerBase
             });
         }
 
-        await _artifactStore.SaveArtifactAsync(result.ResolvedManifest!.PackageId, result.ResolvedManifest.Version, stream, HttpContext.RequestAborted);
         var resolvedManifestJson = JsonSerializer.Serialize(result.ResolvedManifest, new JsonSerializerOptions
         {
             WriteIndented = true
         });
-        await _artifactStore.SaveResolvedManifestAsync(result.ResolvedManifest.PackageId, result.ResolvedManifest.Version, resolvedManifestJson, HttpContext.RequestAborted);
+        await _artifactStore.SaveArtifactAndManifestAsync(result.ResolvedManifest!.PackageId, result.ResolvedManifest.Version, stream, resolvedManifestJson, HttpContext.RequestAborted);
 
         var packageEntityId = DeterministicGuid($"{result.ResolvedManifest.PackageId}-{result.ResolvedManifest.Version}");
         var existingPackage = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId, HttpContext.RequestAborted);
@@ -650,7 +646,7 @@ public sealed class ArtifactsController : ControllerBase
     {
         try
         {
-            if (!_artifactStore.Exists(packageId, version))
+            if (!_artifactStore.ExistsAny(packageId, version))
             {
                 return NotFound();
             }

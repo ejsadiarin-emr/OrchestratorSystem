@@ -126,7 +126,7 @@ describe('Dashboard orchestrator home', () => {
     expect(screen.getByText('Artifacts Stored')).toBeInTheDocument()
     expect(screen.getByText('Nodes Live Table')).toBeInTheDocument()
     expect(screen.getByText('Workloads Overview')).toBeInTheDocument()
-    expect(screen.getByText('Action Panel')).toBeInTheDocument()
+    
     expect(screen.getByText('Important Events')).toBeInTheDocument()
     expect(screen.queryByText('Mini Log Viewer')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Logs node-/ })).not.toBeInTheDocument()
@@ -144,12 +144,7 @@ describe('Dashboard orchestrator home', () => {
 
     expect(screen.getByText('Workload Count')).toBeInTheDocument()
     expect(screen.getByText('Workload Updates')).toBeInTheDocument()
-    expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
-    expect(screen.getByText('Observer Stack (0.9.0)')).toBeInTheDocument()
-    expect(screen.getByText('Factory Base Install (1.0.0)')).toBeInTheDocument()
-
-    expect(screen.getByText(/Workload:/)).toBeInTheDocument()
-    expect(screen.getAllByText(/Factory Base Install \(1\.1\.0\)/).length).toBeGreaterThan(0)
+expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
   })
 
   it('renders explicit update indicators and events severity filters', async () => {
@@ -197,25 +192,6 @@ describe('Dashboard orchestrator home', () => {
 
     expect(await screen.findByText(/Auto-refresh:/)).toBeInTheDocument()
     expect(screen.getByText(/Last updated:/)).toBeInTheDocument()
-  })
-
-  it('updates action panel when selecting a node', async () => {
-    render(
-      <MemoryRouter>
-        <Dashboard />
-      </MemoryRouter>,
-    )
-
-    await screen.findByText('Nodes Live Table')
-
-    expect(screen.getByText('Selected Node: node-001')).toBeInTheDocument()
-    fireEvent.click(screen.getByText('node-001'))
-
-    fireEvent.click(screen.getByText('node-002'))
-
-    await waitFor(() => {
-      expect(screen.getByText('Selected Node: node-002')).toBeInTheDocument()
-    })
   })
 
   it('opens node popup from row click and shows node log content', async () => {

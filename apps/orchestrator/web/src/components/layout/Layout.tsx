@@ -9,7 +9,6 @@ const pageTitles: Record<string, string> = {
   '/workload-runs': 'Workload Runs',
   '/nodes': 'Node Enrollment',
   '/packages': 'Artifact Packages',
-  '/agent-local': 'Agent Local Console',
   '/install': 'Artifact Store Console',
 }
 

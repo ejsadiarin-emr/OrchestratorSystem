@@ -1172,7 +1172,7 @@ export async function getOrchestratorHomeData(): Promise<OrchestratorHomeData> {
     const workload = state ? workloadById.get(state.workloadId) : undefined
 
     const health: DashboardNodeRow['health'] =
-      node.status === 'online' ? 'online' : node.status === 'offline' ? 'offline' : 'warning'
+      node.status.toLowerCase() === 'online' ? 'online' : node.status.toLowerCase() === 'offline' ? 'offline' : 'warning'
 
     const runState: DashboardNodeRow['runState'] =
       state?.status === 'running'
@@ -1240,8 +1240,8 @@ export async function getOrchestratorHomeData(): Promise<OrchestratorHomeData> {
   const failedRuns24h = runs.filter(r => r.status === 'failed' && r.completedAt && new Date(r.completedAt) > dayAgo).length
 
   const kpis: DashboardKpiSummary = {
-    nodesOnline: nodes.filter(n => n.status === 'online').length,
-    nodesOffline: nodes.filter(n => n.status === 'offline').length,
+    nodesOnline: nodes.filter(n => n.status.toLowerCase() === 'online').length,
+    nodesOffline: nodes.filter(n => n.status.toLowerCase() === 'offline').length,
     workloadDefinitions: workloads.length,
     runningWorkloads: runs.filter(r => r.status === 'running').length,
     artifactsStored: artifacts.length,

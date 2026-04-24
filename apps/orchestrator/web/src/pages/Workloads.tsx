@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   createWorkloadRevision,
   importBulkWorkloads,
@@ -47,6 +47,7 @@ export default function Workloads() {
   const [bulkResults, setBulkResults] = useState<BulkWorkloadImportResultItem[]>([])
   const [bulkError, setBulkError] = useState<string>('')
   const [isDragging, setIsDragging] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [revisionForm, setRevisionForm] = useState<RevisionForm>({
     workloadId: '',
@@ -192,7 +193,25 @@ export default function Workloads() {
       setBulkFileName(droppedFile.name)
       setBulkResults([])
       setBulkError('')
-      setIsDraftModalOpen(true)
+    }
+  }
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const isJson = file.name.endsWith('.json') || file.name.endsWith('.jsonc')
+      if (!isJson) {
+        setError('Only JSON files (.json, .jsonc) are accepted.')
+        return
+      }
+      setBulkFile(file)
+      setBulkFileName(file.name)
+      setBulkResults([])
+      setBulkError('')
     }
   }
 
@@ -268,31 +287,32 @@ export default function Workloads() {
           </div>
         </section>
 
-        <section
-          onDragOver={e => handleDragOver(e, 'workloadVersion')}
+<section
+          onClick={triggerFileInput}
+          onDragOver={e => handleDragOver(e, 'workloadDefinition')}
           onDragLeave={handleDragLeave}
-          onDrop={e => handleDrop(e, 'workloadVersion')}
-          className={`rounded-2xl border-2 border-dashed p-6 shadow-[var(--surface-shadow)] transition-colors ${
-            isDragging && dropMode === 'workloadVersion'
+          onDrop={e => handleDrop(e, 'workloadDefinition')}
+          className={`rounded-2xl border-2 border-dashed p-6 shadow-[var(--surface-shadow)] transition-colors cursor-pointer ${
+            isDragging && dropMode === 'workloadDefinition'
               ? 'border-blue-500 bg-blue-50/50'
-              : 'border-[var(--surface-border)] bg-[var(--surface)]'
+              : 'border-[var(--surface-border)] bg-[var(--surface)] hover:border-[var(--text-soft)]'
           }`}
         >
+          <input
+            type="file"
+            accept=".json,.jsonc"
+            onChange={handleFileInputChange}
+            className="hidden"
+            ref={fileInputRef}
+          />
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent)]/10">
-              <FileJson className="h-5 w-5 text-[var(--accent)]" />
+              <Upload className="h-5 w-5 text-[var(--accent)]" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold text-[var(--text-strong)]">Create Workload Version Draft</h2>
-              <p className="mt-1 text-xs text-[var(--text-soft)]">PoC rule: each revision must include exactly 2-3 package steps.</p>
-              <button
-                type="button"
-                onClick={() => setIsRevisionModalOpen(true)}
-                disabled={workloads.length === 0}
-                className="mt-3 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Create Workload Version Draft
-              </button>
+              <h2 className="text-lg font-semibold text-[var(--text-strong)]">Import Workload Definitions</h2>
+              <p className="mt-1 text-xs text-[var(--text-soft)]">Drag & drop a workloads.json file to bulk import workload definitions with pre-defined packages.</p>
+              <p className="mt-1 text-xs text-[var(--text-soft)]">Or click to browse.</p>
             </div>
           </div>
         </section>

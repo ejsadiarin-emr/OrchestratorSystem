@@ -132,16 +132,100 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 
 ### Step 1: Upload an artifact
 
+The Artifact Store supports three upload modes: standalone media file, single-artifact zip, and bulk zip.
+
+#### Upload Modes
+
+##### Mode 1: Standalone Media File
+
+Upload a raw installer (MSI or EXE) directly. The UI presents a form to fill in the manifest metadata manually.
+
+##### Mode 2: Single-Artifact Zip
+
+Package one installer media binary and its manifest in a zip. Both files must be at the **zip root** (no subdirectories). The installer and manifest must share the same base name:
+
+```
+my-artifact.zip
+├── Git-2.48.1-64-bit.exe              ← installer media
+└── Git-2.48.1-64-bit.manifest.json   ← manifest with same base name
+```
+
+Pairing is done by base name — `Git-2.48.1-64-bit.exe` pairs with `Git-2.48.1-64-bit.manifest.json`. If the base names don't match, the upload fails with a validation error.
+
+##### Mode 3: Bulk Zip
+
+Package multiple artifacts into one zip. Each artifact is a media file + manifest pair at the zip root, identified by shared base name:
+
+```
+artifacts-bulk.zip
+├── Git-2.48.1-64-bit.exe
+├── Git-2.48.1-64-bit.manifest.json
+├── node-v24.13.0-x64.msi
+├── node-v24.13.0-x64.manifest.json
+├── 7z2600-x64.exe
+└── 7z2600-x64.manifest.json
+```
+
+Each valid pair is ingested as a separate artifact. Invalid or unpaired files are reported as errors.
+
+#### Manifest Format
+
+The manifest (`.manifest.json`) is JSON with these fields:
+
+```json
+{
+  "packageId": "git",
+  "version": "2.48.1",
+  "channel": "stable",
+  "artifactType": "exe",
+  "verificationResult": "pass",
+  "installAdapter": {
+    "type": "exe",
+    "command": "Git-2.48.1-64-bit.exe",
+    "arguments": "/VERYSILENT /NORESTART /NOCANCEL",
+    "expectedExitCodes": [0],
+    "timeoutSeconds": 300
+  },
+  "policyTags": {
+    "retryabilityClass": "non-idempotent",
+    "idempotencyMode": "none",
+    "riskLevel": "low",
+    "approvalRequired": false
+  }
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `packageId` | Yes | Unique identifier for the package (e.g., `git`, `nodejs`) |
+| `version` | Yes | Semantic version string (e.g., `2.48.1`, `24.13.0`) |
+| `channel` | No | `stable` (default), `canary`, or `test` |
+| `artifactType` | No | `exe` or `msi`; auto-detected if omitted |
+| `installAdapter.command` | Yes | Filename or command to execute (e.g., `Git-2.48.1-64-bit.exe`) |
+| `installAdapter.type` | Yes | `exe` or `msi` |
+| `installAdapter.arguments` | No | Install command-line arguments |
+| `installAdapter.expectedExitCodes` | No | Valid exit codes (default: `[0]`) |
+| `installAdapter.timeoutSeconds` | No | Install timeout (default: `300`) |
+| `policyTags.riskLevel` | No | `low`, `medium`, `high`, or `critical` |
+| `policyTags.approvalRequired` | No | Whether a human must approve before deployment |
+| `policyTags.retryabilityClass` | No | `idempotent`, `non-idempotent`, or `conditional` |
+| `policyTags.idempotencyMode` | No | `none`, `patch`, or `replace` |
+
+#### Upload via UI
+
 1. Navigate to **Artifact Store** in the sidebar
-2. Drag-and-drop an installer file (MSI/EXE) or click to browse
-3. The system auto-analyzes the installer and prefills metadata:
+2. Choose an upload mode:
+   - **Standalone**: drag-and-drop a raw installer (MSI/EXE), then fill in the manifest form
+   - **Single zip**: drag-and-drop a zip containing one media + manifest pair
+   - **Bulk zip**: drag-and-drop a zip containing multiple artifacts
+3. For standalone uploads, the system auto-analyzes the installer and prefills metadata:
    - Package ID (defaults to filename)
    - Version
    - Channel (stable/canary/test)
    - Install adapter command
    - Detection type and path
    - Risk level
-4. Click **Ingest Artifact**
+4. Click **Ingest Artifact** (or **Ingest All** for bulk)
 5. Verify the artifact appears in the Artifact Store table
 
 ### Artifact Storage
@@ -169,21 +253,6 @@ cat -la apps/orchestrator/backend/bin/Release/net10.0/win-x64/artifacts/{package
 **Configuration:** Set `ArtifactStore:RootPath` in `appsettings.json` to customize the storage location.
 
 **Production path:** The `artifacts/` folder is created next to the running executable (e.g., `bin/Release/net10.0/win-x64/artifacts/`).
-
-<nitpicks>
-- IMPORTANT features/functions for artifact ingestion: 
-    - artifact uploading should support ZIP-FILE OR TARBALL UPLOADS as first-class (inside this zip is the artifact installer media binary AND manifest/metadata JSON file) 
-    - should also support BULK UPLOADS via zip/tarball files (ex. zip contains 5 artifacts, 1 artifact = artifact installer media binary AND manifest/metadata JSON file - with maybe same name) 
-    - retain installer-media only upload
-    - UI-wise: can update frontend UI for this to inform users about the options for ingestion/artifact upload (bulk via zip, individual via zip, standalone installer media binary like .exe)
-- should show 3 demo flows here: small and big artifact uploads (prioritize zip files for demo)
-    - for big - main goal is to show "uploading..." progress clearly
-    - for small - for faster demo purposes
-    - bulk upload - via zip (contain maybe 3-5 artifacts)
-- can improve UI:
-    - better ingest timeline progress showing UI (since this is shown every artifact ingest right?)
-    - instead of table we can to cards for showing the artifacts in "Artifact Inventory"
-</nitpicks>
 
 ### Step 2: Create a workload definition
 

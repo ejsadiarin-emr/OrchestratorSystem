@@ -89,6 +89,9 @@ builder.Services.AddTransient<IPipeline<InstallContext>>(sp =>
 
 var app = builder.Build();
 
+app.Urls.Clear();
+app.Urls.Add("http://0.0.0.0:5000");
+
 // startup cleanup: purge stale temp upload directories
 var artifactRoot = builder.Configuration["ArtifactStore:RootPath"]
     ?? Path.Combine(AppContext.BaseDirectory, "artifacts");

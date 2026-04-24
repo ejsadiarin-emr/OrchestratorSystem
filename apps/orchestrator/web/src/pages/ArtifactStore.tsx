@@ -67,6 +67,7 @@ export default function ArtifactStore() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState('')
   const [selectedArtifact, setSelectedArtifact] = useState<ArtifactRecord | null>(null)
+  const [artifactToDelete, setArtifactToDelete] = useState<ArtifactRecord | null>(null)
 
   const fetchArtifacts = useCallback(() => {
     setLoadingArtifacts(true)
@@ -638,7 +639,7 @@ export default function ArtifactStore() {
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    onClick={() => handleDelete(artifact)}
+                    onClick={() => setArtifactToDelete(artifact)}
                     disabled={deletingId === artifact.id}
                     className="text-red-600 hover:bg-red-50 hover:text-red-700"
                   >
@@ -747,6 +748,35 @@ export default function ArtifactStore() {
           <ModalFooter>
             <Button variant="outline" className="w-full" onClick={() => setSelectedArtifact(null)}>
               Close
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Confirm Delete Modal */}
+      <Modal open={artifactToDelete !== null} onOpenChange={open => !open && setArtifactToDelete(null)}>
+        <ModalContent className="w-[min(92vw,36rem)]">
+          <ModalHeader>
+            <ModalTitle>Delete Artifact</ModalTitle>
+            <ModalDescription>
+              Are you sure you want to delete {artifactToDelete?.manifest.packageId ?? ''}-{artifactToDelete?.manifest.version ?? ''}? This action cannot be undone and will remove the artifact from disk.
+            </ModalDescription>
+          </ModalHeader>
+          <ModalFooter className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setArtifactToDelete(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (artifactToDelete) {
+                  handleDelete(artifactToDelete)
+                  setArtifactToDelete(null)
+                }
+              }}
+              disabled={deletingId === artifactToDelete?.id}
+            >
+              Delete
             </Button>
           </ModalFooter>
         </ModalContent>

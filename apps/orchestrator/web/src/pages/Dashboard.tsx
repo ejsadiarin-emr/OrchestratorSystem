@@ -99,22 +99,6 @@ export default function Dashboard() {
     }
   }, [refresh])
 
-  const selectedNode = useMemo<DashboardNodeRow | null>(
-    () => data?.nodes.find(node => node.nodeId === selectedNodeId) ?? null,
-    [data?.nodes, selectedNodeId],
-  )
-
-  const selectedNodePrimaryWorkload = useMemo(() => {
-    if (!selectedNode) {
-      return null
-    }
-    return {
-      name: selectedNode.assignedWorkload,
-      revision: selectedNode.workloadRevision,
-      runState: selectedNode.runState,
-    }
-  }, [selectedNode])
-
   const workloadRows = useMemo<WorkloadRow[]>(() => buildWorkloadRows(data), [data])
 
   const filteredEvents = useMemo(() => {
@@ -391,28 +375,7 @@ export default function Dashboard() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-5 shadow-[var(--surface-shadow)]">
-            <h2 className="text-base font-semibold text-[var(--text-strong)]">Action Panel</h2>
-            {!selectedNode ? (
-              <p className="mt-3 text-sm text-[var(--text-soft)]">Select a node to enable run actions.</p>
-            ) : (
-              <div className="mt-3 space-y-3 text-sm">
-                <p className="font-medium text-[var(--text-strong)]">Selected Node: {selectedNode.nodeId}</p>
-                <p className="text-[var(--text-soft)]">
-                  Workload: {selectedNode.assignedWorkload} ({selectedNode.workloadRevision})
-                </p>
-                <p className="text-[var(--text-soft)]">
-                  Primary Run State: {selectedNodePrimaryWorkload ? selectedNodePrimaryWorkload.runState : 'n/a'}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <button className="rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-medium text-white">Start Update</button>
-                  <button className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-medium text-white">Approve Risky Update</button>
-                  <button className="rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white">Cancel Run</button>
-                  <button className="rounded-lg bg-slate-600 px-3 py-2 text-xs font-medium text-white">Open Run Timeline</button>
-                </div>
-              </div>
-            )}
-          </section>
+          
         </div>
 
         <section className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-5 shadow-[var(--surface-shadow)]">
@@ -551,15 +514,7 @@ export default function Dashboard() {
                     )}
                   </section>
 
-                  <section className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm">
-                    <p className="font-medium text-[var(--text-strong)]">Action controls</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button className="rounded-lg bg-[var(--accent)] px-3 py-2 text-xs font-medium text-white">Start Update</button>
-                      <button className="rounded-lg bg-amber-500 px-3 py-2 text-xs font-medium text-white">Approve Risky Update</button>
-                      <button className="rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white">Cancel Run</button>
-                      <button className="rounded-lg bg-slate-600 px-3 py-2 text-xs font-medium text-white">Open Run Timeline</button>
-                    </div>
-                  </section>
+                  
                 </div>
               )}
             </>

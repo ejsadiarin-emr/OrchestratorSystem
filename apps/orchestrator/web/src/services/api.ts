@@ -6,6 +6,7 @@ import type {
   ArtifactUploadRequest,
   AuditEvent,
   BulkIngestResult,
+  BulkWorkloadImportResult,
   CreateWorkloadDefinitionRequest,
   CreateWorkloadRevisionRequest,
   CreateWorkloadRunRequest,
@@ -897,6 +898,27 @@ export async function publishWorkloadRevision(workloadId: string, revisionId: st
       stepId: `step-${p.packageIndex}`,
     })),
   }
+}
+
+export async function importBulkWorkloads(file: File): Promise<BulkWorkloadImportResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const response = await fetch('/api/workloads/bulk-import', {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    let message = `Bulk import failed with status ${response.status}`
+    try {
+      const body = await response.json() as { message?: string }
+      if (body.message) message = body.message
+    } catch {}
+    throw new Error(message)
+  }
+
+  return response.json() as Promise<BulkWorkloadImportResult>
 }
 
 export async function listWorkloadRuns(status: WorkloadRunStatus | 'all' = 'all'): Promise<WorkloadRun[]> {

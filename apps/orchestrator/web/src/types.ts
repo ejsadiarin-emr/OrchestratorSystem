@@ -328,3 +328,22 @@ export interface UploadSession {
 }
 
 export type UploadProgressCallback = (loaded: number, total: number) => void
+
+export interface BulkWorkloadImportResultItem {
+  name: string
+  slug: string
+  status: 'success' | 'failed'
+  reason?: string
+}
+
+export interface BulkWorkloadImportResult {
+  results: BulkWorkloadImportResultItem[]
+}
+
+export interface WorkloadJsonEntry {
+  name: string
+  version: string
+  slug: string
+  packages: string[]
+  preUpgradeActions?: unknown[]
+}

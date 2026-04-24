@@ -233,7 +233,7 @@ export default function Dashboard() {
               <h2 className="text-base font-semibold text-[var(--text-strong)]">Nodes Live Table</h2>
               <p className="text-xs text-[var(--text-soft)]">Filters: all nodes, all workloads</p>
             </div>
-            <div className="mt-4 overflow-x-auto">
+            <div className="mt-4 overflow-visible">
               <table aria-label="Nodes Live Table" className="min-w-full divide-y divide-[var(--surface-border)] text-sm">
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-wide text-[var(--text-soft)]">
@@ -311,7 +311,7 @@ export default function Dashboard() {
                 Workloads are first-class: package and revision update pressure is tracked at workload scope.
               </p>
             </div>
-            <div className="mt-4 overflow-x-auto">
+            <div className="mt-4 overflow-visible">
               <table aria-label="Workloads Overview" className="min-w-full divide-y divide-[var(--surface-border)] text-sm">
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-wide text-[var(--text-soft)]">

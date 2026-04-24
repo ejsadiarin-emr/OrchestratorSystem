@@ -297,7 +297,7 @@ export default function WorkloadRuns() {
         {runs.length === 0 ? (
           <p className="text-sm text-[var(--text-soft)]">No runs found.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-visible">
             <table className="min-w-full border-separate border-spacing-y-2">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-wide text-[var(--text-soft)]">

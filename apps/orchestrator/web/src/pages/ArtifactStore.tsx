@@ -276,8 +276,9 @@ export default function ArtifactStore() {
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
+          onClick={() => document.getElementById('artifact-file-input')?.click()}
           className={cn(
-            'flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 transition-colors',
+            'flex flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 transition-colors cursor-pointer',
             isDragging
               ? 'border-blue-500 bg-blue-50/50'
               : 'border-[var(--surface-border)] bg-[var(--surface-subtle)] hover:border-[var(--text-soft)]'
@@ -292,7 +293,7 @@ export default function ArtifactStore() {
           />
           <label
             htmlFor="artifact-file-input"
-            className="cursor-pointer text-center"
+            className="cursor-pointer text-center pointer-events-none"
           >
             <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--accent)]/10">
               <Upload className="h-6 w-6 text-[var(--accent)]" />
@@ -300,7 +301,7 @@ export default function ArtifactStore() {
             <p className="text-sm font-medium text-[var(--text-strong)]">
               {dropzoneLabel}
             </p>
-            <p className="mt-1 text-xs text-[var(--text-soft)]">or click to browse</p>
+            <p className="mt-1 text-xs text-[var(--text-soft)]">Click to browse</p>
           </label>
         </div>
 

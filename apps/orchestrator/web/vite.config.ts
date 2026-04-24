@@ -10,6 +10,19 @@ export default defineConfig({
     }
   },
   base: './',
+  server: {
+    proxy: {
+      '^/api': {
+        target: 'http://localhost:5124',
+        changeOrigin: true,
+      },
+      '^/hubs': {
+        target: 'http://localhost:5124',
+        changeOrigin: true,
+        ws: true,
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',

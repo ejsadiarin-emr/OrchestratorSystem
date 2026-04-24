@@ -82,14 +82,6 @@ export default function Nodes() {
 
   return (
     <div className="space-y-6">
-      <header className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
-        <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-strong)]">Agent Bootstrap & Enrollment</h1>
-        <p className="mt-2 text-sm text-[var(--text-soft)]">
-          Enrollment tokens are issued with <code>POST /api/nodes/enroll</code>. Bootstrap script needs only
-          orchestrator URL and short-lived token.
-        </p>
-      </header>
-
       {error && (
         <div className="rounded-lg border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-4 py-3 text-sm text-[var(--status-danger-text)]">
           {error}

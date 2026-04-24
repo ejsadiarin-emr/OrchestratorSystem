@@ -187,31 +187,22 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <header className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-strong)]">Node Operations Overview</h1>
-          <p className="mt-2 text-sm text-[var(--text-soft)]">
-            Workload-first triage surface for node health, run actions, and node-level evidence.
-          </p>
-          <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-[var(--text-soft)]">
-            <span>Auto-refresh: every 15s</span>
-            <span>Last updated: {lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleTimeString() : 'not yet'}</span>
-          </div>
-        </div>
-        <button
-          onClick={() => refresh()}
-          disabled={refreshing}
-          className="mt-4 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)]"
-        >
-          {refreshing ? 'Refreshing...' : 'Refresh Home'}
-        </button>
-      </header>
-
       {error && (
         <div className="rounded-lg border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-4 py-3 text-sm text-[var(--status-danger-text)]">
           {error}
         </div>
       )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-[var(--text-soft)]">
+        <span>Auto-refresh: every 15s · Last updated: {lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleTimeString() : 'not yet'}</span>
+        <button
+          onClick={() => refresh()}
+          disabled={refreshing}
+          className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-strong)]"
+        >
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </button>
+      </div>
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
         <KpiCard

@@ -161,14 +161,6 @@ export default function WorkloadRuns() {
 
   return (
     <div className="space-y-6">
-      <header className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
-        <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-strong)]">Workload Runs</h1>
-        <p className="mt-2 text-sm text-[var(--text-soft)]">
-          Runtime flow uses <code>AssignRun</code> and <code>/api/workload-runs*</code> contracts. Timeline shows package index,
-          step id, sequence, and status.
-        </p>
-      </header>
-
       {error && (
         <div className="rounded-lg border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-4 py-3 text-sm text-[var(--status-danger-text)]">
           {error}

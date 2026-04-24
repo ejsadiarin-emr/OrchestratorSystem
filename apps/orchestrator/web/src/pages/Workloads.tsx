@@ -246,13 +246,14 @@ export default function Workloads() {
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         <section
+          onClick={() => setIsDraftModalOpen(true)}
           onDragOver={e => handleDragOver(e, 'workloadDefinition')}
           onDragLeave={handleDragLeave}
           onDrop={e => handleDrop(e, 'workloadDefinition')}
-          className={`rounded-2xl border-2 border-dashed p-6 shadow-[var(--surface-shadow)] transition-colors ${
+          className={`rounded-2xl border-2 border-dashed p-6 shadow-[var(--surface-shadow)] transition-colors cursor-pointer ${
             isDragging && dropMode === 'workloadDefinition'
               ? 'border-blue-500 bg-blue-50/50'
-              : 'border-[var(--surface-border)] bg-[var(--surface)]'
+              : 'border-[var(--surface-border)] bg-[var(--surface)] hover:border-[var(--text-soft)]'
           }`}
         >
           <div className="flex items-center gap-3">
@@ -262,6 +263,7 @@ export default function Workloads() {
             <div>
               <h2 className="text-lg font-semibold text-[var(--text-strong)]">Import Workload Definitions</h2>
               <p className="mt-1 text-xs text-[var(--text-soft)]">Drag & drop a workloads.json file to bulk import workload definitions with pre-defined packages.</p>
+              <p className="mt-1 text-xs text-[var(--text-soft)]">Or click to browse.</p>
             </div>
           </div>
         </section>

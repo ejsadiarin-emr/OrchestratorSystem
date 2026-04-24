@@ -4,6 +4,7 @@ using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Data.Entities;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace DeploymentPoC.Orchestrator.Controllers;
@@ -319,4 +320,167 @@ public sealed class WorkloadsController : ControllerBase
             Errors = errors
         };
     }
+
+    [HttpPost("bulk-import")]
+    [DisableRequestSizeLimit]
+    public async Task<ActionResult<BulkImportResponse>> BulkImport(IFormFile file)
+    {
+        if (file is null || file.Length == 0)
+        {
+            return BadRequest(new { message = "File is required" });
+        }
+
+        var fileName = file.FileName.ToLowerInvariant();
+        if (!fileName.EndsWith(".json") && !fileName.EndsWith(".jsonc"))
+        {
+            return BadRequest(new { message = "Only .json or .jsonc files are accepted" });
+        }
+
+        try
+        {
+            using var reader = new StreamReader(file.OpenReadStream());
+            var content = await reader.ReadToEndAsync();
+            var workloads = System.Text.Json.JsonSerializer.Deserialize<List<WorkloadImportModel>>(content, new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            if (workloads is null || workloads.Count == 0)
+            {
+                return BadRequest(new { message = "No workload definitions found in file" });
+            }
+
+            var results = new List<BulkImportResultItem>();
+            var now = DateTime.UtcNow;
+
+            foreach (var w in workloads)
+            {
+                if (string.IsNullOrWhiteSpace(w.Name) || string.IsNullOrWhiteSpace(w.Slug))
+                {
+                    results.Add(new BulkImportResultItem
+                    {
+                        Name = w.Name ?? "unknown",
+                        Slug = w.Slug ?? "unknown",
+                        Status = "failed",
+                        Reason = "Name and slug are required"
+                    });
+                    continue;
+                }
+
+                if (w.Packages is null || w.Packages.Count < 2 || w.Packages.Count > 3)
+                {
+                    results.Add(new BulkImportResultItem
+                    {
+                        Name = w.Name,
+                        Slug = w.Slug,
+                        Status = "failed",
+                        Reason = "Workloads must have 2-3 packages"
+                    });
+                    continue;
+                }
+
+                var workload = new WorkloadDefinitionEntity
+                {
+                    WorkloadId = Guid.NewGuid(),
+                    Name = w.Name.Trim(),
+                    Description = string.IsNullOrWhiteSpace(w.Description) ? null : w.Description.Trim(),
+                    CreatedAtUtc = now,
+                    UpdatedAtUtc = now
+                };
+
+                _db.WorkloadDefinitions.Add(workload);
+
+                var revision = new WorkloadRevisionEntity
+                {
+                    RevisionId = Guid.NewGuid(),
+                    WorkloadId = workload.WorkloadId,
+                    Version = string.IsNullOrWhiteSpace(w.Version) ? "1.0.0" : w.Version.Trim(),
+                    IsPublished = true,
+                    CreatedAtUtc = now
+                };
+
+                _db.WorkloadRevisions.Add(revision);
+                workload.PublishedRevisionId = revision.RevisionId;
+
+                for (int i = 0; i < w.Packages.Count; i++)
+                {
+                    var packageSlug = w.Packages[i];
+                    var existingPackage = await _db.Packages
+                        .Where(p => p.Name == packageSlug)
+                        .FirstOrDefaultAsync();
+
+                    if (existingPackage is null)
+                    {
+                        var packageEntity = new PackageEntity
+                        {
+                            PackageId = Guid.NewGuid(),
+                            Name = packageSlug,
+                            Version = "1.0.0",
+                            SourcePath = $"{packageSlug}/1.0.0/artifact.bin",
+                            InstallType = "unknown",
+                            InstallArgs = "",
+                            CreatedAtUtc = now
+                        };
+                        _db.Packages.Add(packageEntity);
+
+                        revision.Packages.Add(new WorkloadPackageEntity
+                        {
+                            WorkloadPackageId = Guid.NewGuid(),
+                            RevisionId = revision.RevisionId,
+                            PackageId = packageEntity.PackageId,
+                            PackageIndex = i + 1
+                        });
+                    }
+                    else
+                    {
+                        revision.Packages.Add(new WorkloadPackageEntity
+                        {
+                            WorkloadPackageId = Guid.NewGuid(),
+                            RevisionId = revision.RevisionId,
+                            PackageId = existingPackage.PackageId,
+                            PackageIndex = i + 1
+                        });
+                    }
+                }
+
+                results.Add(new BulkImportResultItem
+                {
+                    Name = w.Name,
+                    Slug = w.Slug,
+                    Status = "success"
+                });
+            }
+
+            await _db.SaveChangesAsync();
+
+            return Ok(new BulkImportResponse { Results = results });
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            return BadRequest(new { message = $"Invalid JSON format: {ex.Message}" });
+        }
+    }
+}
+
+public sealed class WorkloadImportModel
+{
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string Version { get; set; } = "1.0.0";
+    public string Slug { get; set; } = string.Empty;
+    public List<string> Packages { get; set; } = new();
+    public List<object>? PreUpgradeActions { get; set; }
+}
+
+public sealed class BulkImportResponse
+{
+    public List<BulkImportResultItem> Results { get; set; } = new();
+}
+
+public sealed class BulkImportResultItem
+{
+    public string Name { get; set; } = string.Empty;
+    public string Slug { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string? Reason { get; set; }
 }

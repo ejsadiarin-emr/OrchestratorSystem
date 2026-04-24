@@ -1,0 +1,20 @@
+{
+  "packageId": "7zip",
+  "version": "26.00",
+  "channel": "stable",
+  "artifactType": "exe",
+  "verificationResult": "pass",
+  "installAdapter": {
+    "type": "exe",
+    "command": "7z2600-x64.exe",
+    "arguments": "/S /D=C:\\Program Files\\7-Zip",
+    "expectedExitCodes": [0],
+    "timeoutSeconds": 120
+  },
+  "policyTags": {
+    "retryabilityClass": "non-idempotent",
+    "idempotencyMode": "none",
+    "riskLevel": "low",
+    "approvalRequired": false
+  }
+}

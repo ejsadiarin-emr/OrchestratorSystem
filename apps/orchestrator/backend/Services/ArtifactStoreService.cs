@@ -32,6 +32,11 @@ public sealed class ArtifactStoreService
         return File.Exists(GetArtifactPath(packageId, version));
     }
 
+    public bool ExistsAny(string packageId, string version)
+    {
+        return File.Exists(GetArtifactPath(packageId, version)) || File.Exists(GetManifestPath(packageId, version));
+    }
+
     public bool DeleteArtifactAsync(string packageId, string version)
     {
         try
@@ -97,6 +102,21 @@ public sealed class ArtifactStoreService
         var (actualPackageId, actualVersion) = GetUniquePath(packageId, version);
         var manifestPath = GetManifestPath(actualPackageId, actualVersion);
         Directory.CreateDirectory(Path.GetDirectoryName(manifestPath)!);
+        await File.WriteAllTextAsync(manifestPath, manifestJson, Encoding.UTF8, cancellationToken);
+    }
+
+    public async Task SaveArtifactAndManifestAsync(string packageId, string version, Stream artifactStream, string manifestJson, CancellationToken cancellationToken = default)
+    {
+        var (actualPackageId, actualVersion) = GetUniquePath(packageId, version);
+        var artifactPath = GetArtifactPath(actualPackageId, actualVersion);
+        var manifestPath = GetManifestPath(actualPackageId, actualVersion);
+        var versionDir = Path.GetDirectoryName(artifactPath)!;
+        Directory.CreateDirectory(versionDir);
+
+        await using var file = File.Create(artifactPath);
+        artifactStream.Position = 0;
+        await artifactStream.CopyToAsync(file, cancellationToken);
+
         await File.WriteAllTextAsync(manifestPath, manifestJson, Encoding.UTF8, cancellationToken);
     }
 
@@ -181,38 +201,55 @@ public sealed class ArtifactStoreService
 
                 var manifestPath = Path.Combine(versionDir, "resolved-manifest.json");
                 var artifactPath = Path.Combine(versionDir, "artifact.bin");
-                if (!File.Exists(manifestPath) || !File.Exists(artifactPath))
+                var hasManifest = File.Exists(manifestPath);
+                var hasArtifact = File.Exists(artifactPath);
+
+                if (!hasManifest && !hasArtifact)
                 {
                     continue;
                 }
 
                 try
                 {
-                    var manifestJson = File.ReadAllText(manifestPath, Encoding.UTF8);
-                    var manifest = System.Text.Json.JsonSerializer.Deserialize<ResolvedManifestSummary>(manifestJson, new System.Text.Json.JsonSerializerOptions
+                    ResolvedManifestSummary? manifest = null;
+                    if (hasManifest)
                     {
-                        PropertyNameCaseInsensitive = true
-                    });
+                        var manifestJson = File.ReadAllText(manifestPath, Encoding.UTF8);
+                        manifest = System.Text.Json.JsonSerializer.Deserialize<ResolvedManifestSummary>(manifestJson, new System.Text.Json.JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
+                    }
 
                     long size = 0;
-                    try
+                    if (hasArtifact)
                     {
-                        size = new FileInfo(artifactPath).Length;
-                    }
-                    catch
-                    {
-                        // ignore size read failures
+                        try
+                        {
+                            size = new FileInfo(artifactPath).Length;
+                        }
+                        catch
+                        {
+                            // ignore size read failures
+                        }
                     }
 
                     string? digest = null;
-                    try
+                    if (hasArtifact)
                     {
-                        digest = ComputeSha256(packageId, version);
+                        try
+                        {
+                            digest = ComputeSha256(packageId, version);
+                        }
+                        catch
+                        {
+                            // ignore digest compute failures
+                        }
                     }
-                    catch
-                    {
-                        // ignore digest compute failures
-                    }
+
+                    var createdAt = hasArtifact
+                        ? File.GetCreationTimeUtc(artifactPath)
+                        : (hasManifest ? File.GetCreationTimeUtc(manifestPath) : DateTime.UtcNow);
 
                     results.Add(new ArtifactListItem
                     {
@@ -225,11 +262,12 @@ public sealed class ArtifactStoreService
                         VerificationResult = manifest?.OriginMetadata?.VerificationResult,
                         SizeBytes = size,
                         Digest = digest,
-                        CreatedAt = File.GetCreationTimeUtc(artifactPath).ToString("O"),
+                        CreatedAt = createdAt.ToString("O"),
                         InstallAdapterCommand = manifest?.InstallAdapter?.Command,
                         DetectionType = manifest?.Detection?.Type,
                         DetectionPath = manifest?.Detection?.Path,
                         RiskLevel = manifest?.PolicyTags?.RiskLevel,
+                        IsIncomplete = !hasManifest || !hasArtifact,
                     });
                 }
                 catch
@@ -259,6 +297,7 @@ public sealed class ArtifactStoreService
         public string? DetectionPath { get; set; }
         public string? RiskLevel { get; set; }
         public Guid? PackageEntityId { get; set; }
+        public bool IsIncomplete { get; set; }
     }
 
     private sealed class ResolvedManifestSummary

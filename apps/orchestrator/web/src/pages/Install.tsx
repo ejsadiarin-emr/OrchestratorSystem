@@ -158,15 +158,6 @@ export default function Install() {
 
   return (
     <div className="space-y-6">
-      <header className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
-        <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-strong)]">Artifact Store Console</h1>
-        <p className="mt-2 text-sm text-[var(--text-soft)]">
-          Stage local artifacts for workload revisions with one mocked multipart POST to
-          <code> /api/artifacts</code> using required <code>file</code>, required <code>manifest</code>, and optional
-          <code> detachedSignature</code>.
-        </p>
-      </header>
-
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="space-y-5 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)] xl:col-span-2">
           <h2 className="text-lg font-semibold text-[var(--text-strong)]">Ingest Artifact</h2>

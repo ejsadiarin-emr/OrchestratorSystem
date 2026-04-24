@@ -27,15 +27,6 @@ export default function CommandCenter() {
 
   return (
     <div className="space-y-6">
-      <header className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[var(--text-strong)]">Command Center</h1>
-          <p className="mt-2 text-sm text-[var(--text-soft)]">
-            Real-time orchestration dashboard with execution metrics and log inspection.
-          </p>
-        </div>
-      </header>
-
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-4">
         {metrics.map((metric, idx) => (
           <MetricCard key={metric.label} label={metric.label} value={metric.value} index={idx} />

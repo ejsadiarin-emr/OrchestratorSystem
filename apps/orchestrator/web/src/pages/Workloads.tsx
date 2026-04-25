@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   createWorkloadRevision,
+  deleteWorkload,
+  getWorkload,
   importBulkWorkloads,
   listArtifacts,
   listWorkloadRevisions,
@@ -9,7 +11,7 @@ import {
 } from '../services/api'
 import { Modal, ModalContent, ModalDescription, ModalFooter, ModalHeader, ModalTitle } from '../components/ui/modal'
 import type { ArtifactRecord, WorkloadDefinition, WorkloadRevision, BulkWorkloadImportResultItem } from '../types'
-import { Upload, FileJson, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
+import { Upload, FileJson, AlertTriangle, CheckCircle2, XCircle, Trash2 } from 'lucide-react'
 
 interface RevisionForm {
   workloadId: string
@@ -37,7 +39,12 @@ export default function Workloads() {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [isRevisionModalOpen, setIsRevisionModalOpen] = useState(false)
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
+  const [detailWorkload, setDetailWorkload] = useState<(WorkloadDefinition & { revisions: WorkloadRevision[] }) | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
   const [dropMode, setDropMode] = useState<DropMode>(null)
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [workloadToDelete, setWorkloadToDelete] = useState<WorkloadDefinition | null>(null)
 
   // Drag-drop state for bulk workloads
   const [bulkFile, setBulkFile] = useState<File | null>(null)
@@ -59,13 +66,14 @@ export default function Workloads() {
     setWorkloads(workloadData)
     setArtifacts(artifactData)
 
-    const fallbackWorkloadId = activeWorkloadId || selectedWorkloadId || workloadData[0]?.id || ''
-    setSelectedWorkloadId(fallbackWorkloadId)
+    const fallbackWorkloadId = activeWorkloadId !== undefined ? activeWorkloadId : (selectedWorkloadId || workloadData[0]?.id || '')
+    const validWorkloadId = workloadData.some(w => w.id === fallbackWorkloadId) ? fallbackWorkloadId : (workloadData[0]?.id || '')
+    setSelectedWorkloadId(validWorkloadId)
 
-    if (fallbackWorkloadId) {
-      const revisionData = await listWorkloadRevisions(fallbackWorkloadId)
+    if (validWorkloadId) {
+      const revisionData = await listWorkloadRevisions(validWorkloadId)
       setRevisions(revisionData)
-      setRevisionForm(current => ({ ...current, workloadId: fallbackWorkloadId }))
+      setRevisionForm(current => ({ ...current, workloadId: validWorkloadId }))
     } else {
       setRevisions([])
       setRevisionForm(current => ({ ...current, workloadId: '' }))
@@ -162,6 +170,22 @@ export default function Workloads() {
     }
   }
 
+  const onDeleteWorkload = async () => {
+    if (!workloadToDelete) return
+    setError(null)
+    setMessage(null)
+
+    try {
+      await deleteWorkload(workloadToDelete.id)
+      await refresh('')
+      setMessage(`Deleted workload "${workloadToDelete.name}".`)
+      setIsDeleteModalOpen(false)
+      setWorkloadToDelete(null)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Failed to delete workload.')
+    }
+  }
+
   const handleDragOver = (e: React.DragEvent, mode: DropMode) => {
     e.preventDefault()
     setIsDragging(true)
@@ -243,6 +267,20 @@ export default function Workloads() {
     setIsDragging(false)
     setDropMode(null)
   }, [])
+
+  const openWorkloadDetail = async (workloadId: string) => {
+    setDetailWorkload(null)
+    setDetailLoading(true)
+    setIsDetailModalOpen(true)
+    try {
+      const workload = await getWorkload(workloadId)
+      setDetailWorkload(workload)
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Failed to load workload details.')
+    } finally {
+      setDetailLoading(false)
+    }
+  }
 
   if (loading) {
     return <div className="text-center py-8">Loading...</div>
@@ -431,6 +469,107 @@ export default function Workloads() {
         </ModalContent>
       </Modal>
 
+      <Modal open={isDetailModalOpen} onOpenChange={setIsDetailModalOpen}>
+        <ModalContent className="w-[min(92vw,40rem)] max-h-[90vh] overflow-y-auto">
+          <ModalHeader>
+            <ModalTitle>Workload details</ModalTitle>
+            {detailWorkload && (
+              <ModalDescription>{detailWorkload.name}</ModalDescription>
+            )}
+          </ModalHeader>
+          {detailLoading && (
+            <div className="px-4 pb-4 text-sm text-[var(--text-soft)]">Loading...</div>
+          )}
+          {!detailLoading && detailWorkload && (
+            <div className="space-y-4 px-4 pb-4">
+              <section className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm text-[var(--text-soft)]">
+                <p>
+                  Description:{' '}
+                  <span className="font-medium text-[var(--text-strong)]">
+                    {detailWorkload.description || '-'}
+                  </span>
+                </p>
+                <p className="mt-1">
+                  Created:{' '}
+                  <span className="font-medium text-[var(--text-strong)]">
+                    {new Date(detailWorkload.createdAt).toLocaleString()}
+                  </span>
+                </p>
+                <p className="mt-1">
+                  Revisions:{' '}
+                  <span className="font-medium text-[var(--text-strong)]">
+                    {detailWorkload.revisions.length}
+                  </span>
+                </p>
+              </section>
+
+              <section className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm">
+                <p className="font-medium text-[var(--text-strong)]">Revisions</p>
+                {detailWorkload.revisions.length === 0 ? (
+                  <p className="mt-2 text-[var(--text-soft)]">No revisions yet.</p>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    {detailWorkload.revisions.map(revision => (
+                      <div key={revision.id} className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-medium text-[var(--text-strong)]">
+                            {revision.revision}
+                          </p>
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                            revision.state === 'published'
+                              ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-text)]'
+                              : 'border-[var(--surface-border)] bg-[var(--surface-muted)] text-[var(--text-soft)]'
+                          }`}>
+                            {revision.state}
+                          </span>
+                        </div>
+                        <div className="mt-2 space-y-1">
+                          {revision.packageSteps.map(step => (
+                            <p key={step.stepId} className="text-xs text-[var(--text-soft)]">
+                              {step.packageIndex}. {step.packageName} {step.packageVersion}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+        </ModalContent>
+      </Modal>
+
+      <Modal open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen}>
+        <ModalContent className="w-[min(92vw,28rem)]">
+          <ModalHeader>
+            <ModalTitle>Delete Workload</ModalTitle>
+            <ModalDescription>
+              Are you sure you want to delete "{workloadToDelete?.name}"? This will remove all revisions, runs, and node states associated with this workload. This action cannot be undone.
+            </ModalDescription>
+          </ModalHeader>
+          <ModalFooter className="px-4 pb-4 pt-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setIsDeleteModalOpen(false)
+                setWorkloadToDelete(null)
+              }}
+              className="rounded-lg border border-[var(--surface-border)] px-4 py-2 text-sm text-[var(--text-soft)] hover:bg-[var(--surface-subtle)]"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onDeleteWorkload}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+            >
+              Delete
+            </button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
       <section className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
         <h2 className="text-lg font-semibold text-[var(--text-strong)]">Definitions and Latest Revision</h2>
         <div className="mt-4 overflow-x-auto">
@@ -441,11 +580,16 @@ export default function Workloads() {
                 <th className="px-4 py-3">Description</th>
                 <th className="px-4 py-3">Latest Revision</th>
                 <th className="px-4 py-3">Revision Status</th>
+                <th className="px-4 py-3">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--surface-border)] text-sm">
               {workloads.map(item => (
-                <tr key={item.id}>
+                <tr
+                  key={item.id}
+                  onClick={() => openWorkloadDetail(item.id)}
+                  className="cursor-pointer hover:bg-[var(--surface-subtle)]"
+                >
                   <td className="px-4 py-3 font-medium text-[var(--text-strong)]">{item.name}</td>
                   <td className="px-4 py-3 text-[var(--text-soft)]">{item.description}</td>
                   <td className="px-4 py-3 text-[var(--text-soft)]">{item.latestRevision?.revision ?? 'No revision yet'}</td>
@@ -453,6 +597,19 @@ export default function Workloads() {
                     <span className="rounded-full bg-[var(--surface-muted)] px-2 py-1 text-xs text-[var(--text-soft)]">
                       {item.latestRevision?.state ?? 'n/a'}
                     </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={e => {
+                        e.stopPropagation()
+                        setWorkloadToDelete(item)
+                        setIsDeleteModalOpen(true)
+                      }}
+                      className="rounded-lg p-1.5 text-[var(--text-soft)] hover:bg-red-50 hover:text-red-600"
+                      title="Delete workload"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </td>
                 </tr>
               ))}

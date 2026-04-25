@@ -201,7 +201,42 @@ public sealed class WorkloadRunsController : ControllerBase
             .OrderBy(p => p.PackageIndex)
             .Select(wp =>
             {
+                const string artifactPath = "{artifactPath}";
                 var pkg = packageEntities.FirstOrDefault(p => p.PackageId == wp.PackageId);
+                var installType = pkg?.InstallType ?? "exe";
+                var isMsi = string.Equals(installType, "msi", StringComparison.OrdinalIgnoreCase);
+                string command;
+                string arguments;
+                if (isMsi)
+                {
+                    command = "msiexec.exe";
+                    arguments = $"/i \"{artifactPath}\" {pkg?.InstallArgs ?? ""}";
+                }
+                else
+                {
+                    command = artifactPath;
+                    arguments = pkg?.InstallArgs ?? "";
+                }
+
+                var expectedExitCodes = new List<int>();
+                if (!string.IsNullOrWhiteSpace(pkg?.ExpectedExitCodesJson))
+                {
+                    try
+                    {
+                        expectedExitCodes = JsonSerializer.Deserialize<List<int>>(pkg.ExpectedExitCodesJson) ?? new List<int>();
+                    }
+                    catch (JsonException)
+                    {
+                        expectedExitCodes = new List<int>();
+                    }
+                }
+
+                if (expectedExitCodes.Count == 0)
+                {
+                    expectedExitCodes = isMsi ? new List<int> { 0, 3010 } : new List<int> { 0 };
+                }
+
+                var timeoutSeconds = pkg?.TimeoutSeconds > 0 ? pkg.TimeoutSeconds : 300;
                 return new PackageAssignment
                 {
                     PackageIndex = wp.PackageIndex,
@@ -210,16 +245,16 @@ public sealed class WorkloadRunsController : ControllerBase
                     Channel = "stable",
                     InstallAdapter = new InstallAdapterConfig
                     {
-                        Type = pkg?.InstallType ?? "exe",
-                        Command = pkg?.SourcePath ?? "",
-                        Arguments = pkg?.InstallArgs ?? "",
-                        ExpectedExitCodes = new List<int> { 0 },
-                        TimeoutSeconds = 300
+                        Type = installType,
+                        Command = command,
+                        Arguments = arguments,
+                        ExpectedExitCodes = expectedExitCodes,
+                        TimeoutSeconds = timeoutSeconds
                     },
                     Detection = new DetectionConfig
                     {
                         Type = "file",
-                        Path = pkg?.SourcePath ?? "",
+                        Path = pkg?.Name ?? "",
                         ExpectedVersion = pkg?.Version ?? ""
                     }
                 };

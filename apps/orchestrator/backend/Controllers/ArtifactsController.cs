@@ -117,6 +117,9 @@ public sealed class ArtifactsController : ControllerBase
                     SourcePath = result.ResolvedManifest.InstallAdapter?.Command ?? string.Empty,
                     InstallType = result.ResolvedManifest.ArtifactType ?? "msi",
                     InstallArgs = result.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
+                    ExpectedExitCodesJson = JsonSerializer.Serialize(
+                        result.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
+                    TimeoutSeconds = result.ResolvedManifest.InstallAdapter?.TimeoutSeconds ?? 300,
                     CreatedAtUtc = DateTime.UtcNow
                 });
                 await _db.SaveChangesAsync(HttpContext.RequestAborted);
@@ -197,6 +200,9 @@ public sealed class ArtifactsController : ControllerBase
                 SourcePath = ingestResult.ResolvedManifest.InstallAdapter?.Command ?? string.Empty,
                 InstallType = ingestResult.ResolvedManifest.ArtifactType ?? "msi",
                 InstallArgs = ingestResult.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
+                ExpectedExitCodesJson = JsonSerializer.Serialize(
+                    ingestResult.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
+                TimeoutSeconds = ingestResult.ResolvedManifest.InstallAdapter?.TimeoutSeconds ?? 300,
                 CreatedAtUtc = DateTime.UtcNow
             });
             await _db.SaveChangesAsync(HttpContext.RequestAborted);
@@ -297,6 +303,9 @@ public sealed class ArtifactsController : ControllerBase
                     SourcePath = result.ResolvedManifest.InstallAdapter?.Command ?? string.Empty,
                     InstallType = result.ResolvedManifest.ArtifactType ?? "msi",
                     InstallArgs = result.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
+                    ExpectedExitCodesJson = JsonSerializer.Serialize(
+                        result.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
+                    TimeoutSeconds = result.ResolvedManifest.InstallAdapter?.TimeoutSeconds ?? 300,
                     CreatedAtUtc = DateTime.UtcNow
                 });
                 await _db.SaveChangesAsync(HttpContext.RequestAborted);
@@ -539,6 +548,9 @@ public sealed class ArtifactsController : ControllerBase
                 SourcePath = result.ResolvedManifest.InstallAdapter?.Command ?? string.Empty,
                 InstallType = result.ResolvedManifest.ArtifactType ?? "msi",
                 InstallArgs = result.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
+                ExpectedExitCodesJson = JsonSerializer.Serialize(
+                    result.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
+                TimeoutSeconds = result.ResolvedManifest.InstallAdapter?.TimeoutSeconds ?? 300,
                 CreatedAtUtc = DateTime.UtcNow
             });
             await _db.SaveChangesAsync(HttpContext.RequestAborted);

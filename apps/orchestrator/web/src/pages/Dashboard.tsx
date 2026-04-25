@@ -316,7 +316,7 @@ export default function Dashboard() {
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-wide text-[var(--text-soft)]">
                     <th scope="col" className="px-3 py-2">Workload</th>
-                    <th scope="col" className="px-3 py-2">Version</th>
+                    <th scope="col" className="px-3 py-2">Revision</th>
                     <th scope="col" className="px-3 py-2">Nodes Assigned</th>
                     <th scope="col" className="px-3 py-2">
                       <div className="flex items-center gap-1">
@@ -543,7 +543,7 @@ export default function Dashboard() {
                 <div className="space-y-4 px-4 pb-4">
                   <section className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm text-[var(--text-soft)]">
                     <p>
-                      Version:{' '}
+                      Revision:{' '}
                       <span className="font-medium text-[var(--text-strong)]">{drawerWorkload.revisionsLabel}</span>
                     </p>
                     <p className="mt-1">

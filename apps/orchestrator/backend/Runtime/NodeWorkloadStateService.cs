@@ -114,7 +114,7 @@ public sealed class NodeWorkloadStateService
             run.UpdatedAtUtc = DateTime.UtcNow;
         }
 
-        await UpdateNodeWorkloadStateStatusAsync(db, nodeId, runId, "completed");
+        await UpdateNodeWorkloadStateStatusAsync(db, nodeId, runId, "completed", setCurrentRevision: true);
         await AddTimelineEntryAsync(db, runId, nodeId, MessageTypes.Complete, envelope.Sequence, detail: "Run completed successfully");
 
         _logger.LogInformation("Complete processed: RunId={RunId}, NodeId={NodeId}", runId, nodeId);
@@ -187,7 +187,6 @@ public sealed class NodeWorkloadStateService
             {
                 NodeId = nodeId,
                 WorkloadId = run.WorkloadId,
-                CurrentRevisionId = run.RevisionId,
                 PackageStatesJson = "{}",
                 UpdatedAtUtc = DateTime.UtcNow
             };
@@ -195,7 +194,6 @@ public sealed class NodeWorkloadStateService
         }
         else
         {
-            state.CurrentRevisionId = run.RevisionId;
             state.UpdatedAtUtc = DateTime.UtcNow;
         }
     }
@@ -228,7 +226,7 @@ public sealed class NodeWorkloadStateService
         state.UpdatedAtUtc = DateTime.UtcNow;
     }
 
-    private static async Task UpdateNodeWorkloadStateStatusAsync(InstallerDbContext db, Guid nodeId, Guid runId, string status)
+    private static async Task UpdateNodeWorkloadStateStatusAsync(InstallerDbContext db, Guid nodeId, Guid runId, string status, bool setCurrentRevision = false)
     {
         var run = await db.WorkloadRuns.FirstOrDefaultAsync(r => r.RunId == runId && r.NodeId == nodeId);
         if (run is null)
@@ -241,6 +239,10 @@ public sealed class NodeWorkloadStateService
 
         if (state is not null)
         {
+            if (setCurrentRevision)
+            {
+                state.CurrentRevisionId = run.RevisionId;
+            }
             state.UpdatedAtUtc = DateTime.UtcNow;
         }
     }

@@ -759,6 +759,51 @@ export async function listWorkloads(): Promise<WorkloadDefinition[]> {
   }))
 }
 
+export async function getWorkload(workloadId: string): Promise<WorkloadDefinition & { revisions: WorkloadRevision[] }> {
+  const response = await fetch(`/api/workloads/${workloadId}`)
+  if (!response.ok) {
+    throw new Error(`Failed to load workload: ${response.status}`)
+  }
+  const data = await response.json() as {
+    workloadId: string
+    name: string
+    description: string | null
+    publishedRevisionId: string | null
+    createdAtUtc: string
+    updatedAtUtc: string
+    revisions: Array<{
+      revisionId: string
+      version: string
+      isPublished: boolean
+      createdAtUtc: string
+      packages: Array<{ packageId: string; packageIndex: number; packageName: string; packageVersion: string }>
+    }>
+  }
+  const revisions = data.revisions.map(r => ({
+    id: r.revisionId,
+    workloadId: data.workloadId,
+    revision: r.version,
+    state: r.isPublished ? ('published' as const) : ('draft' as const),
+    createdAt: r.createdAtUtc,
+    publishedAt: r.isPublished ? r.createdAtUtc : undefined,
+    packageSteps: r.packages.map(p => ({
+      packageId: p.packageId,
+      packageName: p.packageName,
+      packageVersion: p.packageVersion,
+      packageIndex: p.packageIndex,
+      stepId: `step-${p.packageIndex}`,
+    })),
+  }))
+  return {
+    id: data.workloadId,
+    name: data.name,
+    description: data.description ?? '',
+    createdAt: data.createdAtUtc,
+    latestRevision: revisions.find(r => r.state === 'published') ?? revisions[0] ?? undefined,
+    revisions,
+  }
+}
+
 export async function listWorkloadRevisions(workloadId: string): Promise<WorkloadRevision[]> {
   const response = await fetch(`/api/workloads/${workloadId}`)
   if (!response.ok) {
@@ -926,6 +971,15 @@ export async function publishWorkloadRevision(workloadId: string, revisionId: st
       packageIndex: p.packageIndex,
       stepId: `step-${p.packageIndex}`,
     })),
+  }
+}
+
+export async function deleteWorkload(workloadId: string): Promise<void> {
+  const response = await fetch(`/api/workloads/${workloadId}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`Failed to delete workload: ${response.status}`)
   }
 }
 

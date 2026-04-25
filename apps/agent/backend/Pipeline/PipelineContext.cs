@@ -10,6 +10,8 @@ public sealed class PipelineContext
     public required string RunId { get; init; }
     public required int Sequence { get; init; }
 
+    public List<PackageAssignment> CurrentPackages { get; set; } = new();
+
     public List<StepRecord> StepHistory { get; } = new();
 
     public void RecordStep(string stepName, int packageIndex, string packageId, bool success, string? error = null)

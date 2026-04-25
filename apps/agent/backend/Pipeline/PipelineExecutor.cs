@@ -24,18 +24,60 @@ public class PipelineExecutor
         var http = _httpClientFactory.CreateClient();
         var acquire = new AcquireArtifact(http);
 
-        var packages = context.Payload.Packages
+        var targetPackages = context.Payload.Packages
             .OrderBy(p => p.PackageIndex)
             .ToList();
 
+        var diff = DiffEngine.ComputeDiff(context.CurrentPackages, targetPackages);
+        var added = diff.Added;
+        var removed = diff.Removed;
+        var changed = diff.Changed;
+        var unchanged = diff.Unchanged;
+
         _logger.LogInformation(
-            "Pipeline starting: RunId={RunId}, Workload={WorkloadName}, Mode={Mode}, Packages={PackageCount}",
+            "Pipeline diff computed: Added={Added}, Removed={Removed}, Changed={Changed}, Unchanged={Unchanged}",
+            added.Count,
+            removed.Count,
+            changed.Count,
+            unchanged.Count);
+
+        _logger.LogInformation(
+            "Pipeline starting: RunId={RunId}, Workload={WorkloadName}, Mode={Mode}, TargetPackages={PackageCount}",
             context.RunId,
             context.Payload.WorkloadName,
             context.Payload.Mode,
-            packages.Count);
+            targetPackages.Count);
 
-        foreach (var package in packages)
+        // Phase 1: Uninstall removed packages in reverse PackageIndex order
+        foreach (var package in removed.OrderByDescending(p => p.PackageIndex))
+        {
+            var stepCt = CancellationTokenSource.CreateLinkedTokenSource(ct).Token;
+
+            _logger.LogInformation(
+                "Step UninstallPackage: PackageIndex={PackageIndex}, PackageId={PackageId}",
+                package.PackageIndex,
+                package.PackageId);
+
+            var uninstallResult = await UninstallPackage.ExecuteAsync(package.InstallAdapter, stepCt);
+            await SendStepStatusAsync(sendMessageAsync, context, "UninstallPackage", package, uninstallResult.Success, uninstallResult.Error);
+            context.RecordStep("UninstallPackage", package.PackageIndex, package.PackageId, uninstallResult.Success, uninstallResult.Error);
+
+            if (!uninstallResult.Success)
+            {
+                _logger.LogError(
+                    "Pipeline halted at UninstallPackage: PackageIndex={PackageIndex}, Error={Error}",
+                    package.PackageIndex,
+                    uninstallResult.Error);
+                return await FinalizeAsync(sendMessageAsync, context, ct);
+            }
+        }
+
+        // Phase 2: Install added and changed packages in normal PackageIndex order
+        var packagesToInstall = added.Concat(changed)
+            .OrderBy(p => p.PackageIndex)
+            .ToList();
+
+        foreach (var package in packagesToInstall)
         {
             var stepCt = CancellationTokenSource.CreateLinkedTokenSource(ct).Token;
 

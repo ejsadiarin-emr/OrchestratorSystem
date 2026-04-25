@@ -140,6 +140,7 @@ public sealed class WorkloadRunsController : ControllerBase
             .Where(n => distinctNodeIds.Contains(n.NodeId))
             .ToDictionaryAsync(n => n.NodeId);
 
+        var currentPackagesByNode = new Dictionary<Guid, List<PackageAssignment>>();
         var created = new List<WorkloadRunEntity>();
         foreach (var nodeId in distinctNodeIds)
         {
@@ -161,6 +162,27 @@ public sealed class WorkloadRunsController : ControllerBase
                 CreatedAtUtc = now,
                 UpdatedAtUtc = now
             });
+
+            var nodeState = await _db.NodeWorkloadStates
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.NodeId == nodeId && s.WorkloadId == request.WorkloadId, HttpContext.RequestAborted);
+
+            if (nodeState?.CurrentRevisionId is not null && nodeState.CurrentRevisionId != Guid.Empty)
+            {
+                var currentRevisionPackages = await _db.WorkloadPackages
+                    .AsNoTracking()
+                    .Where(wp => wp.RevisionId == nodeState.CurrentRevisionId)
+                    .OrderBy(wp => wp.PackageIndex)
+                    .ToListAsync(HttpContext.RequestAborted);
+
+                var currentPackageIds = currentRevisionPackages.Select(wp => wp.PackageId).ToList();
+                var currentPackageEntities = await _db.Packages
+                    .AsNoTracking()
+                    .Where(p => currentPackageIds.Contains(p.PackageId))
+                    .ToListAsync(HttpContext.RequestAborted);
+
+                currentPackagesByNode[nodeId] = BuildPackageAssignments(currentRevisionPackages, currentPackageEntities);
+            }
         }
 
         _db.WorkloadRuns.AddRange(created);
@@ -204,72 +226,13 @@ public sealed class WorkloadRunsController : ControllerBase
             .Where(p => revision.Packages.Select(wp => wp.PackageId).Contains(p.PackageId))
             .ToListAsync();
 
-        var packageAssignments = revision.Packages
-            .OrderBy(p => p.PackageIndex)
-            .Select(wp =>
-            {
-                const string artifactPath = "{artifactPath}";
-                var pkg = packageEntities.FirstOrDefault(p => p.PackageId == wp.PackageId);
-                var installType = pkg?.InstallType ?? "exe";
-                var isMsi = string.Equals(installType, "msi", StringComparison.OrdinalIgnoreCase);
-                string command;
-                string arguments;
-                if (isMsi)
-                {
-                    command = "msiexec.exe";
-                    arguments = $"/i \"{artifactPath}\" {pkg?.InstallArgs ?? ""}";
-                }
-                else
-                {
-                    command = artifactPath;
-                    arguments = pkg?.InstallArgs ?? "";
-                }
-
-                var expectedExitCodes = new List<int>();
-                if (!string.IsNullOrWhiteSpace(pkg?.ExpectedExitCodesJson))
-                {
-                    try
-                    {
-                        expectedExitCodes = JsonSerializer.Deserialize<List<int>>(pkg.ExpectedExitCodesJson) ?? new List<int>();
-                    }
-                    catch (JsonException)
-                    {
-                        expectedExitCodes = new List<int>();
-                    }
-                }
-
-                if (expectedExitCodes.Count == 0)
-                {
-                    expectedExitCodes = isMsi ? new List<int> { 0, 3010 } : new List<int> { 0 };
-                }
-
-                var timeoutSeconds = pkg?.TimeoutSeconds > 0 ? pkg.TimeoutSeconds : 300;
-                return new PackageAssignment
-                {
-                    PackageIndex = wp.PackageIndex,
-                    PackageId = wp.PackageId.ToString(),
-                    Version = pkg?.Version ?? "",
-                    Channel = "stable",
-                    InstallAdapter = new InstallAdapterConfig
-                    {
-                        Type = installType,
-                        Command = command,
-                        Arguments = arguments,
-                        ExpectedExitCodes = expectedExitCodes,
-                        TimeoutSeconds = timeoutSeconds
-                    },
-                    Detection = new DetectionConfig
-                    {
-                        Type = "file",
-                        Path = pkg?.Name ?? "",
-                        ExpectedVersion = pkg?.Version ?? ""
-                    }
-                };
-            })
-            .ToList();
+        var packageAssignments = BuildPackageAssignments(revision.Packages.ToList(), packageEntities);
 
         foreach (var runEntity in created)
         {
+            var currentPackages = currentPackagesByNode.TryGetValue(runEntity.NodeId.GetValueOrDefault(), out var cp)
+                ? cp
+                : new List<PackageAssignment>();
             var payload = new AssignRunPayload
             {
                 RunId = runEntity.RunId,
@@ -280,6 +243,7 @@ public sealed class WorkloadRunsController : ControllerBase
                 Mode = runEntity.Mode,
                 NodeId = runEntity.NodeId.GetValueOrDefault(),
                 Packages = packageAssignments,
+                CurrentPackages = currentPackages,
                 PreUpgradeActions = new List<string>()
             };
 
@@ -554,6 +518,75 @@ public sealed class WorkloadRunsController : ControllerBase
             State = AggregateState(rows.Select(r => r.State)),
             CancelledAtUtc = now
         });
+    }
+
+    private static List<PackageAssignment> BuildPackageAssignments(List<WorkloadPackageEntity> workloadPackages, List<PackageEntity> packageEntities)
+    {
+        return workloadPackages
+            .OrderBy(p => p.PackageIndex)
+            .Select(wp =>
+            {
+                const string artifactPath = "{artifactPath}";
+                var pkg = packageEntities.FirstOrDefault(p => p.PackageId == wp.PackageId);
+                var installType = pkg?.InstallType ?? "exe";
+                var isMsi = string.Equals(installType, "msi", StringComparison.OrdinalIgnoreCase);
+                string command;
+                string arguments;
+                if (isMsi)
+                {
+                    command = "msiexec.exe";
+                    arguments = $"/i \"{artifactPath}\" {pkg?.InstallArgs ?? ""}";
+                }
+                else
+                {
+                    command = artifactPath;
+                    arguments = pkg?.InstallArgs ?? "";
+                }
+
+                var expectedExitCodes = new List<int>();
+                if (!string.IsNullOrWhiteSpace(pkg?.ExpectedExitCodesJson))
+                {
+                    try
+                    {
+                        expectedExitCodes = JsonSerializer.Deserialize<List<int>>(pkg.ExpectedExitCodesJson) ?? new List<int>();
+                    }
+                    catch (JsonException)
+                    {
+                        expectedExitCodes = new List<int>();
+                    }
+                }
+
+                if (expectedExitCodes.Count == 0)
+                {
+                    expectedExitCodes = isMsi ? new List<int> { 0, 3010 } : new List<int> { 0 };
+                }
+
+                var timeoutSeconds = pkg?.TimeoutSeconds > 0 ? pkg.TimeoutSeconds : 300;
+                return new PackageAssignment
+                {
+                    PackageIndex = wp.PackageIndex,
+                    PackageId = wp.PackageId.ToString(),
+                    Name = pkg?.Name ?? "",
+                    Version = pkg?.Version ?? "",
+                    Channel = "stable",
+                    InstallAdapter = new InstallAdapterConfig
+                    {
+                        Type = installType,
+                        Command = command,
+                        Arguments = arguments,
+                        UninstallArgs = pkg?.UninstallArgs ?? "",
+                        ExpectedExitCodes = expectedExitCodes,
+                        TimeoutSeconds = timeoutSeconds
+                    },
+                    Detection = new DetectionConfig
+                    {
+                        Type = "file",
+                        Path = pkg?.Name ?? "",
+                        ExpectedVersion = pkg?.Version ?? ""
+                    }
+                };
+            })
+            .ToList();
     }
 
     private static bool TryNormalizeMode(string? mode, out string normalized)

@@ -1,5 +1,6 @@
 using DeploymentPoC.Agent.Models;
 using DeploymentPoC.Agent.Services;
+using NUnit.Framework;
 
 namespace DeploymentPoC.Agent.Tests;
 

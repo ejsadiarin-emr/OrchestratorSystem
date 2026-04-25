@@ -1,3 +1,5 @@
+using NUnit.Framework;
+
 namespace DeploymentPoC.Agent.Tests;
 
 public sealed class ProgramConfigurationTests

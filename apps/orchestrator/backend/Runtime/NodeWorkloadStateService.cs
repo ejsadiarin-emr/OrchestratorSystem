@@ -155,6 +155,19 @@ public sealed class NodeWorkloadStateService
         {
             node.LastSeenUtc = DateTime.UtcNow;
             node.Status = "Online";
+
+            var payload = TryDeserializePayload<HeartbeatPayload>(envelope.Payload);
+            if (payload is not null)
+            {
+                if (!string.IsNullOrWhiteSpace(payload.OsVersion))
+                {
+                    node.OsVersion = payload.OsVersion;
+                }
+                if (!string.IsNullOrWhiteSpace(payload.AgentVersion))
+                {
+                    node.AgentVersion = payload.AgentVersion;
+                }
+            }
         }
     }
 
@@ -311,4 +324,10 @@ public sealed class FinalizationPayload
     public string Result { get; set; } = string.Empty;
     public string? Error { get; set; }
     public int StepCount { get; set; }
+}
+
+public sealed class HeartbeatPayload
+{
+    public string OsVersion { get; set; } = string.Empty;
+    public string AgentVersion { get; set; } = string.Empty;
 }

@@ -88,6 +88,7 @@ export type NodeStatus = 'online' | 'offline' | 'installing' | 'enrolling' | 'un
 export interface Node {
   id: string
   hostname: string
+  displayName: string
   ipAddress: string
   status: NodeStatus
   description: string
@@ -217,6 +218,7 @@ export interface DashboardKpiSummary {
 export interface DashboardNodeRow {
   nodeId: string
   hostname: string
+  displayName: string
   health: NodeHealth
   assignedWorkload: string
   workloadRevision: string

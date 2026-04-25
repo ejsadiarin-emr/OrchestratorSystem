@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Nodes from './Nodes'
-import { listNodes, listEnrollmentTokens } from '../services/api'
+import { listNodes, listEnrollmentTokens, updateNodeDisplayName, deleteNode } from '../services/api'
 
 vi.mock('../services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../services/api')>()
@@ -11,6 +11,7 @@ vi.mock('../services/api', async (importOriginal) => {
       {
         id: 'node-001',
         hostname: 'wj-plant-01',
+        displayName: 'Plant Line A',
         ipAddress: '10.30.2.41',
         status: 'online',
         description: 'Plant line A host',
@@ -31,9 +32,10 @@ vi.mock('../services/api', async (importOriginal) => {
       singleUse: true,
       used: false,
     }),
-    consumeEnrollmentToken: vi.fn().mockResolvedValue({
+    updateNodeDisplayName: vi.fn().mockResolvedValue({
       id: 'node-001',
       hostname: 'wj-plant-01',
+      displayName: 'Renamed Node',
       ipAddress: '10.30.2.41',
       status: 'online',
       description: 'Plant line A host',
@@ -42,43 +44,79 @@ vi.mock('../services/api', async (importOriginal) => {
       firstConnectedAt: new Date().toISOString(),
       lastSeenAt: new Date().toISOString(),
     }),
+    deleteNode: vi.fn().mockResolvedValue(undefined),
   }
 })
 
-describe('Nodes page bootstrap flow', () => {
-  beforeEach(async () => {
-    render(<Nodes />)
-    await screen.findByText('Agent Bootstrap & Enrollment')
-  })
-
-  it('issues token and then simulates first connect with auto metadata', async () => {
-    fireEvent.click(screen.getByText('Issue Token (POST)'))
-
-    await waitFor(() => {
-      expect(screen.getByText(/Issued enroll-/)).toBeInTheDocument()
-    })
-
-    fireEvent.click(screen.getByText('Simulate First Connect'))
-
-    await waitFor(() => {
-      expect(screen.getByText(/auto-collected on first connect/)).toBeInTheDocument()
-    })
-
-    expect(screen.getByText('Registered Nodes')).toBeInTheDocument()
-  })
-})
-
-describe('Nodes page polling', () => {
+describe('Nodes page', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
+  it('renders registered nodes and enrollment tokens sections', async () => {
+    render(<Nodes />)
+    await screen.findByText('Registered Nodes')
+    expect(screen.getByText('Enrollment Tokens')).toBeInTheDocument()
+    expect(screen.getByText('Plant Line A')).toBeInTheDocument()
+  })
+
+  it('opens token creation modal and shows result', async () => {
+    render(<Nodes />)
+    await screen.findByText('Registered Nodes')
+
+    fireEvent.click(screen.getByText('Generate Token'))
+    await screen.findByText('Generate Enrollment Token')
+
+    fireEvent.click(screen.getByText('Generate'))
+
+    await waitFor(() => {
+      expect(screen.getByText('Enrollment Token Created')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('enroll-abc123')).toBeInTheDocument()
+  })
+
+  it('allows inline rename of a node', async () => {
+    render(<Nodes />)
+    await screen.findByText('Plant Line A')
+
+    const renameButton = screen.getByTitle('Rename')
+    fireEvent.click(renameButton)
+
+    const input = screen.getByDisplayValue('Plant Line A')
+    fireEvent.change(input, { target: { value: 'Renamed Node' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(updateNodeDisplayName).toHaveBeenCalledWith('node-001', 'Renamed Node')
+    })
+  })
+
+  it('allows deleting a node with confirmation', async () => {
+    render(<Nodes />)
+    await screen.findByText('Plant Line A')
+
+    const deleteButton = screen.getByTitle('Delete')
+    fireEvent.click(deleteButton)
+
+    await screen.findByText('Delete Node')
+    expect(screen.getByText(/Are you sure/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Delete'))
+
+    await waitFor(() => {
+      expect(deleteNode).toHaveBeenCalledWith('node-001')
+    })
+  })
+})
+
+describe('Nodes page polling', () => {
   it('sets up a 5-second polling interval on mount', async () => {
     const setIntervalSpy = vi.spyOn(window, 'setInterval')
     const clearIntervalSpy = vi.spyOn(window, 'clearInterval')
 
     const { unmount } = render(<Nodes />)
-    await screen.findByText('Agent Bootstrap & Enrollment')
+    await screen.findByText('Registered Nodes')
 
     const intervalCalls = setIntervalSpy.mock.calls.filter(call => call[1] === 5_000)
     expect(intervalCalls.length).toBeGreaterThanOrEqual(1)
@@ -96,20 +134,20 @@ describe('Nodes page polling', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
 
     render(<Nodes />)
-    await screen.findByText('Agent Bootstrap & Enrollment')
+    await screen.findByText('Registered Nodes')
 
-    expect(listNodes).toHaveBeenCalledTimes(1)
-    expect(listEnrollmentTokens).toHaveBeenCalledTimes(1)
-
-    await vi.advanceTimersByTimeAsync(5_000)
-
-    expect(listNodes).toHaveBeenCalledTimes(2)
-    expect(listEnrollmentTokens).toHaveBeenCalledTimes(2)
+    const initialCalls = vi.mocked(listNodes).mock.calls.length
+    const initialTokenCalls = vi.mocked(listEnrollmentTokens).mock.calls.length
 
     await vi.advanceTimersByTimeAsync(5_000)
 
-    expect(listNodes).toHaveBeenCalledTimes(3)
-    expect(listEnrollmentTokens).toHaveBeenCalledTimes(3)
+    expect(listNodes).toHaveBeenCalledTimes(initialCalls + 1)
+    expect(listEnrollmentTokens).toHaveBeenCalledTimes(initialTokenCalls + 1)
+
+    await vi.advanceTimersByTimeAsync(5_000)
+
+    expect(listNodes).toHaveBeenCalledTimes(initialCalls + 2)
+    expect(listEnrollmentTokens).toHaveBeenCalledTimes(initialTokenCalls + 2)
 
     vi.useRealTimers()
   })
@@ -118,16 +156,16 @@ describe('Nodes page polling', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
 
     const { unmount } = render(<Nodes />)
-    await screen.findByText('Agent Bootstrap & Enrollment')
+    await screen.findByText('Registered Nodes')
 
-    expect(listNodes).toHaveBeenCalledTimes(1)
+    const callsAfterMount = vi.mocked(listNodes).mock.calls.length
 
     unmount()
 
     await vi.advanceTimersByTimeAsync(5_000)
 
-    expect(listNodes).toHaveBeenCalledTimes(1)
-    expect(listEnrollmentTokens).toHaveBeenCalledTimes(1)
+    expect(listNodes).toHaveBeenCalledTimes(callsAfterMount)
+    expect(listEnrollmentTokens).toHaveBeenCalledTimes(callsAfterMount)
 
     vi.useRealTimers()
   })
@@ -140,6 +178,7 @@ describe('Nodes page status badges', () => {
       {
         id: 'node-online',
         hostname: 'online-host',
+        displayName: 'Online Host',
         ipAddress: '10.0.0.1',
         status: 'online',
         description: '',
@@ -151,6 +190,7 @@ describe('Nodes page status badges', () => {
       {
         id: 'node-offline',
         hostname: 'offline-host',
+        displayName: 'Offline Host',
         ipAddress: '10.0.0.2',
         status: 'offline',
         description: '',
@@ -162,6 +202,7 @@ describe('Nodes page status badges', () => {
       {
         id: 'node-installing',
         hostname: 'installing-host',
+        displayName: 'Installing Host',
         ipAddress: '10.0.0.3',
         status: 'installing',
         description: '',
@@ -173,6 +214,7 @@ describe('Nodes page status badges', () => {
       {
         id: 'node-enrolling',
         hostname: 'enrolling-host',
+        displayName: 'Enrolling Host',
         ipAddress: '10.0.0.4',
         status: 'enrolling',
         description: '',

@@ -83,6 +83,7 @@ public sealed class InstallerDbContext : DbContext
             entity.HasIndex(x => x.Hostname).IsUnique();
             entity.Property(x => x.AgentId).HasMaxLength(128);
             entity.Property(x => x.Hostname).HasMaxLength(255);
+            entity.Property(x => x.DisplayName).HasMaxLength(255);
             entity.Property(x => x.IpAddress).HasMaxLength(64);
             entity.Property(x => x.Description).HasMaxLength(512);
             entity.Property(x => x.AgentVersion).HasMaxLength(64);
@@ -194,6 +195,7 @@ public sealed class InstallerDbContext : DbContext
             entity.Property(x => x.IdempotencyKey).HasMaxLength(128);
             entity.Property(x => x.IdempotencyRequestHash).HasMaxLength(64);
             entity.Property(x => x.CancelReason).HasMaxLength(512);
+            entity.Property(x => x.NodeDisplayName).HasMaxLength(255);
             entity.HasOne(x => x.Workload)
                 .WithMany(x => x.Runs)
                 .HasForeignKey(x => x.WorkloadId)
@@ -205,7 +207,7 @@ public sealed class InstallerDbContext : DbContext
             entity.HasOne(x => x.Node)
                 .WithMany(x => x.WorkloadRuns)
                 .HasForeignKey(x => x.NodeId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(DeleteBehavior.SetNull);
             entity.Property(x => x.RevisionSnapshotJson).HasMaxLength(8192);
             entity.HasIndex(x => x.IdempotencyKey).IsUnique();
             entity.HasIndex(x => new { x.NodeId, x.WorkloadId })

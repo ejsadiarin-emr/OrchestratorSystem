@@ -8,8 +8,9 @@ public sealed class WorkloadRunEntity
     public WorkloadDefinitionEntity Workload { get; set; } = null!;
     public Guid RevisionId { get; set; }
     public WorkloadRevisionEntity Revision { get; set; } = null!;
-    public Guid NodeId { get; set; }
-    public NodeEntity Node { get; set; } = null!;
+    public Guid? NodeId { get; set; }
+    public NodeEntity? Node { get; set; } = null!;
+    public string NodeDisplayName { get; set; } = string.Empty;
     public string Mode { get; set; } = "install";
     public string State { get; set; } = "Queued";
     public string? IdempotencyKey { get; set; }

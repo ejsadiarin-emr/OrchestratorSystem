@@ -32,6 +32,7 @@ describe('buildWorkloadRows', () => {
       {
         nodeId: 'node-a',
         hostname: 'a',
+        displayName: 'Node A',
         health: 'online',
         assignedWorkload: 'Factory Base Install',
         workloadRevision: '1.0.0',
@@ -44,6 +45,7 @@ describe('buildWorkloadRows', () => {
       {
         nodeId: 'node-b',
         hostname: 'b',
+        displayName: 'Node B',
         health: 'warning',
         assignedWorkload: 'Factory Base Install',
         workloadRevision: '1.1.0',
@@ -57,6 +59,7 @@ describe('buildWorkloadRows', () => {
       {
         nodeId: 'node-c',
         hostname: 'c',
+        displayName: 'Node C',
         health: 'online',
         assignedWorkload: 'Observer Stack',
         workloadRevision: '0.9.0',
@@ -99,6 +102,7 @@ describe('buildWorkloadRows', () => {
       {
         nodeId: 'node-1',
         hostname: 'n1',
+        displayName: 'Node 1',
         health: 'online',
         assignedWorkload: 'Zulu',
         workloadRevision: '1',
@@ -112,6 +116,7 @@ describe('buildWorkloadRows', () => {
       {
         nodeId: 'node-2',
         hostname: 'n2',
+        displayName: 'Node 2',
         health: 'online',
         assignedWorkload: 'Bravo',
         workloadRevision: '1',
@@ -125,6 +130,7 @@ describe('buildWorkloadRows', () => {
       {
         nodeId: 'node-3',
         hostname: 'n3',
+        displayName: 'Node 3',
         health: 'online',
         assignedWorkload: 'Alpha',
         workloadRevision: '1',

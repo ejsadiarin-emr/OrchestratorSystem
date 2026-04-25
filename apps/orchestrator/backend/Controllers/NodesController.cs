@@ -31,6 +31,7 @@ public class NodesController : ControllerBase
             {
                 Id = n.NodeId,
                 Hostname = n.Hostname,
+                DisplayName = n.DisplayName,
                 IpAddress = n.IpAddress,
                 Status = n.Status,
                 LastSeenAt = n.LastSeenUtc,
@@ -112,6 +113,7 @@ public class NodesController : ControllerBase
         }
 
         entity.Hostname = request.Hostname;
+        entity.DisplayName = request.DisplayName;
         entity.IpAddress = request.IpAddress;
         entity.Description = request.Description;
         entity.LastSeenUtc = DateTime.UtcNow;
@@ -137,6 +139,33 @@ public class NodesController : ControllerBase
         _logger.LogInformation("Updated node {Hostname}", node.Hostname);
         
         return Ok(node);
+    }
+
+    [HttpPatch("{id:guid}/display-name")]
+    public async Task<ActionResult<Node>> UpdateDisplayName(Guid id, [FromBody] UpdateNodeDisplayNameRequest request)
+    {
+        var entity = await _db.Nodes.SingleOrDefaultAsync(n => n.NodeId == id);
+        if (entity is null)
+        {
+            return NotFound(new { message = $"Node {id} not found" });
+        }
+
+        entity.DisplayName = request.DisplayName;
+        await _db.SaveChangesAsync();
+
+        return Ok(new Node
+        {
+            Id = entity.NodeId,
+            Hostname = entity.Hostname,
+            DisplayName = entity.DisplayName,
+            IpAddress = entity.IpAddress,
+            Description = entity.Description,
+            Status = entity.Status,
+            LastSeenAt = entity.LastSeenUtc,
+            FirstConnectedAt = entity.FirstConnectedUtc,
+            OsVersion = entity.OsVersion,
+            AgentVersion = entity.AgentVersion,
+        });
     }
 
     [HttpDelete("{id:guid}")]

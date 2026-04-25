@@ -1,3 +1,5 @@
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using DeploymentPoC.Agent.Pipeline;
 using DeploymentPoC.Contracts.Runtime;
@@ -134,7 +136,12 @@ public sealed class AgentRuntimeService : BackgroundService
             MessageId = Guid.NewGuid().ToString(),
             TimestampUtc = DateTime.UtcNow,
             AgentId = _nodeId.Value.ToString(),
-            Sequence = 0
+            Sequence = 0,
+            Payload = new HeartbeatPayload
+            {
+                OsVersion = RuntimeInformation.OSDescription,
+                AgentVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0"
+            }
         };
 
         try
@@ -237,4 +244,10 @@ public sealed class AgentRuntimeService : BackgroundService
 
         throw new InvalidOperationException($"Unexpected payload type: {payload.GetType().Name}");
     }
+}
+
+public sealed class HeartbeatPayload
+{
+    public string OsVersion { get; set; } = string.Empty;
+    public string AgentVersion { get; set; } = string.Empty;
 }

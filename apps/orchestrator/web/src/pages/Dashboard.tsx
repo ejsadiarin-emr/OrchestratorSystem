@@ -264,13 +264,14 @@ export default function Dashboard() {
                       onClick={() => openNodeDrawer(node.nodeId)}
                       className={`cursor-pointer ${selectedNodeId === node.nodeId ? 'bg-[var(--surface-subtle)]' : 'hover:bg-[var(--surface-subtle)]'}`}
                     >
-                      <td className="px-3 py-2 font-medium text-[var(--text-strong)]">
+                      <td className="px-3 py-2">
                         <RowTrigger
                           label={`Open node details ${node.nodeId}`}
                           onActivate={() => openNodeDrawer(node.nodeId)}
                           className="w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
                         >
-                          {node.nodeId}
+                          <span className="block font-medium text-[var(--text-strong)]">{node.displayName || node.hostname}</span>
+                          <span className="block text-xs text-[var(--text-soft)]">{node.hostname}</span>
                         </RowTrigger>
                       </td>
                       <td className="px-3 py-2 text-[var(--text-soft)]">{node.health}</td>
@@ -423,7 +424,7 @@ export default function Dashboard() {
                   <ModalDescription>Selected node is no longer available. Close popup and retry.</ModalDescription>
                 ) : (
                   <ModalDescription>
-                    {drawerNode.nodeId} ({drawerNode.hostname})
+                    {drawerNode.displayName || drawerNode.hostname} ({drawerNode.nodeId})
                   </ModalDescription>
                 )}
               </ModalHeader>

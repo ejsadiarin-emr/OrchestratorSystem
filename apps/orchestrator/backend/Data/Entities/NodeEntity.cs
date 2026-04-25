@@ -5,6 +5,7 @@ public sealed class NodeEntity
     public Guid NodeId { get; set; } = Guid.NewGuid();
     public string? AgentId { get; set; }
     public string Hostname { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
     public string IpAddress { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string AgentVersion { get; set; } = string.Empty;

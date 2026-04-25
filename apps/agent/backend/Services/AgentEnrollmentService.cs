@@ -1,5 +1,7 @@
 using System.Net;
+using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using DeploymentPoC.Agent.Models;
 
@@ -14,10 +16,22 @@ public class AgentEnrollmentService
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     }
 
-    public async Task<Guid> ConsumeEnrollmentTokenAsync(string token, string orchestratorUrl)
+    public async Task<Guid> ConsumeEnrollmentTokenAsync(string token, string orchestratorUrl, string? displayName = null)
     {
         var url = $"{orchestratorUrl.TrimEnd('/')}/api/enrollment-tokens/{token}/consume";
-        var response = await _httpClient.PostAsync(url, null);
+
+        var requestBody = new
+        {
+            hostname = Environment.MachineName ?? string.Empty,
+            displayName = displayName ?? string.Empty,
+            ipAddress = string.Empty,
+            osVersion = RuntimeInformation.OSDescription,
+            agentVersion = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0"
+        };
+
+        var json = JsonSerializer.Serialize(requestBody);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+        var response = await _httpClient.PostAsync(url, content);
 
         if (response.StatusCode == HttpStatusCode.Gone)
         {
@@ -40,8 +54,8 @@ public class AgentEnrollmentService
             throw new InvalidOperationException($"Enrollment failed: {(int)response.StatusCode} {response.StatusCode}. Response: {body}");
         }
 
-        var content = await response.Content.ReadAsStringAsync();
-        var node = JsonSerializer.Deserialize<JsonElement>(content);
+        var responseBody = await response.Content.ReadAsStringAsync();
+        var node = JsonSerializer.Deserialize<JsonElement>(responseBody);
         if (node.TryGetProperty("id", out var idProperty))
         {
             return idProperty.GetGuid();

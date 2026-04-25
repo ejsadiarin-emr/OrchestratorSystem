@@ -26,6 +26,7 @@ public sealed class EnrollmentTokenListResponse
 public sealed class ConsumeEnrollmentTokenRequest
 {
     public string Hostname { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
     public string IpAddress { get; set; } = string.Empty;
     public string OsVersion { get; set; } = string.Empty;
     public string AgentVersion { get; set; } = string.Empty;

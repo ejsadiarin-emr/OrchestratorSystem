@@ -43,6 +43,7 @@ const nodes: Node[] = [
   {
     id: 'node-001',
     hostname: 'wj-plant-01',
+    displayName: 'Plant Line A',
     ipAddress: '10.30.2.41',
     status: 'online',
     description: 'Plant line A host',
@@ -716,6 +717,34 @@ export async function listNodes(): Promise<Node[]> {
   return response.json() as Promise<Node[]>
 }
 
+export async function updateNodeDisplayName(nodeId: string, displayName: string): Promise<Node> {
+  const response = await fetch(`/api/nodes/${nodeId}/display-name`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ displayName }),
+  })
+  if (!response.ok) {
+    let message = `Failed to update display name: ${response.status}`
+    try {
+      const body = await response.json() as { message?: string }
+      if (body.message) message = body.message
+    } catch {
+      // use default message
+    }
+    throw new Error(message)
+  }
+  return response.json() as Promise<Node>
+}
+
+export async function deleteNode(nodeId: string): Promise<void> {
+  const response = await fetch(`/api/nodes/${nodeId}`, {
+    method: 'DELETE',
+  })
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`Failed to delete node: ${response.status}`)
+  }
+}
+
 export async function listWorkloads(): Promise<WorkloadDefinition[]> {
   const response = await fetch('/api/workloads')
   if (!response.ok) {
@@ -1208,6 +1237,7 @@ export async function getOrchestratorHomeData(): Promise<OrchestratorHomeData> {
     return {
       nodeId: node.id,
       hostname: node.hostname,
+      displayName: node.displayName,
       health,
       assignedWorkload: workload?.name ?? '',
       workloadRevision: state?.workloadRevision ?? '',

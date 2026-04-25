@@ -30,7 +30,7 @@ if (!string.IsNullOrEmpty(parsedArgs.EnrollToken) && !string.IsNullOrEmpty(parse
         return 1;
     }
 
-    var nodeId = await enrollmentService.ConsumeEnrollmentTokenAsync(parsedArgs.EnrollToken, parsedArgs.OrchestratorUrl);
+    var nodeId = await enrollmentService.ConsumeEnrollmentTokenAsync(parsedArgs.EnrollToken, parsedArgs.OrchestratorUrl, parsedArgs.DisplayName);
     config = new AgentConfig
     {
         NodeId = nodeId,
@@ -83,11 +83,12 @@ return 0;
 
 public static class AgentProgram
 {
-    public static (string? EnrollToken, string? OrchestratorUrl, bool ResetEnrollment, string[] RemainingArgs) ParseArgs(string[] args)
+    public static (string? EnrollToken, string? OrchestratorUrl, bool ResetEnrollment, string? DisplayName, string[] RemainingArgs) ParseArgs(string[] args)
     {
         string? enrollToken = null;
         string? orchestratorUrl = null;
         bool resetEnrollment = false;
+        string? displayName = null;
         var remainingArgs = new List<string>();
 
         for (int i = 0; i < args.Length; i++)
@@ -100,6 +101,10 @@ public static class AgentProgram
             {
                 orchestratorUrl = args[++i];
             }
+            else if (args[i] == "--display-name" && i + 1 < args.Length)
+            {
+                displayName = args[++i];
+            }
             else if (args[i] == "--reset-enrollment")
             {
                 resetEnrollment = true;
@@ -110,6 +115,6 @@ public static class AgentProgram
             }
         }
 
-        return (enrollToken, orchestratorUrl, resetEnrollment, remainingArgs.ToArray());
+        return (enrollToken, orchestratorUrl, resetEnrollment, displayName, remainingArgs.ToArray());
     }
 }

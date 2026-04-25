@@ -88,6 +88,10 @@ public class EnrollmentController : ControllerBase
             ? request.Hostname
             : $"auto-node-{Guid.NewGuid().ToString("N")[..8]}";
 
+        var displayName = !string.IsNullOrWhiteSpace(request?.DisplayName)
+            ? request.DisplayName
+            : hostname;
+
         var ipAddress = !string.IsNullOrWhiteSpace(request?.IpAddress)
             ? request.IpAddress
             : "0.0.0.0";
@@ -96,6 +100,7 @@ public class EnrollmentController : ControllerBase
         {
             NodeId = Guid.NewGuid(),
             Hostname = hostname,
+            DisplayName = displayName,
             IpAddress = ipAddress,
             Description = "Enrolled via token",
             Status = "Online",
@@ -116,6 +121,7 @@ public class EnrollmentController : ControllerBase
         {
             Id = nodeEntity.NodeId,
             Hostname = nodeEntity.Hostname,
+            DisplayName = nodeEntity.DisplayName,
             IpAddress = nodeEntity.IpAddress,
             Status = nodeEntity.Status,
             LastSeenAt = nodeEntity.LastSeenUtc,

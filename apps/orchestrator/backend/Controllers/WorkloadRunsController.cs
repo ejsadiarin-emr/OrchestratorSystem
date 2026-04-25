@@ -120,7 +120,7 @@ public sealed class WorkloadRunsController : ControllerBase
         var hasActiveRun = await _db.WorkloadRuns
             .AsNoTracking()
             .Where(r => r.WorkloadId == request.WorkloadId
-                && distinctNodeIds.Contains(r.NodeId)
+                && r.NodeId.HasValue && distinctNodeIds.Contains(r.NodeId.Value)
                 && activeStates.Contains(r.State))
             .AnyAsync();
 
@@ -135,9 +135,15 @@ public sealed class WorkloadRunsController : ControllerBase
         var snapshotJson = JsonSerializer.Serialize(revision.Packages
             .OrderBy(p => p.PackageIndex)
             .Select(p => new { p.PackageId, p.PackageIndex }));
+        var nodesMap = await _db.Nodes
+            .AsNoTracking()
+            .Where(n => distinctNodeIds.Contains(n.NodeId))
+            .ToDictionaryAsync(n => n.NodeId);
+
         var created = new List<WorkloadRunEntity>();
         foreach (var nodeId in distinctNodeIds)
         {
+            var nodeDisplayName = nodesMap.TryGetValue(nodeId, out var n) ? n.DisplayName : string.Empty;
             created.Add(new WorkloadRunEntity
             {
                 WorkloadRunRecordId = Guid.NewGuid(),
@@ -146,6 +152,7 @@ public sealed class WorkloadRunsController : ControllerBase
                 RevisionId = request.RevisionId,
                 RevisionSnapshotJson = snapshotJson,
                 NodeId = nodeId,
+                NodeDisplayName = nodeDisplayName,
                 Mode = mode,
                 State = "Queued",
                 IdempotencyKey = normalizedKey,
@@ -271,7 +278,7 @@ public sealed class WorkloadRunsController : ControllerBase
                 RevisionId = runEntity.RevisionId,
                 RevisionVersion = revisionVersion,
                 Mode = runEntity.Mode,
-                NodeId = runEntity.NodeId,
+                NodeId = runEntity.NodeId.GetValueOrDefault(),
                 Packages = packageAssignments,
                 PreUpgradeActions = new List<string>()
             };
@@ -343,7 +350,7 @@ public sealed class WorkloadRunsController : ControllerBase
                 UpdatedAtUtc = g.Max(r => r.UpdatedAtUtc),
                 CompletedAtUtc = g.All(r => r.CompletedAtUtc.HasValue) ? g.Max(r => r.CompletedAtUtc) : null,
                 RiskLevel = first.RiskLevel,
-                NodeIds = g.Select(r => r.NodeId).Distinct().ToList()
+                NodeIds = g.Where(r => r.NodeId.HasValue).Select(r => r.NodeId.Value).Distinct().ToList()
             };
         }).ToList();
 
@@ -381,7 +388,7 @@ public sealed class WorkloadRunsController : ControllerBase
             UpdatedAtUtc = runs.Max(r => r.UpdatedAtUtc),
             CompletedAtUtc = runs.All(r => r.CompletedAtUtc.HasValue) ? runs.Max(r => r.CompletedAtUtc) : null,
             RiskLevel = first.RiskLevel,
-            NodeIds = runs.Select(r => r.NodeId).Distinct().ToList()
+            NodeIds = runs.Where(r => r.NodeId.HasValue).Select(r => r.NodeId.Value).Distinct().ToList()
         });
     }
 

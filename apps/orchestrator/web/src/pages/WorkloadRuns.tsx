@@ -247,7 +247,7 @@ export default function WorkloadRuns() {
               >
                 {nodes.map(node => (
                   <option key={node.id} value={node.id}>
-                    {node.hostname}
+                    {node.displayName || node.hostname}
                   </option>
                 ))}
               </select>

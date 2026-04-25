@@ -76,7 +76,8 @@ $GitManifest = @{
         approvalRequired = $false
     }
 }
-$GitManifest | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $TempDir "${GitExe}.manifest.json") -Encoding UTF8
+$GitBase = [System.IO.Path]::GetFileNameWithoutExtension($GitExe)
+$GitManifest | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $TempDir "${GitBase}.manifest.json") -Encoding UTF8
 
 # Node.js manifest
 $NodeManifest = @{
@@ -99,7 +100,8 @@ $NodeManifest = @{
         approvalRequired = $false
     }
 }
-$NodeManifest | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $TempDir "${NodeMsi}.manifest.json") -Encoding UTF8
+$NodeBase = [System.IO.Path]::GetFileNameWithoutExtension($NodeMsi)
+$NodeManifest | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $TempDir "${NodeBase}.manifest.json") -Encoding UTF8
 
 # Python manifest
 $PythonManifest = @{
@@ -122,7 +124,8 @@ $PythonManifest = @{
         approvalRequired = $false
     }
 }
-$PythonManifest | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $TempDir "${PythonExe}.manifest.json") -Encoding UTF8
+$PythonBase = [System.IO.Path]::GetFileNameWithoutExtension($PythonExe)
+$PythonManifest | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $TempDir "${PythonBase}.manifest.json") -Encoding UTF8
 
 # 7-Zip manifest
 $ZipManifest = @{
@@ -134,7 +137,7 @@ $ZipManifest = @{
     installAdapter = @{
         type = "exe"
         command = $ZipExe
-        arguments = '/S /D=C:\Program Files\7-Zip'
+        arguments = '/S /D=C:\\Program Files\\7-Zip'
         expectedExitCodes = @(0)
         timeoutSeconds = 120
     }
@@ -145,13 +148,14 @@ $ZipManifest = @{
         approvalRequired = $false
     }
 }
-$ZipManifest | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $TempDir "${ZipExe}.manifest.json") -Encoding UTF8
+$ZipBase = [System.IO.Path]::GetFileNameWithoutExtension($ZipExe)
+$ZipManifest | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $TempDir "${ZipBase}.manifest.json") -Encoding UTF8
 
 Write-Host "Manifests generated."
 Write-Host ""
-Write-Host "=== Creating artifact-bulk-alt.zip ==="
+Write-Host "=== Creating artifact-bulk-older.zip ==="
 
-$ZipPath = Join-Path $OutputDir "artifact-bulk-alt.zip"
+$ZipPath = Join-Path $OutputDir "artifact-bulk-older.zip"
 Compress-Archive -Path "$TempDir\*" -DestinationPath $ZipPath -Force
 
 Write-Host ""

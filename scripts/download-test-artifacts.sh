@@ -55,7 +55,8 @@ echo ""
 echo "=== Generating manifest files ==="
 
 # Git manifest
-cat > "${GIT_EXE}.manifest.json" <<EOF
+GIT_BASE="${GIT_EXE%.*}"
+cat > "${GIT_BASE}.manifest.json" <<EOF
 {
   "packageId": "git",
   "version": "${GIT_VERSION}",
@@ -79,7 +80,8 @@ cat > "${GIT_EXE}.manifest.json" <<EOF
 EOF
 
 # Node.js manifest
-cat > "${NODE_MSI}.manifest.json" <<EOF
+NODE_BASE="${NODE_MSI%.*}"
+cat > "${NODE_BASE}.manifest.json" <<EOF
 {
   "packageId": "nodejs",
   "version": "${NODE_VERSION}",
@@ -106,7 +108,8 @@ cat > "${NODE_MSI}.manifest.json" <<EOF
 EOF
 
 # Python manifest
-cat > "${PYTHON_EXE}.manifest.json" <<EOF
+PYTHON_BASE="${PYTHON_EXE%.*}"
+cat > "${PYTHON_BASE}.manifest.json" <<EOF
 {
   "packageId": "python",
   "version": "${PYTHON_VERSION}",
@@ -130,7 +133,8 @@ cat > "${PYTHON_EXE}.manifest.json" <<EOF
 EOF
 
 # 7-Zip manifest
-cat > "${ZIP_EXE}.manifest.json" <<EOF
+ZIP_BASE="${ZIP_EXE%.*}"
+cat > "${ZIP_BASE}.manifest.json" <<EOF
 {
   "packageId": "7zip",
   "version": "${ZIP_VERSION}",
@@ -140,7 +144,7 @@ cat > "${ZIP_EXE}.manifest.json" <<EOF
   "installAdapter": {
     "type": "exe",
     "command": "${ZIP_EXE}",
-    "arguments": "/S /D=C:\\Program Files\\7-Zip",
+    "arguments": "/S /D=C:\\\\Program Files\\\\7-Zip",
     "expectedExitCodes": [0],
     "timeoutSeconds": 120
   },
@@ -155,17 +159,17 @@ EOF
 
 echo "Manifests generated."
 echo ""
-echo "=== Creating artifact-bulk-alt.zip ==="
+echo "=== Creating artifact-bulk-older.zip ==="
 
-zip -j "$OUTPUT_DIR/artifact-bulk-alt.zip" \
+zip -j "$OUTPUT_DIR/artifact-bulk-older.zip" \
   "$GIT_EXE" \
-  "${GIT_EXE}.manifest.json" \
+  "${GIT_BASE}.manifest.json" \
   "$NODE_MSI" \
-  "${NODE_MSI}.manifest.json" \
+  "${NODE_BASE}.manifest.json" \
   "$PYTHON_EXE" \
-  "${PYTHON_EXE}.manifest.json" \
+  "${PYTHON_BASE}.manifest.json" \
   "$ZIP_EXE" \
-  "${ZIP_EXE}.manifest.json"
+  "${ZIP_BASE}.manifest.json"
 
 echo ""
 echo "=== Cleaning up temporary files ==="
@@ -173,5 +177,5 @@ cd "$PROJECT_DIR"
 rm -rf "$TEMP_DIR"
 
 echo ""
-echo "Done. Created: $OUTPUT_DIR/artifact-bulk-alt.zip"
-ls -lh "$OUTPUT_DIR/artifact-bulk-alt.zip"
+echo "Done. Created: $OUTPUT_DIR/artifact-bulk-older.zip"
+ls -lh "$OUTPUT_DIR/artifact-bulk-older.zip"

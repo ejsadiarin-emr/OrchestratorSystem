@@ -260,6 +260,50 @@ public sealed class WorkloadsController : ControllerBase
         return Ok(MapWorkloadDetail(workload, revisions, packages));
     }
 
+    [HttpDelete("{workloadId:guid}")]
+    public async Task<ActionResult> Delete(Guid workloadId)
+    {
+        var workload = await _db.WorkloadDefinitions
+            .SingleOrDefaultAsync(w => w.WorkloadId == workloadId);
+
+        if (workload is null)
+        {
+            return NotFound(new { message = $"Workload {workloadId} not found" });
+        }
+
+        var revisionIds = await _db.WorkloadRevisions
+            .Where(r => r.WorkloadId == workloadId)
+            .Select(r => r.RevisionId)
+            .ToListAsync();
+
+        if (revisionIds.Count > 0)
+        {
+            await _db.WorkloadPackages
+                .Where(wp => revisionIds.Contains(wp.RevisionId))
+                .ExecuteDeleteAsync();
+        }
+
+        await _db.WorkloadRuns
+            .Where(wr => wr.WorkloadId == workloadId)
+            .ExecuteDeleteAsync();
+
+        if (revisionIds.Count > 0)
+        {
+            await _db.WorkloadRevisions
+                .Where(r => revisionIds.Contains(r.RevisionId))
+                .ExecuteDeleteAsync();
+        }
+
+        await _db.NodeWorkloadStates
+            .Where(nws => nws.WorkloadId == workloadId)
+            .ExecuteDeleteAsync();
+
+        _db.WorkloadDefinitions.Remove(workload);
+        await _db.SaveChangesAsync();
+
+        return NoContent();
+    }
+
     private static WorkloadDetailResponse MapWorkloadDetail(WorkloadDefinitionEntity workload, IEnumerable<WorkloadRevisionEntity> revisions, Dictionary<Guid, Data.Entities.PackageEntity> packages)
     {
         return new WorkloadDetailResponse
@@ -330,24 +374,24 @@ public sealed class WorkloadsController : ControllerBase
         return new Guid(hash);
     }
 
-    private static (string InstallType, string SourcePath, string InstallArgs, string ExpectedExitCodesJson, int TimeoutSeconds)
+    private static (string InstallType, string SourcePath, string InstallArgs, string UninstallArgs, string ExpectedExitCodesJson, int TimeoutSeconds)
         ResolvePlaceholderAdapter(string packageId)
     {
         return packageId.ToLowerInvariant() switch
         {
             var p when p.StartsWith("git-") =>
-                ("exe", "{artifactPath}", "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS /COMPONENTS=\"icons,extreg,shellassoc\"", "[0]", 300),
+                ("exe", "{artifactPath}", "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS /COMPONENTS=\"icons,extreg,shellassoc\"", "/VERYSILENT /UNINSTALL", "[0]", 300),
             var p when p.StartsWith("nodejs-") =>
-                ("msi", "msiexec.exe", "/i \"{artifactPath}\" /quiet /norestart", "[0,3010]", 300),
+                ("msi", "msiexec.exe", "/i \"{artifactPath}\" /quiet /norestart", "/x \"{artifactPath}\" /qn /norestart", "[0,3010]", 300),
             var p when p.StartsWith("7zip-") =>
-                ("exe", "{artifactPath}", "/S /D=C:\\Program Files\\7-Zip", "[0]", 120),
+                ("exe", "{artifactPath}", "/S /D=C:\\Program Files\\7-Zip", "/S _?=\"{artifactPath}\"", "[0]", 120),
             var p when p.StartsWith("python-") =>
-                ("exe", "{artifactPath}", "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0", "[0]", 300),
+                ("exe", "{artifactPath}", "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0", "/quiet /uninstall", "[0]", 300),
             var p when p.StartsWith("dotnet-runtime-") =>
-                ("exe", "{artifactPath}", "/quiet /norestart", "[0,3010]", 300),
+                ("exe", "{artifactPath}", "/quiet /norestart", "/quiet /uninstall /norestart", "[0,3010]", 300),
             var p when p.StartsWith("test-agent-") =>
-                ("exe", "{artifactPath}", "/S", "[0]", 60),
-            _ => ("unknown", "{artifactPath}", "", "[0]", 300)
+                ("exe", "{artifactPath}", "/S", "/S _?=\"{artifactPath}\"", "[0]", 60),
+            _ => ("unknown", "{artifactPath}", "", "", "[0]", 300)
         };
     }
 
@@ -427,22 +471,50 @@ public sealed class WorkloadsController : ControllerBase
                     continue;
                 }
 
-                var workload = new WorkloadDefinitionEntity
-                {
-                    WorkloadId = Guid.NewGuid(),
-                    Name = w.Name.Trim(),
-                    Description = string.IsNullOrWhiteSpace(w.Description) ? null : w.Description.Trim(),
-                    CreatedAtUtc = now,
-                    UpdatedAtUtc = now
-                };
+                var workloadName = w.Name.Trim();
+                var workloadVersion = string.IsNullOrWhiteSpace(w.Version) ? "1.0.0" : w.Version.Trim();
+                var existingWorkload = await _db.WorkloadDefinitions
+                    .SingleOrDefaultAsync(wd => wd.Name == workloadName);
 
-                _db.WorkloadDefinitions.Add(workload);
+                WorkloadDefinitionEntity workload;
+                if (existingWorkload is not null)
+                {
+                    var existingRevision = await _db.WorkloadRevisions
+                        .SingleOrDefaultAsync(r => r.WorkloadId == existingWorkload.WorkloadId && r.Version == workloadVersion);
+
+                    if (existingRevision is not null)
+                    {
+                        results.Add(new BulkImportResultItem
+                        {
+                            Name = w.Name,
+                            Slug = w.Slug,
+                            Status = "skipped",
+                            Reason = "Workload with this name and version already exists"
+                        });
+                        continue;
+                    }
+
+                    workload = existingWorkload;
+                    workload.UpdatedAtUtc = now;
+                }
+                else
+                {
+                    workload = new WorkloadDefinitionEntity
+                    {
+                        WorkloadId = Guid.NewGuid(),
+                        Name = workloadName,
+                        Description = string.IsNullOrWhiteSpace(w.Description) ? null : w.Description.Trim(),
+                        CreatedAtUtc = now,
+                        UpdatedAtUtc = now
+                    };
+                    _db.WorkloadDefinitions.Add(workload);
+                }
 
                 var revision = new WorkloadRevisionEntity
                 {
                     RevisionId = Guid.NewGuid(),
                     WorkloadId = workload.WorkloadId,
-                    Version = string.IsNullOrWhiteSpace(w.Version) ? "1.0.0" : w.Version.Trim(),
+                    Version = workloadVersion,
                     IsPublished = true,
                     CreatedAtUtc = now
                 };
@@ -472,6 +544,7 @@ public sealed class WorkloadsController : ControllerBase
                             SourcePath = adapter.SourcePath,
                             InstallType = adapter.InstallType,
                             InstallArgs = adapter.InstallArgs,
+                            UninstallArgs = adapter.UninstallArgs,
                             ExpectedExitCodesJson = adapter.ExpectedExitCodesJson,
                             TimeoutSeconds = adapter.TimeoutSeconds,
                             CreatedAtUtc = now

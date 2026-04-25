@@ -3,7 +3,7 @@
     "name": "Dev Tools Stack",
     "slug": "dev-tools-stack",
     "description": "Essential development tools including Git, Node.js, and Python.",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "packages": [
       "git-2.48.1",
       "nodejs-24.13.0",
@@ -14,17 +14,16 @@
     "name": "Runtime Environment",
     "slug": "runtime-environment",
     "description": "Base runtime with .NET and the deployment agent.",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "packages": [
-      "dotnet-runtime-10.0.7",
-      "test-agent-1.0.0"
+      "dotnet-runtime-10.0.7"
     ]
   },
   {
     "name": "Utility Pack",
     "slug": "utility-pack",
     "description": "Common utilities for archive management and version control.",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "packages": [
       "7zip-26.00",
       "git-2.48.1"

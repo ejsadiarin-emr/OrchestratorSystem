@@ -11,4 +11,5 @@ public sealed class AssignRunPayload
     public Guid NodeId { get; set; }
     public List<PackageAssignment> Packages { get; set; } = new();
     public List<string> PreUpgradeActions { get; set; } = new();
+    public List<PackageAssignment> CurrentPackages { get; set; } = new();
 }

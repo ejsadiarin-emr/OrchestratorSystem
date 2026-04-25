@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using DeploymentPoC.Orchestrator.Contracts.Api;
 using DeploymentPoC.Orchestrator.Contracts.Api.Workloads;
 using DeploymentPoC.Orchestrator.Data;
@@ -321,6 +323,34 @@ public sealed class WorkloadsController : ControllerBase
         };
     }
 
+    private static Guid DeterministicGuid(string input)
+    {
+        using var md5 = MD5.Create();
+        var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(input));
+        return new Guid(hash);
+    }
+
+    private static (string InstallType, string SourcePath, string InstallArgs, string ExpectedExitCodesJson, int TimeoutSeconds)
+        ResolvePlaceholderAdapter(string packageId)
+    {
+        return packageId.ToLowerInvariant() switch
+        {
+            var p when p.StartsWith("git-") =>
+                ("exe", "{artifactPath}", "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS /COMPONENTS=\"icons,extreg,shellassoc\"", "[0]", 300),
+            var p when p.StartsWith("nodejs-") =>
+                ("msi", "msiexec.exe", "/i \"{artifactPath}\" /quiet /norestart", "[0,3010]", 300),
+            var p when p.StartsWith("7zip-") =>
+                ("exe", "{artifactPath}", "/S /D=C:\\Program Files\\7-Zip", "[0]", 120),
+            var p when p.StartsWith("python-") =>
+                ("exe", "{artifactPath}", "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0", "[0]", 300),
+            var p when p.StartsWith("dotnet-runtime-") =>
+                ("exe", "{artifactPath}", "/quiet /norestart", "[0,3010]", 300),
+            var p when p.StartsWith("test-agent-") =>
+                ("exe", "{artifactPath}", "/S", "[0]", 60),
+            _ => ("unknown", "{artifactPath}", "", "[0]", 300)
+        };
+    }
+
     [HttpPost("bulk-import")]
     [DisableRequestSizeLimit]
     public async Task<ActionResult<BulkImportResponse>> BulkImport(IFormFile file)
@@ -379,6 +409,24 @@ public sealed class WorkloadsController : ControllerBase
                     continue;
                 }
 
+                var invalidPackage = w.Packages.FirstOrDefault(packageSlug =>
+                {
+                    var lastHyphen = packageSlug.LastIndexOf('-');
+                    return lastHyphen <= 0 || lastHyphen == packageSlug.Length - 1;
+                });
+
+                if (invalidPackage is not null)
+                {
+                    results.Add(new BulkImportResultItem
+                    {
+                        Name = w.Name,
+                        Slug = w.Slug,
+                        Status = "failed",
+                        Reason = $"Invalid package format '{invalidPackage}': expected {{packageId}}-{{version}}"
+                    });
+                    continue;
+                }
+
                 var workload = new WorkloadDefinitionEntity
                 {
                     WorkloadId = Guid.NewGuid(),
@@ -400,25 +448,32 @@ public sealed class WorkloadsController : ControllerBase
                 };
 
                 _db.WorkloadRevisions.Add(revision);
-                workload.PublishedRevisionId = revision.RevisionId;
 
                 for (int i = 0; i < w.Packages.Count; i++)
                 {
                     var packageSlug = w.Packages[i];
+                    var lastHyphen = packageSlug.LastIndexOf('-');
+                    var packageId = packageSlug[..lastHyphen];
+                    var version = packageSlug[(lastHyphen + 1)..];
+                    var deterministicId = DeterministicGuid($"{packageId}-{version}");
+
                     var existingPackage = await _db.Packages
-                        .Where(p => p.Name == packageSlug)
+                        .Where(p => p.PackageId == deterministicId)
                         .FirstOrDefaultAsync();
 
                     if (existingPackage is null)
                     {
+                        var adapter = ResolvePlaceholderAdapter(packageId);
                         var packageEntity = new PackageEntity
                         {
-                            PackageId = Guid.NewGuid(),
-                            Name = packageSlug,
-                            Version = "1.0.0",
-                            SourcePath = $"{packageSlug}/1.0.0/artifact.bin",
-                            InstallType = "unknown",
-                            InstallArgs = "",
+                            PackageId = deterministicId,
+                            Name = packageId,
+                            Version = version,
+                            SourcePath = adapter.SourcePath,
+                            InstallType = adapter.InstallType,
+                            InstallArgs = adapter.InstallArgs,
+                            ExpectedExitCodesJson = adapter.ExpectedExitCodesJson,
+                            TimeoutSeconds = adapter.TimeoutSeconds,
                             CreatedAtUtc = now
                         };
                         _db.Packages.Add(packageEntity);
@@ -443,6 +498,10 @@ public sealed class WorkloadsController : ControllerBase
                     }
                 }
 
+                await _db.SaveChangesAsync();
+                workload.PublishedRevisionId = revision.RevisionId;
+                await _db.SaveChangesAsync();
+
                 results.Add(new BulkImportResultItem
                 {
                     Name = w.Name,
@@ -450,8 +509,6 @@ public sealed class WorkloadsController : ControllerBase
                     Status = "success"
                 });
             }
-
-            await _db.SaveChangesAsync();
 
             return Ok(new BulkImportResponse { Results = results });
         }

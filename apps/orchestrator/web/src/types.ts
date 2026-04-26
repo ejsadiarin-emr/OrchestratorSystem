@@ -117,9 +117,9 @@ export interface WorkloadRevision {
   workloadId: string
   revision: string
   state: WorkloadRevisionState
-  createdAt: string
+  createdAt?: string
   publishedAt?: string
-  packageSteps: WorkloadPackageStep[]
+  packageSteps?: WorkloadPackageStep[]
 }
 
 export interface WorkloadDefinition {
@@ -128,6 +128,7 @@ export interface WorkloadDefinition {
   description: string
   createdAt: string
   latestRevision?: WorkloadRevision
+  revisionCount?: number
 }
 
 export interface WorkloadRunTimelineItem {

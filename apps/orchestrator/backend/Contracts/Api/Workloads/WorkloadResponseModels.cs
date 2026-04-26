@@ -13,6 +13,15 @@ public sealed class WorkloadSummaryDto
     public Guid? PublishedRevisionId { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
+    public int RevisionCount { get; set; }
+    public WorkloadRevisionSummaryDto? LatestRevision { get; set; }
+}
+
+public sealed class WorkloadRevisionSummaryDto
+{
+    public Guid RevisionId { get; set; }
+    public string Version { get; set; } = string.Empty;
+    public bool IsPublished { get; set; }
 }
 
 public sealed class WorkloadDetailResponse

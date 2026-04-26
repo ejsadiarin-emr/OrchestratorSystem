@@ -1142,7 +1142,7 @@ export async function cancelWorkloadRun(runId: string): Promise<WorkloadRun> {
     workloadId: '',
     workloadName: '',
     workloadRevision: '',
-    mode: 'cancel' as WorkloadRun['mode'],
+    mode: 'install' as WorkloadRun['mode'],
     targetNodeIds: [],
     targetNodeHostnames: [],
     status: data.state.toLowerCase() as WorkloadRunStatus,

@@ -40,7 +40,7 @@ public class EnrollmentApiContractTests
         var node = await consumeResponse.Content.ReadFromJsonAsync<NodeResponse>();
         Assert.That(node, Is.Not.Null);
         Assert.That(node!.Hostname, Is.Not.Null.And.Not.Empty);
-        Assert.That(node.Status, Is.EqualTo("Online"));
+        Assert.That(node.Status, Is.EqualTo("online"));
 
         // Verify token is now used
         var listAfterConsume = await client.GetAsync("/api/enrollment-tokens");

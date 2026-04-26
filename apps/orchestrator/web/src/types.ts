@@ -100,7 +100,7 @@ export interface Node {
 
 export type WorkloadRevisionState = 'draft' | 'published'
 
-export type WorkloadRunMode = 'install' | 'update' | 'rollback' | 'cancel'
+export type WorkloadRunMode = 'install' | 'update' | 'rollback'
 
 export type WorkloadRunStatus = 'pending' | 'assigned' | 'running' | 'completed' | 'failed' | 'cancelled'
 

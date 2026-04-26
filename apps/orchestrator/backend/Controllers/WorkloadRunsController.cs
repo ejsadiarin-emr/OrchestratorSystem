@@ -46,7 +46,7 @@ public sealed class WorkloadRunsController : ControllerBase
             errors.Add(new ValidationFieldError
             {
                 Field = "mode",
-                Error = "Mode must be one of: install, update, rollback, cancel"
+                Error = "Mode must be one of: install, update, rollback"
             });
         }
 
@@ -594,7 +594,7 @@ public sealed class WorkloadRunsController : ControllerBase
         normalized = (mode ?? string.Empty).Trim().ToLowerInvariant();
         return normalized switch
         {
-            "install" or "update" or "rollback" or "cancel" => true,
+            "install" or "update" or "rollback" => true,
             _ => false
         };
     }

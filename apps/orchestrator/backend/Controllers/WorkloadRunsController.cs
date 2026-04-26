@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace DeploymentPoC.Orchestrator.Controllers;
 
@@ -24,12 +25,14 @@ public sealed class WorkloadRunsController : ControllerBase
     private readonly InstallerDbContext _db;
     private readonly PolicyEvaluationService _policyEvaluation;
     private readonly IHubContext<AgentRuntimeHub> _hubContext;
+    private readonly ILogger<WorkloadRunsController> _logger;
 
-    public WorkloadRunsController(InstallerDbContext db, PolicyEvaluationService policyEvaluation, IHubContext<AgentRuntimeHub> hubContext)
+    public WorkloadRunsController(InstallerDbContext db, PolicyEvaluationService policyEvaluation, IHubContext<AgentRuntimeHub> hubContext, ILogger<WorkloadRunsController> logger)
     {
         _db = db;
         _policyEvaluation = policyEvaluation;
         _hubContext = hubContext;
+        _logger = logger;
     }
 
     [HttpPost]
@@ -258,8 +261,11 @@ public sealed class WorkloadRunsController : ControllerBase
                 Payload = payload
             };
 
-            await _hubContext.Clients.Group($"node-{runEntity.NodeId}")
+            var groupName = $"node-{runEntity.NodeId}";
+            _logger.LogInformation("[INSTRUMENTATION] Sending AssignRun to group {GroupName} for RunId={RunId}", groupName, runEntity.RunId);
+            await _hubContext.Clients.Group(groupName)
                 .SendAsync("AssignRun", envelope, HttpContext.RequestAborted);
+            _logger.LogInformation("[INSTRUMENTATION] AssignRun sent to group {GroupName} for RunId={RunId}", groupName, runEntity.RunId);
         }
 
         return CreatedAtAction(nameof(GetById), new { runId }, new CreateWorkloadRunResponse

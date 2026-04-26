@@ -296,7 +296,11 @@ public sealed class NodeWorkloadStateService
 
         if (payload is JsonElement jsonElement)
         {
-            return JsonSerializer.Deserialize<T>(jsonElement.GetRawText());
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            return JsonSerializer.Deserialize<T>(jsonElement.GetRawText(), options);
         }
 
         return null;

@@ -45,12 +45,26 @@ public sealed class AgentRuntimeService : BackgroundService
 
         _connection.On<MessageEnvelope>(MessageTypes.AssignRun, async envelope =>
         {
+            _logger.LogInformation("[INSTRUMENTATION] Received AssignRun envelope: RunId={RunId}, AgentId={AgentId}, MessageType={MessageType}", envelope.RunId, envelope.AgentId, envelope.MessageType);
             await HandleAssignRunAsync(envelope);
         });
 
         _connection.Reconnecting += ex =>
         {
             _logger.LogWarning(ex, "SignalR connection reconnecting");
+            return Task.CompletedTask;
+        };
+
+        _connection.Closed += ex =>
+        {
+            if (ex is not null)
+            {
+                _logger.LogError(ex, "SignalR connection closed with error");
+            }
+            else
+            {
+                _logger.LogWarning("SignalR connection closed");
+            }
             return Task.CompletedTask;
         };
 
@@ -172,7 +186,7 @@ public sealed class AgentRuntimeService : BackgroundService
             {
                 if (payload.NodeId != nodeId)
                 {
-                    _logger.LogDebug("Ignoring AssignRun for NodeId={TargetNodeId}, we are {OurNodeId}", payload.NodeId, nodeId);
+                    _logger.LogWarning("Ignoring AssignRun for NodeId={TargetNodeId}, we are {OurNodeId}", payload.NodeId, nodeId);
                     return;
                 }
             }
@@ -240,7 +254,11 @@ public sealed class AgentRuntimeService : BackgroundService
 
         if (payload is JsonElement jsonElement)
         {
-            return JsonSerializer.Deserialize<AssignRunPayload>(jsonElement.GetRawText())
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+            return JsonSerializer.Deserialize<AssignRunPayload>(jsonElement.GetRawText(), options)
                 ?? throw new InvalidOperationException("Failed to deserialize AssignRunPayload from JsonElement");
         }
 

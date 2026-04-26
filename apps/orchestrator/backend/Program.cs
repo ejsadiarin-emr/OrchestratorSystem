@@ -67,6 +67,7 @@ builder.Services.AddSingleton<ArtifactZipService>();
 builder.Services.AddSingleton<AgentConnectionTracker>();
 builder.Services.AddScoped<PolicyEvaluationService>();
 builder.Services.AddScoped<WorkloadImportService>();
+builder.Services.AddScoped<WorkloadRunDispatcher>();
 builder.Services.AddScoped<NodeWorkloadStateService>();
 builder.Services.AddSignalR();
 builder.Services.AddHealthChecks();

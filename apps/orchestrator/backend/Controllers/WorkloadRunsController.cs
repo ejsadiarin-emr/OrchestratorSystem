@@ -1,17 +1,13 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using DeploymentPoC.Contracts.Runtime;
-using DeploymentPoC.Contracts.Runtime.RunPayloads;
 using DeploymentPoC.Orchestrator.Contracts.Api;
 using DeploymentPoC.Orchestrator.Contracts.Api.WorkloadRuns;
 using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Data.Entities;
-using DeploymentPoC.Orchestrator.Hubs;
 using DeploymentPoC.Orchestrator.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -24,14 +20,14 @@ public sealed class WorkloadRunsController : ControllerBase
 {
     private readonly InstallerDbContext _db;
     private readonly PolicyEvaluationService _policyEvaluation;
-    private readonly IHubContext<AgentRuntimeHub> _hubContext;
+    private readonly WorkloadRunDispatcher _dispatcher;
     private readonly ILogger<WorkloadRunsController> _logger;
 
-    public WorkloadRunsController(InstallerDbContext db, PolicyEvaluationService policyEvaluation, IHubContext<AgentRuntimeHub> hubContext, ILogger<WorkloadRunsController> logger)
+    public WorkloadRunsController(InstallerDbContext db, PolicyEvaluationService policyEvaluation, WorkloadRunDispatcher dispatcher, ILogger<WorkloadRunsController> logger)
     {
         _db = db;
         _policyEvaluation = policyEvaluation;
-        _hubContext = hubContext;
+        _dispatcher = dispatcher;
         _logger = logger;
     }
 
@@ -143,7 +139,6 @@ public sealed class WorkloadRunsController : ControllerBase
             .Where(n => distinctNodeIds.Contains(n.NodeId))
             .ToDictionaryAsync(n => n.NodeId);
 
-        var currentPackagesByNode = new Dictionary<Guid, List<PackageAssignment>>();
         var created = new List<WorkloadRunEntity>();
         foreach (var nodeId in distinctNodeIds)
         {
@@ -166,27 +161,6 @@ public sealed class WorkloadRunsController : ControllerBase
                 CreatedAtUtc = now,
                 UpdatedAtUtc = now
             });
-
-            var nodeState = await _db.NodeWorkloadStates
-                .AsNoTracking()
-                .FirstOrDefaultAsync(s => s.NodeId == nodeId && s.WorkloadId == request.WorkloadId, HttpContext.RequestAborted);
-
-            if (nodeState?.CurrentRevisionId is not null && nodeState.CurrentRevisionId != Guid.Empty)
-            {
-                var currentRevisionPackages = await _db.WorkloadPackages
-                    .AsNoTracking()
-                    .Where(wp => wp.RevisionId == nodeState.CurrentRevisionId)
-                    .OrderBy(wp => wp.PackageIndex)
-                    .ToListAsync(HttpContext.RequestAborted);
-
-                var currentPackageIds = currentRevisionPackages.Select(wp => wp.PackageId).ToList();
-                var currentPackageEntities = await _db.Packages
-                    .AsNoTracking()
-                    .Where(p => currentPackageIds.Contains(p.PackageId))
-                    .ToListAsync(HttpContext.RequestAborted);
-
-                currentPackagesByNode[nodeId] = BuildPackageAssignments(currentRevisionPackages, currentPackageEntities);
-            }
         }
 
         _db.WorkloadRuns.AddRange(created);
@@ -223,49 +197,9 @@ public sealed class WorkloadRunsController : ControllerBase
         }
 
         // Send AssignRun via SignalR to each node's group
-        var workloadName = workload.Name;
-        var revisionVersion = revision.Version;
-        var packageEntities = await _db.Packages
-            .AsNoTracking()
-            .Where(p => revision.Packages.Select(wp => wp.PackageId).Contains(p.PackageId))
-            .ToListAsync();
-
-        var packageAssignments = BuildPackageAssignments(revision.Packages.ToList(), packageEntities);
-
         foreach (var runEntity in created)
         {
-            var currentPackages = currentPackagesByNode.TryGetValue(runEntity.NodeId.GetValueOrDefault(), out var cp)
-                ? cp
-                : new List<PackageAssignment>();
-            var payload = new AssignRunPayload
-            {
-                RunId = runEntity.RunId,
-                WorkloadId = runEntity.WorkloadId,
-                WorkloadName = workloadName,
-                RevisionId = runEntity.RevisionId,
-                RevisionVersion = revisionVersion,
-                Mode = runEntity.Mode,
-                NodeId = runEntity.NodeId.GetValueOrDefault(),
-                Packages = packageAssignments,
-                CurrentPackages = currentPackages,
-                ForceInstall = runEntity.ForceInstall,
-                PreUpgradeActions = new List<string>()
-            };
-
-            var envelope = new MessageEnvelope
-            {
-                MessageType = MessageTypes.AssignRun,
-                RunId = runEntity.RunId.ToString(),
-                AgentId = runEntity.NodeId.ToString(),
-                Sequence = 0,
-                Payload = payload
-            };
-
-            var groupName = $"node-{runEntity.NodeId}";
-            _logger.LogInformation("[INSTRUMENTATION] Sending AssignRun to group {GroupName} for RunId={RunId}", groupName, runEntity.RunId);
-            await _hubContext.Clients.Group(groupName)
-                .SendAsync("AssignRun", envelope, HttpContext.RequestAborted);
-            _logger.LogInformation("[INSTRUMENTATION] AssignRun sent to group {GroupName} for RunId={RunId}", groupName, runEntity.RunId);
+            await _dispatcher.DispatchAsync(runEntity, HttpContext.RequestAborted);
         }
 
         return CreatedAtAction(nameof(GetById), new { runId }, new CreateWorkloadRunResponse
@@ -526,92 +460,6 @@ public sealed class WorkloadRunsController : ControllerBase
             State = AggregateState(rows.Select(r => r.State)),
             CancelledAtUtc = now
         });
-    }
-
-    private static List<PackageAssignment> BuildPackageAssignments(List<WorkloadPackageEntity> workloadPackages, List<PackageEntity> packageEntities)
-    {
-        return workloadPackages
-            .OrderBy(p => p.PackageIndex)
-            .Select(wp =>
-            {
-                const string artifactPath = "{artifactPath}";
-                var pkg = packageEntities.FirstOrDefault(p => p.PackageId == wp.PackageId);
-                var installType = pkg?.InstallType ?? "exe";
-                var isMsi = string.Equals(installType, "msi", StringComparison.OrdinalIgnoreCase);
-                string command;
-                string arguments;
-                if (isMsi)
-                {
-                    command = "msiexec.exe";
-                    arguments = $"/i \"{artifactPath}\" {pkg?.InstallArgs ?? ""}";
-                }
-                else
-                {
-                    command = artifactPath;
-                    arguments = pkg?.InstallArgs ?? "";
-                }
-
-                var expectedExitCodes = new List<int>();
-                if (!string.IsNullOrWhiteSpace(pkg?.ExpectedExitCodesJson))
-                {
-                    try
-                    {
-                        expectedExitCodes = JsonSerializer.Deserialize<List<int>>(pkg.ExpectedExitCodesJson) ?? new List<int>();
-                    }
-                    catch (JsonException)
-                    {
-                        expectedExitCodes = new List<int>();
-                    }
-                }
-
-                if (expectedExitCodes.Count == 0)
-                {
-                    expectedExitCodes = isMsi ? new List<int> { 0, 3010 } : new List<int> { 0 };
-                }
-
-                var timeoutSeconds = pkg?.TimeoutSeconds > 0 ? pkg.TimeoutSeconds : 300;
-                return new PackageAssignment
-                {
-                    PackageIndex = wp.PackageIndex,
-                    PackageId = wp.PackageId.ToString(),
-                    Name = pkg?.Name ?? "",
-                    Version = pkg?.Version ?? "",
-                    Channel = "stable",
-                    InstallAdapter = new InstallAdapterConfig
-                    {
-                        Type = installType,
-                        Command = command,
-                        Arguments = arguments,
-                        UninstallArgs = pkg?.UninstallArgs ?? "",
-                        ExpectedExitCodes = expectedExitCodes,
-                        TimeoutSeconds = timeoutSeconds
-                    },
-                    Detection = BuildDetectionConfig(pkg)
-                };
-            })
-            .ToList();
-    }
-
-    private static DetectionConfig BuildDetectionConfig(PackageEntity? pkg)
-    {
-        if (!string.IsNullOrWhiteSpace(pkg?.DetectionConfigJson))
-        {
-            try
-            {
-                return System.Text.Json.JsonSerializer.Deserialize<DetectionConfig>(pkg.DetectionConfigJson)
-                    ?? new DetectionConfig();
-            }
-            catch
-            {
-            }
-        }
-
-        return new DetectionConfig
-        {
-            Type = "file",
-            Path = pkg?.Name ?? "",
-            ExpectedVersion = pkg?.Version ?? ""
-        };
     }
 
     private static bool TryNormalizeMode(string? mode, out string normalized)

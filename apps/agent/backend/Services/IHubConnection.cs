@@ -8,6 +8,7 @@ public interface IHubConnection
 
     event Func<Exception?, Task>? Reconnecting;
     event Func<string?, Task>? Reconnected;
+    event Func<Exception?, Task>? Closed;
 
     Task StartAsync(CancellationToken cancellationToken = default);
     Task InvokeAsync(string methodName, object? arg1, CancellationToken cancellationToken = default);

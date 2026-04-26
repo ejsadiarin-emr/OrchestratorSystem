@@ -25,6 +25,12 @@ public sealed class HubConnectionWrapper : IHubConnection
         remove => _connection.Reconnected -= value;
     }
 
+    public event Func<Exception?, Task>? Closed
+    {
+        add => _connection.Closed += value;
+        remove => _connection.Closed -= value;
+    }
+
     public Task StartAsync(CancellationToken cancellationToken = default)
         => _connection.StartAsync(cancellationToken);
 

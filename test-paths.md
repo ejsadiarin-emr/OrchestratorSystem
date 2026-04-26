@@ -1,0 +1,2 @@
+- SQLite db: /home/ejs/DeploymentPoC/apps/orchestrator/backend/data/deployment-poc.db
+- local artifact store (directory): ./apps/orchestrator/backend/bin/Release/net10.0/linux-x64/artifacts/

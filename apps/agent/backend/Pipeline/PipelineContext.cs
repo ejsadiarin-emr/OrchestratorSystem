@@ -10,6 +10,8 @@ public sealed class PipelineContext
     public required string RunId { get; init; }
     public required int Sequence { get; init; }
 
+    public bool ForceInstall { get; set; }
+
     public List<PackageAssignment> CurrentPackages { get; set; } = new();
 
     public List<StepRecord> StepHistory { get; } = new();

@@ -95,7 +95,7 @@ public sealed class WorkloadRunsController : ControllerBase
         }
 
         var normalizedKey = request.IdempotencyKey.Trim();
-        var requestHash = ComputeIdempotencyRequestHash(request.WorkloadId, request.RevisionId, mode, distinctNodeIds);
+        var requestHash = ComputeIdempotencyRequestHash(request.WorkloadId, request.RevisionId, mode, distinctNodeIds, request.ForceInstall);
         var existingByIdempotency = await _db.WorkloadRuns.AsNoTracking()
             .Where(r => r.IdempotencyKey == normalizedKey)
             .OrderBy(r => r.CreatedAtUtc)
@@ -159,6 +159,7 @@ public sealed class WorkloadRunsController : ControllerBase
                 IdempotencyKey = normalizedKey,
                 IdempotencyRequestHash = requestHash,
                 RiskLevel = riskLevel,
+                ForceInstall = request.ForceInstall,
                 CreatedAtUtc = now,
                 UpdatedAtUtc = now
             });
@@ -244,6 +245,7 @@ public sealed class WorkloadRunsController : ControllerBase
                 NodeId = runEntity.NodeId.GetValueOrDefault(),
                 Packages = packageAssignments,
                 CurrentPackages = currentPackages,
+                ForceInstall = runEntity.ForceInstall,
                 PreUpgradeActions = new List<string>()
             };
 
@@ -616,14 +618,15 @@ public sealed class WorkloadRunsController : ControllerBase
         };
     }
 
-    private static string ComputeIdempotencyRequestHash(Guid workloadId, Guid revisionId, string mode, List<Guid> nodeIds)
+    private static string ComputeIdempotencyRequestHash(Guid workloadId, Guid revisionId, string mode, List<Guid> nodeIds, bool forceInstall)
     {
         var canonical = JsonSerializer.Serialize(new
         {
             workloadId,
             revisionId,
             mode,
-            nodeIds
+            nodeIds,
+            forceInstall
         });
         var bytes = Encoding.UTF8.GetBytes(canonical);
         var hash = SHA256.HashData(bytes);

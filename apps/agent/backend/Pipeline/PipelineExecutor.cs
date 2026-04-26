@@ -28,7 +28,38 @@ public class PipelineExecutor
             .OrderBy(p => p.PackageIndex)
             .ToList();
 
-        var diff = DiffEngine.ComputeDiff(context.CurrentPackages, targetPackages);
+        var baseDiff = DiffEngine.ComputeDiff(context.CurrentPackages, targetPackages);
+        Dictionary<string, PreCheckResult>? preCheckResults = null;
+
+        // Phase 0: Pre-Check
+        if (!context.ForceInstall)
+        {
+            preCheckResults = new Dictionary<string, PreCheckResult>();
+
+            var packagesToProbe = targetPackages
+                .Concat(baseDiff.Removed)
+                .GroupBy(p => p.Name)
+                .Select(g => g.First())
+                .ToList();
+
+            foreach (var package in packagesToProbe)
+            {
+                var stepCt = CancellationTokenSource.CreateLinkedTokenSource(ct).Token;
+
+                _logger.LogInformation(
+                    "Step PreCheckProbe: PackageIndex={PackageIndex}, PackageId={PackageId}",
+                    package.PackageIndex,
+                    package.PackageId);
+
+                var probeResult = await PreCheckProbe.ExecuteAsync(package.Detection, stepCt);
+                preCheckResults[package.Name] = probeResult;
+
+                await SendStepStatusAsync(sendMessageAsync, context, "PreCheckProbe", package, true, probeResult.Error);
+                context.RecordStep("PreCheckProbe", package.PackageIndex, package.PackageId, true, probeResult.Error);
+            }
+        }
+
+        var diff = DiffEngine.ComputeDiff(context.CurrentPackages, targetPackages, preCheckResults);
         var added = diff.Added;
         var removed = diff.Removed;
         var changed = diff.Changed;
@@ -52,6 +83,18 @@ public class PipelineExecutor
         foreach (var package in removed.OrderByDescending(p => p.PackageIndex))
         {
             var stepCt = CancellationTokenSource.CreateLinkedTokenSource(ct).Token;
+
+            if (preCheckResults?.TryGetValue(package.Name, out var preCheck) == true && preCheck.Status == PreCheckStatus.NotPresent)
+            {
+                _logger.LogInformation(
+                    "Step UninstallSkippedAlreadyGone: PackageIndex={PackageIndex}, PackageId={PackageId}",
+                    package.PackageIndex,
+                    package.PackageId);
+
+                await SendStepStatusAsync(sendMessageAsync, context, "UninstallSkippedAlreadyGone", package, true, null);
+                context.RecordStep("UninstallSkippedAlreadyGone", package.PackageIndex, package.PackageId, true, null);
+                continue;
+            }
 
             _logger.LogInformation(
                 "Step UninstallPackage: PackageIndex={PackageIndex}, PackageId={PackageId}",
@@ -80,6 +123,18 @@ public class PipelineExecutor
         foreach (var package in packagesToInstall)
         {
             var stepCt = CancellationTokenSource.CreateLinkedTokenSource(ct).Token;
+
+            if (preCheckResults?.TryGetValue(package.Name, out var preCheck) == true && preCheck.Status == PreCheckStatus.AlreadySatisfied)
+            {
+                _logger.LogInformation(
+                    "Step PreCheckSkipped: PackageIndex={PackageIndex}, PackageId={PackageId}",
+                    package.PackageIndex,
+                    package.PackageId);
+
+                await SendStepStatusAsync(sendMessageAsync, context, "PreCheckSkipped", package, true, null);
+                context.RecordStep("PreCheckSkipped", package.PackageIndex, package.PackageId, true, null);
+                continue;
+            }
 
             // Step 1: Acquire artifact
             var artifactUrl = $"{context.OrchestratorBaseUrl.TrimEnd('/')}/api/artifacts/{package.PackageId}/{package.Version}";

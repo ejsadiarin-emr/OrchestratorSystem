@@ -1,6 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import * as api from '../services/api'
 import Workloads from './Workloads'
 
 vi.mock('../services/api', async (importOriginal) => {
@@ -39,34 +38,23 @@ vi.mock('../services/api', async (importOriginal) => {
       createdAt: new Date().toISOString(),
     },
   ]
+  const mockRevisions = [
+    {
+      id: 'wrv-new',
+      workloadId: 'workload-001',
+      revision: '2.0.0',
+      state: 'draft',
+      createdAt: new Date().toISOString(),
+      packageSteps: [{ packageId: 'pkg-runtime', packageName: '', packageVersion: '', packageIndex: 1, stepId: 'step-1' }],
+    },
+  ]
   return {
     ...actual,
-    uploadArtifact: vi.fn().mockResolvedValue({
-      artifact: mockArtifacts[0],
-      steps: [
-        { id: 'upload', label: 'Receive multipart request', status: 'completed' },
-        { id: 'analyze', label: 'Analyze installer media', status: 'completed' },
-        { id: 'verify', label: 'Verify digest', status: 'completed' },
-        { id: 'store', label: 'Store artifact', status: 'completed' },
-      ],
-    }),
     listArtifacts: vi.fn().mockResolvedValue(mockArtifacts),
     listWorkloads: vi.fn().mockResolvedValue(mockWorkloads),
-    listWorkloadRevisions: vi.fn().mockResolvedValue([
-      {
-        id: 'wrv-new',
-        workloadId: 'workload-001',
-        revision: '2.0.0',
-        state: 'draft',
-        createdAt: new Date().toISOString(),
-        packageSteps: [{ packageId: 'pkg-runtime', packageName: '', packageVersion: '', packageIndex: 1, stepId: 'step-1' }],
-      },
-    ]),
-    createWorkloadDefinitionDraft: vi.fn().mockResolvedValue({
-      id: 'workload-new',
-      name: 'Line-B Baseline',
-      description: 'Secondary line draft',
-      createdAt: new Date().toISOString(),
+    getWorkload: vi.fn().mockResolvedValue({
+      ...mockWorkloads[0],
+      revisions: mockRevisions,
     }),
     createWorkloadRevision: vi.fn().mockResolvedValue({
       id: 'wrv-new',
@@ -85,66 +73,39 @@ vi.mock('../services/api', async (importOriginal) => {
       publishedAt: new Date().toISOString(),
       packageSteps: [{ packageId: 'pkg-runtime', packageName: '', packageVersion: '', packageIndex: 1, stepId: 'step-1' }],
     }),
+    deleteWorkload: vi.fn().mockResolvedValue(undefined),
   }
 })
 
 describe('Workloads page', () => {
   beforeEach(async () => {
-    await api.uploadArtifact({
-      file: new File(['fake'], 'EJ-Installer-2.0.0.msi', { type: 'application/octet-stream' }),
-      manifest: {
-        packageId: 'EJ-Installer',
-        version: '2.0.0',
-        channel: 'test',
-        artifactType: 'msi',
-      },
-    })
-    await api.uploadArtifact({
-      file: new File(['fake'], 'EJ-Installer-2.1.0.msi', { type: 'application/octet-stream' }),
-      manifest: {
-        packageId: 'EJ-Installer',
-        version: '2.1.0',
-        channel: 'test',
-        artifactType: 'msi',
-      },
-    })
-
     render(<Workloads />)
     await screen.findByText('Workload Definitions')
   })
 
-  it('renders version-oriented workload labels', async () => {
-    expect(screen.getByText('Latest Version')).toBeInTheDocument()
-    expect(screen.getByText('Version Status')).toBeInTheDocument()
-    expect(screen.getByText('Version List')).toBeInTheDocument()
-    expect(screen.getAllByText('Factory Base Install').length).toBeGreaterThan(0)
+  it('renders workload cards with latest revision info', async () => {
+    expect(screen.getByText('Definitions and Latest Revision')).toBeInTheDocument()
+    expect(screen.getByText('Factory Base Install')).toBeInTheDocument()
+    expect(screen.getByText('Baseline package set for production line nodes.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'View Details' })).toBeInTheDocument()
   })
 
-  it('creates workload definition draft via centered popup', async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Create Workload Definition Draft' }))
+  it('opens workload detail modal showing revisions', async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'View Details' }))
 
-    const draftDialog = screen.getByRole('dialog')
-    expect(within(draftDialog).getByText('Create Draft WorkloadDefinition')).toBeInTheDocument()
-
-    fireEvent.change(within(draftDialog).getByLabelText('Name'), {
-      target: { value: 'Line-B Baseline' },
-    })
-    fireEvent.change(within(draftDialog).getByLabelText('Description'), {
-      target: { value: 'Secondary line draft' },
-    })
-
-    fireEvent.click(within(draftDialog).getByRole('button', { name: 'Create Draft' }))
-
-    await waitFor(() => {
-      expect(screen.getByText('Created WorkloadDefinition draft: Line-B Baseline')).toBeInTheDocument()
-    })
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Workload details')).toBeInTheDocument()
+    expect(within(dialog).getByText('Factory Base Install')).toBeInTheDocument()
+    expect(within(dialog).getByText('Revisions')).toBeInTheDocument()
+    expect(within(dialog).getByText('2.0.0')).toBeInTheDocument()
+    expect(within(dialog).getByText('draft')).toBeInTheDocument()
   })
 
   it('creates and publishes revision draft via popup flow', async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Create Workload Version Draft' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Create revision' }))
 
     const revisionDialog = screen.getByRole('dialog')
-    expect(within(revisionDialog).getByText('Create Workload Version Draft')).toBeInTheDocument()
+    expect(within(revisionDialog).getByText('Create Workload Revision Draft')).toBeInTheDocument()
 
     fireEvent.change(within(revisionDialog).getByLabelText('Revision'), {
       target: { value: '2.0.0' },
@@ -164,7 +125,11 @@ describe('Workloads page', () => {
       expect(screen.getByText('Created WorkloadRevision draft 2.0.0')).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Publish Revision' }))
+    // open detail modal to access publish button
+    fireEvent.click(screen.getByRole('button', { name: 'View Details' }))
+    const detailDialog = await screen.findByRole('dialog')
+    const publishButton = within(detailDialog).getByRole('button', { name: 'Publish' })
+    fireEvent.click(publishButton)
 
     await waitFor(() => {
       expect(screen.getByText('Published revision 2.0.0. Revision is now immutable.')).toBeInTheDocument()

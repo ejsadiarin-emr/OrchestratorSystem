@@ -578,15 +578,32 @@ public sealed class WorkloadRunsController : ControllerBase
                         ExpectedExitCodes = expectedExitCodes,
                         TimeoutSeconds = timeoutSeconds
                     },
-                    Detection = new DetectionConfig
-                    {
-                        Type = "file",
-                        Path = pkg?.Name ?? "",
-                        ExpectedVersion = pkg?.Version ?? ""
-                    }
+                    Detection = BuildDetectionConfig(pkg)
                 };
             })
             .ToList();
+    }
+
+    private static DetectionConfig BuildDetectionConfig(PackageEntity? pkg)
+    {
+        if (!string.IsNullOrWhiteSpace(pkg?.DetectionConfigJson))
+        {
+            try
+            {
+                return System.Text.Json.JsonSerializer.Deserialize<DetectionConfig>(pkg.DetectionConfigJson)
+                    ?? new DetectionConfig();
+            }
+            catch
+            {
+            }
+        }
+
+        return new DetectionConfig
+        {
+            Type = "file",
+            Path = pkg?.Name ?? "",
+            ExpectedVersion = pkg?.Version ?? ""
+        };
     }
 
     private static bool TryNormalizeMode(string? mode, out string normalized)

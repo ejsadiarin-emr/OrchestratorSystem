@@ -113,6 +113,7 @@ public sealed class InstallerDbContext : DbContext
             entity.Property(x => x.InstallType).HasMaxLength(64);
             entity.Property(x => x.InstallArgs).HasMaxLength(2048);
             entity.Property(x => x.ExpectedExitCodesJson).HasMaxLength(256);
+            entity.Property(x => x.DetectionConfigJson).HasMaxLength(2048);
             entity.Property(x => x.TimeoutSeconds).HasDefaultValue(300);
         });
 

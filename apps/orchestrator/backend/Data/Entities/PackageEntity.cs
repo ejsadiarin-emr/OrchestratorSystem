@@ -10,6 +10,7 @@ public sealed class PackageEntity
     public string InstallArgs { get; set; } = string.Empty;
     public string UninstallArgs { get; set; } = string.Empty;
     public string ExpectedExitCodesJson { get; set; } = string.Empty;
+    public string DetectionConfigJson { get; set; } = string.Empty;
     public int TimeoutSeconds { get; set; } = 300;
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 }

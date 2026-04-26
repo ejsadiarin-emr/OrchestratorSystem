@@ -202,6 +202,7 @@ public sealed class AgentRuntimeService : BackgroundService
             var context = new PipelineContext
             {
                 Payload = payload,
+                CurrentPackages = payload.CurrentPackages,
                 OrchestratorBaseUrl = baseUrl,
                 AgentId = envelope.AgentId ?? "unknown",
                 RunId = envelope.RunId ?? payload.RunId.ToString(),

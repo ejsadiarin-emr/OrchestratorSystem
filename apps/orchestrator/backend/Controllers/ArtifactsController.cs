@@ -103,9 +103,17 @@ public sealed class ArtifactsController : ControllerBase
             {
                 WriteIndented = true
             });
-            await _artifactStore.SaveArtifactAndManifestAsync(result.ResolvedManifest!.PackageId, result.ResolvedManifest.Version, extracted.MediaStream, resolvedManifestJson, HttpContext.RequestAborted);
 
-            var packageEntityId = DeterministicGuid($"{result.ResolvedManifest.PackageId}-{result.ResolvedManifest.Version}");
+            var packageId = result.ResolvedManifest!.PackageId;
+            var version = result.ResolvedManifest.Version;
+            if (_artifactStore.ExistsAny(packageId, version))
+            {
+                return Conflict(new { message = $"Artifact '{packageId}' version '{version}' already exists." });
+            }
+
+            await _artifactStore.SaveArtifactAndManifestAsync(packageId, version, extracted.MediaStream, resolvedManifestJson, HttpContext.RequestAborted);
+
+            var packageEntityId = DeterministicGuid($"{packageId}-{version}");
             var existingPackage = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId, HttpContext.RequestAborted);
             if (existingPackage is null)
             {
@@ -186,9 +194,17 @@ public sealed class ArtifactsController : ControllerBase
         {
             WriteIndented = true
         });
-        await _artifactStore.SaveArtifactAndManifestAsync(ingestResult.ResolvedManifest!.PackageId, ingestResult.ResolvedManifest.Version, stream, resolvedManifestJson2, HttpContext.RequestAborted);
 
-        var packageEntityId2 = DeterministicGuid($"{ingestResult.ResolvedManifest.PackageId}-{ingestResult.ResolvedManifest.Version}");
+        var packageId2 = ingestResult.ResolvedManifest!.PackageId;
+        var version2 = ingestResult.ResolvedManifest.Version;
+        if (_artifactStore.ExistsAny(packageId2, version2))
+        {
+            return Conflict(new { message = $"Artifact '{packageId2}' version '{version2}' already exists." });
+        }
+
+        await _artifactStore.SaveArtifactAndManifestAsync(packageId2, version2, stream, resolvedManifestJson2, HttpContext.RequestAborted);
+
+        var packageEntityId2 = DeterministicGuid($"{packageId2}-{version2}");
         var existingPackage2 = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId2, HttpContext.RequestAborted);
         if (existingPackage2 is null)
         {
@@ -289,9 +305,24 @@ public sealed class ArtifactsController : ControllerBase
             {
                 WriteIndented = true
             });
-            await _artifactStore.SaveArtifactAndManifestAsync(result.ResolvedManifest!.PackageId, result.ResolvedManifest.Version, artifact.MediaStream, resolvedManifestJson, HttpContext.RequestAborted);
 
-            var packageEntityId = DeterministicGuid($"{result.ResolvedManifest.PackageId}-{result.ResolvedManifest.Version}");
+            var packageId = result.ResolvedManifest!.PackageId;
+            var version = result.ResolvedManifest.Version;
+            if (_artifactStore.ExistsAny(packageId, version))
+            {
+                results.Add(new
+                {
+                    fileName = artifact.MediaFileName,
+                    status = "skipped",
+                    reason = $"Artifact '{packageId}' version '{version}' already exists.",
+                    artifact = (object?)null
+                });
+                continue;
+            }
+
+            await _artifactStore.SaveArtifactAndManifestAsync(packageId, version, artifact.MediaStream, resolvedManifestJson, HttpContext.RequestAborted);
+
+            var packageEntityId = DeterministicGuid($"{packageId}-{version}");
             var existingPackage = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId, HttpContext.RequestAborted);
             if (existingPackage is null)
             {
@@ -534,9 +565,17 @@ public sealed class ArtifactsController : ControllerBase
         {
             WriteIndented = true
         });
-        await _artifactStore.SaveArtifactAndManifestAsync(result.ResolvedManifest!.PackageId, result.ResolvedManifest.Version, stream, resolvedManifestJson, HttpContext.RequestAborted);
 
-        var packageEntityId = DeterministicGuid($"{result.ResolvedManifest.PackageId}-{result.ResolvedManifest.Version}");
+        var packageId = result.ResolvedManifest!.PackageId;
+        var version = result.ResolvedManifest.Version;
+        if (_artifactStore.ExistsAny(packageId, version))
+        {
+            return Conflict(new { message = $"Artifact '{packageId}' version '{version}' already exists." });
+        }
+
+        await _artifactStore.SaveArtifactAndManifestAsync(packageId, version, stream, resolvedManifestJson, HttpContext.RequestAborted);
+
+        var packageEntityId = DeterministicGuid($"{packageId}-{version}");
         var existingPackage = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId, HttpContext.RequestAborted);
         if (existingPackage is null)
         {

@@ -89,7 +89,7 @@ vi.mock('../services/api', async (importOriginal) => {
       workloadId: 'workload-001',
       workloadName: '',
       workloadRevision: '',
-      mode: 'cancel',
+      mode: 'install',
       targetNodeIds: [],
       targetNodeHostnames: [],
       status: 'cancelled',

@@ -122,7 +122,7 @@ public class EnrollmentController : ControllerBase
             Hostname = nodeEntity.Hostname,
             DisplayName = nodeEntity.DisplayName,
             IpAddress = nodeEntity.IpAddress,
-            Status = nodeEntity.LastSeenUtc >= DateTime.UtcNow.AddMinutes(-2) ? "Online" : "Offline",
+            Status = nodeEntity.LastSeenUtc >= DateTime.UtcNow.AddMinutes(-2) ? "online" : "offline",
             LastSeenAt = nodeEntity.LastSeenUtc,
             FirstConnectedAt = nodeEntity.FirstConnectedUtc,
             Description = nodeEntity.Description,

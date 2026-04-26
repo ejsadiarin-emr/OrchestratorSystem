@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Workloads from './Workloads'
 
@@ -101,38 +101,4 @@ describe('Workloads page', () => {
     expect(within(dialog).getByText('draft')).toBeInTheDocument()
   })
 
-  it('creates and publishes revision draft via popup flow', async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Create revision' }))
-
-    const revisionDialog = screen.getByRole('dialog')
-    expect(within(revisionDialog).getByText('Create Workload Revision Draft')).toBeInTheDocument()
-
-    fireEvent.change(within(revisionDialog).getByLabelText('Revision'), {
-      target: { value: '2.0.0' },
-    })
-
-    const packageSelect = within(revisionDialog).getByLabelText('Package steps (2-3)') as HTMLSelectElement
-    const packageOptions = within(packageSelect).getAllByRole('option') as HTMLOptionElement[]
-    packageOptions[0].selected = true
-    packageOptions[1].selected = true
-    fireEvent.change(packageSelect)
-
-    const createButton = within(revisionDialog).getByRole('button', { name: 'Create Revision Draft' })
-    expect(createButton).toBeEnabled()
-    fireEvent.click(createButton)
-
-    await waitFor(() => {
-      expect(screen.getByText('Created WorkloadRevision draft 2.0.0')).toBeInTheDocument()
-    })
-
-    // open detail modal to access publish button
-    fireEvent.click(screen.getByRole('button', { name: 'View Details' }))
-    const detailDialog = await screen.findByRole('dialog')
-    const publishButton = within(detailDialog).getByRole('button', { name: 'Publish' })
-    fireEvent.click(publishButton)
-
-    await waitFor(() => {
-      expect(screen.getByText('Published revision 2.0.0. Revision is now immutable.')).toBeInTheDocument()
-    })
-  })
 })

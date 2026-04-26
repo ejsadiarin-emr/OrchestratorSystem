@@ -73,7 +73,7 @@ public class ArtifactStoreServiceTests
     }
 
     [Test]
-    public async Task SaveArtifactAndManifestAsync_WritesToSameDirectory_WhenCollisionOccurs()
+    public async Task SaveArtifactAndManifestAsync_Skips_WhenArtifactAlreadyExists()
     {
         // arrange - pre-create a version to force collision
         var packageId = "test-package";
@@ -86,16 +86,16 @@ public class ArtifactStoreServiceTests
         var manifestJson = "{\"PackageId\":\"test-package\",\"Version\":\"1.0.0\"}";
 
         // act
+        bool saved;
         await using (var stream = new MemoryStream(artifactBytes))
         {
-            await _service.SaveArtifactAndManifestAsync(packageId, version, stream, manifestJson);
+            saved = await _service.SaveArtifactAndManifestAsync(packageId, version, stream, manifestJson);
         }
 
-        // assert - both should be in 1.0.0-1
+        // assert - should skip and not create a new directory
+        Assert.That(saved, Is.False, "should return false when artifact already exists");
         var versionDir = Path.Combine(_tempRoot, packageId, "1.0.0-1");
-        Assert.That(Directory.Exists(versionDir), Is.True, "version directory 1.0.0-1 should exist");
-        Assert.That(File.Exists(Path.Combine(versionDir, "artifact.bin")), Is.True, "artifact.bin should exist in 1.0.0-1");
-        Assert.That(File.Exists(Path.Combine(versionDir, "resolved-manifest.json")), Is.True, "resolved-manifest.json should exist in 1.0.0-1");
+        Assert.That(Directory.Exists(versionDir), Is.False, "version directory 1.0.0-1 should not exist");
     }
 
     [Test]

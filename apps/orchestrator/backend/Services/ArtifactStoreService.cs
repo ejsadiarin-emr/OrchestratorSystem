@@ -86,30 +86,44 @@ public sealed class ArtifactStoreService
         }
     }
 
-    public async Task SaveArtifactAsync(string packageId, string version, Stream source, CancellationToken cancellationToken = default)
+    public async Task<bool> SaveArtifactAsync(string packageId, string version, Stream source, CancellationToken cancellationToken = default)
     {
-        var (actualPackageId, actualVersion) = GetUniquePath(packageId, version);
-        var artifactPath = GetArtifactPath(actualPackageId, actualVersion);
+        if (ExistsAny(packageId, version))
+        {
+            return false;
+        }
+
+        var artifactPath = GetArtifactPath(packageId, version);
         Directory.CreateDirectory(Path.GetDirectoryName(artifactPath)!);
 
         await using var file = File.Create(artifactPath);
         source.Position = 0;
         await source.CopyToAsync(file, cancellationToken);
+        return true;
     }
 
-    public async Task SaveResolvedManifestAsync(string packageId, string version, string manifestJson, CancellationToken cancellationToken = default)
+    public async Task<bool> SaveResolvedManifestAsync(string packageId, string version, string manifestJson, CancellationToken cancellationToken = default)
     {
-        var (actualPackageId, actualVersion) = GetUniquePath(packageId, version);
-        var manifestPath = GetManifestPath(actualPackageId, actualVersion);
+        if (ExistsAny(packageId, version))
+        {
+            return false;
+        }
+
+        var manifestPath = GetManifestPath(packageId, version);
         Directory.CreateDirectory(Path.GetDirectoryName(manifestPath)!);
         await File.WriteAllTextAsync(manifestPath, manifestJson, Encoding.UTF8, cancellationToken);
+        return true;
     }
 
-    public async Task SaveArtifactAndManifestAsync(string packageId, string version, Stream artifactStream, string manifestJson, CancellationToken cancellationToken = default)
+    public async Task<bool> SaveArtifactAndManifestAsync(string packageId, string version, Stream artifactStream, string manifestJson, CancellationToken cancellationToken = default)
     {
-        var (actualPackageId, actualVersion) = GetUniquePath(packageId, version);
-        var artifactPath = GetArtifactPath(actualPackageId, actualVersion);
-        var manifestPath = GetManifestPath(actualPackageId, actualVersion);
+        if (ExistsAny(packageId, version))
+        {
+            return false;
+        }
+
+        var artifactPath = GetArtifactPath(packageId, version);
+        var manifestPath = GetManifestPath(packageId, version);
         var versionDir = Path.GetDirectoryName(artifactPath)!;
         Directory.CreateDirectory(versionDir);
 
@@ -118,6 +132,7 @@ public sealed class ArtifactStoreService
         await artifactStream.CopyToAsync(file, cancellationToken);
 
         await File.WriteAllTextAsync(manifestPath, manifestJson, Encoding.UTF8, cancellationToken);
+        return true;
     }
 
     public async Task<string?> GetResolvedManifestAsync(string packageId, string version, CancellationToken cancellationToken = default)

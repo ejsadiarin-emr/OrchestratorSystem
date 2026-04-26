@@ -750,12 +750,19 @@ export async function listWorkloads(): Promise<WorkloadDefinition[]> {
   if (!response.ok) {
     throw new Error(`Failed to load workloads: ${response.status}`)
   }
-  const data = await response.json() as { workloads: Array<{ workloadId: string; name: string; description: string | null; publishedRevisionId: string | null; createdAtUtc: string; updatedAtUtc: string }> }
+  const data = await response.json() as { workloads: Array<{ workloadId: string; name: string; description: string | null; publishedRevisionId: string | null; createdAtUtc: string; updatedAtUtc: string; revisionCount: number; latestRevision: { revisionId: string; version: string; isPublished: boolean } | null }> }
   return data.workloads.map(w => ({
     id: w.workloadId,
     name: w.name,
     description: w.description ?? '',
     createdAt: w.createdAtUtc,
+    revisionCount: w.revisionCount,
+    latestRevision: w.latestRevision ? {
+      id: w.latestRevision.revisionId,
+      workloadId: w.workloadId,
+      revision: w.latestRevision.version,
+      state: w.latestRevision.isPublished ? ('published' as const) : ('draft' as const),
+    } : undefined,
   }))
 }
 
@@ -871,8 +878,8 @@ export async function createWorkloadRevision(
   request: CreateWorkloadRevisionRequest,
 ): Promise<WorkloadRevision> {
   const count = request.packageSteps.length
-  if (count < 2 || count > 3) {
-    throw new Error('PoC Phase 1 requires 2-3 package steps per WorkloadRevision')
+  if (count === 0) {
+    throw new Error('Workload revision must have at least 1 package')
   }
 
   const response = await fetch(`/api/workloads/${request.workloadId}/revisions`, {
@@ -1043,11 +1050,8 @@ export async function createWorkloadRun(request: CreateWorkloadRunRequest): Prom
   if (request.targetNodeIds.length === 0) {
     throw new Error('At least one target node is required')
   }
-  if (request.targetNodeIds.length !== 1) {
-    throw new Error('Phase 1 supports exactly one target node per run')
-  }
 
-  const idempotencyKey = `${request.workloadId}-${request.revisionId}-${request.mode}-${request.targetNodeIds[0]}-${Date.now()}`
+  const idempotencyKey = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
   const response = await fetch('/api/workload-runs', {
     method: 'POST',
@@ -1164,7 +1168,7 @@ export async function advanceWorkloadRun(runId: string): Promise<WorkloadRun> {
 
   const nextSequence = run.timeline.length + 1
   const last = run.timeline[run.timeline.length - 1]
-  const maxPackageIndex = revision.packageSteps.length
+  const maxPackageIndex = revision.packageSteps?.length ?? 0
   const nextStepId = last?.stepId === 'assign'
     ? 'ack-claim'
     : last?.stepId === 'ack-claim'
@@ -1189,7 +1193,7 @@ export async function advanceWorkloadRun(runId: string): Promise<WorkloadRun> {
   }
 
   const nextPackageIndex = last?.stepId === 'install-or-upgrade' ? (last.packageIndex ?? 1) + 1 : last?.packageIndex ?? 1
-  const nextPackageId = revision.packageSteps[nextPackageIndex - 1]?.packageId ?? last?.packageId ?? 'pkg-unknown'
+  const nextPackageId = revision.packageSteps?.[nextPackageIndex - 1]?.packageId ?? last?.packageId ?? 'pkg-unknown'
   const messageType =
     nextStepId === 'ack-claim'
       ? 'AckClaim'

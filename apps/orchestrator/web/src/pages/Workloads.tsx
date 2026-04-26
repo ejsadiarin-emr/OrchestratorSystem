@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { ArtifactRecord, WorkloadDefinition, WorkloadRevision, BulkWorkloadImportResultItem } from '../types'
-import { Upload, FileJson, AlertTriangle, CheckCircle2, XCircle, Trash2, Info, Plus } from 'lucide-react'
+import { Upload, FileJson, AlertTriangle, CheckCircle2, XCircle, Trash2, Info } from 'lucide-react'
 
 interface RevisionForm {
   workloadId: string
@@ -295,11 +295,6 @@ export default function Workloads() {
     }
   }
 
-  const openCreateRevision = (workloadId: string) => {
-    setRevisionForm(current => ({ ...current, workloadId, packageIds: [] }))
-    setIsRevisionModalOpen(true)
-  }
-
   if (loading) {
     return <div className="text-center py-8">Loading...</div>
   }
@@ -308,7 +303,7 @@ export default function Workloads() {
     <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-[var(--text-strong)]">Workload Definitions</h1>
-        <p className="mt-1 text-sm text-[var(--text-soft)]">Define WorkloadDefinition entities, then create immutable WorkloadRevision records with 2-3 ordered package steps.</p>
+        <p className="mt-1 text-sm text-[var(--text-soft)]">Define WorkloadDefinition entities, then create immutable WorkloadRevision records with 1 or more ordered package steps.</p>
       </div>
 
       {error && (
@@ -421,7 +416,7 @@ export default function Workloads() {
         <ModalContent className="w-[min(92vw,40rem)]">
           <ModalHeader>
             <ModalTitle>Create Workload Revision Draft</ModalTitle>
-            <ModalDescription>Choose a workload and select 2-3 ordered package steps.</ModalDescription>
+            <ModalDescription>Choose a workload and select 1 or more ordered package steps.</ModalDescription>
           </ModalHeader>
           <form onSubmit={onCreateRevision} className="space-y-3 px-4 pb-4">
             <label className="block text-sm text-[var(--text-soft)]">
@@ -453,7 +448,7 @@ export default function Workloads() {
               />
             </label>
             <label className="block text-sm text-[var(--text-soft)]">
-              Package steps (2-3)
+              Package steps (1 or more)
               <select
                 multiple
                 value={revisionForm.packageIds}
@@ -526,10 +521,6 @@ export default function Workloads() {
 
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-[var(--text-strong)]">Revisions</p>
-                <Button variant="outline" size="sm" onClick={() => openCreateRevision(detailWorkload.id)}>
-                  <Plus className="mr-1.5 h-3.5 w-3.5" />
-                  Create Revision
-                </Button>
               </div>
 
               <section className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm">
@@ -558,7 +549,7 @@ export default function Workloads() {
                           </div>
                         </div>
                         <div className="mt-2 space-y-1">
-                          {revision.packageSteps.map(step => (
+                          {revision.packageSteps?.map(step => (
                             <p key={step.stepId} className="text-xs text-[var(--text-soft)]">
                               {step.packageIndex}. {step.packageName} {step.packageVersion}
                             </p>
@@ -629,7 +620,7 @@ export default function Workloads() {
                   </div>
                   <div className="text-xs text-[var(--text-soft)] space-y-1">
                     <p>Created: {new Date(item.createdAt).toLocaleDateString()}</p>
-                    <p>Revisions: {item.latestRevision ? '1+' : '0'}</p>
+                    <p>Revisions: {item.revisionCount ?? 0}</p>
                   </div>
                 </CardContent>
                 <CardFooter className="flex justify-between">
@@ -638,14 +629,6 @@ export default function Workloads() {
                     View Details
                   </Button>
                   <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => openCreateRevision(item.id)}
-                      title="Create revision"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
                     <Button
                       variant="ghost"
                       size="icon-sm"

@@ -10,7 +10,7 @@ const pageMeta: Record<string, { title: string; description: string }> = {
   },
   '/workloads': {
     title: 'Workload Definitions',
-    description: 'Define WorkloadDefinition entities, then create immutable WorkloadRevision records with 2-3 ordered package steps.',
+    description: 'Define WorkloadDefinition entities, then create immutable WorkloadRevision records with 1 or more ordered package steps.',
   },
   '/workload-runs': {
     title: 'Workload Runs',

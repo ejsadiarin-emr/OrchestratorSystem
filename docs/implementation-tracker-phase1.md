@@ -26,7 +26,7 @@ This document does not redefine policy. If policy language here conflicts with P
 - Artifact upload UX must support both drag-and-drop and file picker while preserving canonical `POST /api/artifacts` behavior.
 - Phase 1 assumes single orchestrator.
 - Workload revisions are immutable once published.
-- PoC workload revision size target is 2-3 packages.
+- PoC workload revision size target is 1 or more packages (never 0).
 - Operator-facing UI terminology must avoid legacy "fleet" wording where equivalent node/workload terms exist.
 - Canonical runtime sequence is fixed:
   `Connect -> Register/Authenticate -> AssignRun -> AckClaim -> LeaseHeartbeat -> StepStatus* -> Complete/Fail -> LeaseClose`
@@ -167,7 +167,7 @@ These tasks are retained as historical completion and are not reopened.
     - `dotnet test tests/DeploymentPoC.Orchestrator.IntegrationTests --filter WorkloadsApi`
 - Acceptance links: AC-001, AC-104
 - Checklist:
-    - [ ] Revision creation enforces 2-3 package entries for PoC.
+    - [ ] Revision creation enforces at least 1 package entry (never 0).
     - [ ] Published revision is immutable.
     - [ ] Invalid revision payload yields deterministic validation errors.
     - [ ] **Global JSON import** accepts a file containing 2-3 workload definitions with packages referencing artifact catalog slugs.
@@ -721,7 +721,7 @@ These tasks form the minimum viable path to the demo. All other tasks are MVP-so
 | MVP-soft | W1-04 | `/api/jobs` deprecation (`410 Gone`) | Not needed for demo; legacy only |
 | MVP-soft | W2-02 | Sequence/idempotency enforcement | Simplify for demo: basic upsert, no chaos testing |
 | MVP-soft | W2-03 | Lease manager + stale policy | Simplify for demo: basic timeout, no reassignment |
-| MVP-soft | W2-04b | PreUpgradeActions enforcement | Can skip for demo (no actions in 2-3 package workload) |
+| MVP-soft | W2-04b | PreUpgradeActions enforcement | Can skip for demo (no actions in single-package workload) |
 | MVP-soft | W3-02 | Bootstrap token -> mTLS | Can use simpler auth for demo |
 | MVP-soft | W4-01 | Config snapshot/migration/restore | Can skip for demo |
 | MVP-soft | W5-01a | RBAC + audit integrity | Can skip RBAC for demo, add basic audit logging |

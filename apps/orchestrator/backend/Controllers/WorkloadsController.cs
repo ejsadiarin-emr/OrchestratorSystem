@@ -55,12 +55,12 @@ public sealed class WorkloadsController : ControllerBase
             errors.AddRange(ToValidationErrorResponse(ModelState).Errors);
         }
 
-        if (request.Packages.Count < 2 || request.Packages.Count > 3)
+        if (request.Packages.Count == 0)
         {
             errors.Add(new ValidationFieldError
             {
                 Field = "packages",
-                Error = "PoC workload revisions must include 2-3 packages"
+                Error = "Workload revisions must include at least 1 package"
             });
         }
 
@@ -231,7 +231,18 @@ public sealed class WorkloadsController : ControllerBase
                 Description = w.Description,
                 PublishedRevisionId = w.PublishedRevisionId,
                 CreatedAtUtc = w.CreatedAtUtc,
-                UpdatedAtUtc = w.UpdatedAtUtc
+                UpdatedAtUtc = w.UpdatedAtUtc,
+                RevisionCount = w.Revisions.Count,
+                LatestRevision = w.Revisions
+                    .OrderByDescending(r => r.IsPublished)
+                    .ThenByDescending(r => r.CreatedAtUtc)
+                    .Select(r => new WorkloadRevisionSummaryDto
+                    {
+                        RevisionId = r.RevisionId,
+                        Version = r.Version,
+                        IsPublished = r.IsPublished
+                    })
+                    .FirstOrDefault()
             })
             .ToListAsync();
 
@@ -441,14 +452,14 @@ public sealed class WorkloadsController : ControllerBase
                     continue;
                 }
 
-                if (w.Packages is null || w.Packages.Count < 2 || w.Packages.Count > 3)
+                if (w.Packages is null || w.Packages.Count == 0)
                 {
                     results.Add(new BulkImportResultItem
                     {
                         Name = w.Name,
                         Slug = w.Slug,
                         Status = "failed",
-                        Reason = "Workloads must have 2-3 packages"
+                        Reason = "Workloads must have at least 1 package"
                     });
                     continue;
                 }

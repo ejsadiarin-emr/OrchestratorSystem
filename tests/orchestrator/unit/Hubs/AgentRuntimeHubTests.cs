@@ -56,7 +56,7 @@ public class AgentRuntimeHubTests
     }
 
     [Test]
-    public async Task OnDisconnectedAsync_SetsNodeStatusToOffline()
+    public async Task OnDisconnectedAsync_CleansUpConnection()
     {
         var nodeId = Guid.NewGuid();
         var connectionId = "conn-test-1";
@@ -64,15 +64,13 @@ public class AgentRuntimeHubTests
         _connectionTracker.Register(nodeId, connectionId);
         _hub.Context = CreateHubContext(connectionId);
 
-        var node = new NodeEntity { NodeId = nodeId, Hostname = "test-node", Status = "Online" };
+        var node = new NodeEntity { NodeId = nodeId, Hostname = "test-node" };
         _db.Nodes.Add(node);
         await _db.SaveChangesAsync();
 
         await _hub.OnDisconnectedAsync(null);
 
-        var updated = await _db.Nodes.FindAsync(nodeId);
-        Assert.That(updated, Is.Not.Null);
-        Assert.That(updated!.Status, Is.EqualTo("Offline"));
+        Assert.That(_connectionTracker.TryGetNodeId(connectionId, out _), Is.False);
     }
 
     [Test]

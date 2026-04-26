@@ -25,6 +25,7 @@ public class NodesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<List<Node>>> GetAll()
     {
+        var cutoff = DateTime.UtcNow.AddMinutes(-2);
         var nodes = await _db.Nodes
             .OrderBy(n => n.Hostname)
             .Select(n => new Node
@@ -33,7 +34,7 @@ public class NodesController : ControllerBase
                 Hostname = n.Hostname,
                 DisplayName = n.DisplayName,
                 IpAddress = n.IpAddress,
-                Status = n.Status,
+                Status = n.LastSeenUtc >= cutoff ? "Online" : "Offline",
                 LastSeenAt = n.LastSeenUtc,
                 FirstConnectedAt = n.FirstConnectedUtc,
                 Description = n.Description,
@@ -60,7 +61,7 @@ public class NodesController : ControllerBase
             Hostname = entity.Hostname,
             IpAddress = entity.IpAddress,
             Description = entity.Description,
-            Status = entity.Status,
+            Status = entity.LastSeenUtc >= DateTime.UtcNow.AddMinutes(-2) ? "Online" : "Offline",
             LastSeenAt = entity.LastSeenUtc
         });
     }
@@ -74,7 +75,6 @@ public class NodesController : ControllerBase
             Hostname = request.Hostname,
             IpAddress = request.IpAddress,
             Description = request.Description,
-            Status = "Online",
             LastSeenUtc = DateTime.UtcNow
         };
 
@@ -132,7 +132,7 @@ public class NodesController : ControllerBase
             Hostname = entity.Hostname,
             IpAddress = request.IpAddress,
             Description = request.Description,
-            Status = entity.Status,
+            Status = entity.LastSeenUtc >= DateTime.UtcNow.AddMinutes(-2) ? "Online" : "Offline",
             LastSeenAt = entity.LastSeenUtc
         };
 
@@ -160,7 +160,7 @@ public class NodesController : ControllerBase
             DisplayName = entity.DisplayName,
             IpAddress = entity.IpAddress,
             Description = entity.Description,
-            Status = entity.Status,
+            Status = entity.LastSeenUtc >= DateTime.UtcNow.AddMinutes(-2) ? "Online" : "Offline",
             LastSeenAt = entity.LastSeenUtc,
             FirstConnectedAt = entity.FirstConnectedUtc,
             OsVersion = entity.OsVersion,

@@ -313,7 +313,7 @@ export interface Package {
 
 export interface BulkIngestResultItem {
   fileName: string
-  status: 'success' | 'failed'
+  status: 'success' | 'failed' | 'skipped'
   reason?: string
   artifact?: {
     packageId: string

@@ -61,6 +61,7 @@ public sealed class WorkloadImportService
             SourcePath = sourcePath,
             InstallType = manifest.InstallAdapter.Type,
             InstallArgs = manifest.InstallAdapter.Arguments,
+            DetectionConfigJson = System.Text.Json.JsonSerializer.Serialize(manifest.Detection),
             CreatedAtUtc = DateTime.UtcNow
         };
 

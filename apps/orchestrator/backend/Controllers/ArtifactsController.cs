@@ -127,6 +127,7 @@ public sealed class ArtifactsController : ControllerBase
                     InstallArgs = result.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
                     ExpectedExitCodesJson = JsonSerializer.Serialize(
                         result.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
+                    DetectionConfigJson = JsonSerializer.Serialize(result.ResolvedManifest.Detection),
                     TimeoutSeconds = result.ResolvedManifest.InstallAdapter?.TimeoutSeconds ?? 300,
                     CreatedAtUtc = DateTime.UtcNow
                 });
@@ -218,6 +219,7 @@ public sealed class ArtifactsController : ControllerBase
                 InstallArgs = ingestResult.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
                 ExpectedExitCodesJson = JsonSerializer.Serialize(
                     ingestResult.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
+                DetectionConfigJson = JsonSerializer.Serialize(ingestResult.ResolvedManifest.Detection),
                 TimeoutSeconds = ingestResult.ResolvedManifest.InstallAdapter?.TimeoutSeconds ?? 300,
                 CreatedAtUtc = DateTime.UtcNow
             });
@@ -336,6 +338,7 @@ public sealed class ArtifactsController : ControllerBase
                     InstallArgs = result.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
                     ExpectedExitCodesJson = JsonSerializer.Serialize(
                         result.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
+                    DetectionConfigJson = JsonSerializer.Serialize(result.ResolvedManifest.Detection),
                     TimeoutSeconds = result.ResolvedManifest.InstallAdapter?.TimeoutSeconds ?? 300,
                     CreatedAtUtc = DateTime.UtcNow
                 });
@@ -589,20 +592,21 @@ public sealed class ArtifactsController : ControllerBase
                 InstallArgs = result.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
                 ExpectedExitCodesJson = JsonSerializer.Serialize(
                     result.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
+                DetectionConfigJson = JsonSerializer.Serialize(result.ResolvedManifest.Detection),
                 TimeoutSeconds = result.ResolvedManifest.InstallAdapter?.TimeoutSeconds ?? 300,
                 CreatedAtUtc = DateTime.UtcNow
             });
             await _db.SaveChangesAsync(HttpContext.RequestAborted);
-        }
 
-        try
-        {
-            _uploadSession.DeleteSession(sessionId);
+            try
+            {
+                _uploadSession.DeleteSession(sessionId);
         }
         catch
         {
             // never fail cleanup
         }
+    }
 
         return StatusCode(StatusCodes.Status201Created, new
         {

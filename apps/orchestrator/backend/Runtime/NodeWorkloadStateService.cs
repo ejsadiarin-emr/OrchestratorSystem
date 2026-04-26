@@ -154,7 +154,6 @@ public sealed class NodeWorkloadStateService
         if (node is not null)
         {
             node.LastSeenUtc = DateTime.UtcNow;
-            node.Status = "Online";
 
             var payload = TryDeserializePayload<HeartbeatPayload>(envelope.Payload);
             if (payload is not null)

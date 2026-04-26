@@ -59,9 +59,8 @@ public class ArtifactStoreServiceListArtifactsTests
         var service = CreateService(storePath);
 
         var manifestJson = """{"packageId":"test-pkg","version":"1.0.0","channel":"stable","artifactType":"binary"}""";
-        await service.SaveResolvedManifestAsync("test-pkg", "1.0.0", manifestJson);
         await using var artifactStream = new MemoryStream(new byte[] { 0x01, 0x02, 0x03 });
-        await service.SaveArtifactAsync("test-pkg", "1.0.0", artifactStream);
+        await service.SaveArtifactAndManifestAsync("test-pkg", "1.0.0", artifactStream, manifestJson);
 
         var result = service.ListArtifacts();
 

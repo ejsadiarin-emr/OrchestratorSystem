@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useId } from 'react'
 import { createPortal } from 'react-dom'
 import { INFO_HINTS, type InfoHintKey } from './infoHints'
 
@@ -6,6 +6,7 @@ export function InfoHint({ label, hintKey }: { label: string; hintKey: InfoHintK
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const ref = useRef<HTMLButtonElement>(null);
+  const tooltipId = useId();
 
   const handleEnter = useCallback(() => {
     if (ref.current) {
@@ -24,6 +25,7 @@ export function InfoHint({ label, hintKey }: { label: string; hintKey: InfoHintK
         type="button"
         tabIndex={-1}
         aria-label={`Info: ${label}`}
+        aria-describedby={open ? tooltipId : undefined}
         className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-[var(--surface-border)] bg-[var(--surface-subtle)] text-[10px] font-semibold normal-case text-[var(--text-soft)]"
         onMouseDown={e => e.preventDefault()}
       >
@@ -31,6 +33,8 @@ export function InfoHint({ label, hintKey }: { label: string; hintKey: InfoHintK
       </button>
       {open && createPortal(
         <div
+          id={tooltipId}
+          role="tooltip"
           className="fixed z-[9999] max-w-56 rounded-md border border-[var(--surface-border)] bg-[var(--surface)] px-2 py-1 text-[10px] normal-case tracking-normal text-[var(--text-soft)] shadow-[var(--surface-shadow)]"
           style={{ top: `${pos.top}px`, left: `${pos.left}px` }}
         >

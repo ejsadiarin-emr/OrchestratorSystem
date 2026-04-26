@@ -203,7 +203,7 @@ expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
 
     await screen.findByText('Nodes Live Table')
 
-    fireEvent.click(screen.getByText('node-002'))
+    fireEvent.click(screen.getByRole('button', { name: 'Open node details node-002' }))
 
     expect(await screen.findByRole('heading', { name: 'Node details' })).toBeInTheDocument()
     expect(screen.getByText('Health: warning')).toBeInTheDocument()
@@ -226,7 +226,7 @@ expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
     fireEvent.keyDown(rowTrigger, { key: 'Enter' })
 
     expect(await screen.findByRole('heading', { name: 'Node details' })).toBeInTheDocument()
-    expect(screen.getByText(/node-002 \(.+\)/)).toBeInTheDocument()
+    expect(screen.getByText(/wj-plant-02 \(node-002\)/)).toBeInTheDocument()
   })
 
   it('opens workload popup from row click and shows derived signal copy', async () => {
@@ -298,7 +298,7 @@ expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
     )
 
     await screen.findByText('Workloads Overview')
-    expect(screen.getByText('Version')).toBeInTheDocument()
+    expect(screen.getByText('Revision')).toBeInTheDocument()
   })
 
   it('renders info hint indicators for target labels', async () => {

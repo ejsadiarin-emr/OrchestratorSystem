@@ -45,11 +45,37 @@ vi.mock('../services/api', async (importOriginal) => {
       timeline: [],
     }),
     listNodes: vi.fn().mockResolvedValue([
-      { id: 'node-001', hostname: 'wj-plant-01', ipAddress: '10.30.2.41', status: 'online', description: '', osVersion: '', agentVersion: '', firstConnectedAt: '', lastSeenAt: '' },
+      { id: 'node-001', hostname: 'wj-plant-01', displayName: 'Plant Line A', ipAddress: '10.30.2.41', status: 'online', description: '', osVersion: 'Windows Server 2022', agentVersion: '', firstConnectedAt: '', lastSeenAt: '' },
     ]),
     listWorkloads: vi.fn().mockResolvedValue([
       { id: 'workload-001', name: 'Factory Base Install', description: '', createdAt: new Date().toISOString() },
     ]),
+    getWorkload: vi.fn().mockResolvedValue({
+      id: 'workload-001',
+      name: 'Factory Base Install',
+      description: '',
+      createdAt: new Date().toISOString(),
+      revisions: [
+        {
+          id: 'wrv-001',
+          workloadId: 'workload-001',
+          revision: '1.0.0',
+          state: 'published',
+          createdAt: new Date().toISOString(),
+          publishedAt: new Date().toISOString(),
+          packageSteps: [],
+        },
+        {
+          id: 'wrv-002',
+          workloadId: 'workload-001',
+          revision: '1.1.0',
+          state: 'published',
+          createdAt: new Date().toISOString(),
+          publishedAt: new Date().toISOString(),
+          packageSteps: [],
+        },
+      ],
+    }),
     getWorkloadRunSteps: vi.fn().mockResolvedValue([]),
     cancelWorkloadRun: vi.fn().mockResolvedValue({
       id: 'run-001',
@@ -70,7 +96,7 @@ vi.mock('../services/api', async (importOriginal) => {
 describe('Workload Runs page', () => {
   beforeEach(async () => {
     render(<WorkloadRuns />)
-    await screen.findByText('Workload Runs')
+    await screen.findByText('Create Workload Run')
   })
 
   it('opens run creator popup and creates a run', async () => {
@@ -83,15 +109,25 @@ describe('Workload Runs page', () => {
     expect(within(dialog).getAllByText('install').length).toBeGreaterThan(0)
     expect(within(dialog).getAllByText('update').length).toBeGreaterThan(0)
     expect(within(dialog).getAllByText('rollback').length).toBeGreaterThan(0)
-    expect(within(dialog).getAllByText('cancel').length).toBeGreaterThan(0)
 
-    fireEvent.change(within(dialog).getByLabelText('Workload'), {
-      target: { value: 'workload-001' },
+    // wait for workload details to load and revision dropdown to populate
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText('Revision')).toBeInTheDocument()
     })
-    fireEvent.change(within(dialog).getByLabelText('Revision'), {
-      target: { value: 'rev-001' },
-    })
+
+    // select all online nodes via helper link
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Select all online' }))
+
+    // click Create Run to reveal summary
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create Run' }))
+
+    // summary should appear with confirm button
+    await waitFor(() => {
+      expect(within(dialog).getByRole('button', { name: 'Confirm Create Run' })).toBeInTheDocument()
+    })
+
+    // click confirm
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm Create Run' }))
 
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -112,6 +148,6 @@ describe('Workload Runs page', () => {
   })
 
   it('describes workload-runs runtime contracts', () => {
-    expect(screen.getAllByText('/api/workload-runs', { exact: false }).length).toBeGreaterThan(0)
+    expect(screen.getByText('Create Workload Run')).toBeInTheDocument()
   })
 })

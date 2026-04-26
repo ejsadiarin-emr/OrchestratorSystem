@@ -54,7 +54,7 @@ describe('Install page flow', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(emptyArtifactListResponse())
     render(<Install />)
 
-    await screen.findByText('Artifact Store Console')
+    await screen.findByText('Ingest Artifact')
 
     const fileInput = screen.getByLabelText('Select local artifact file')
     const pickedFile = new File(['installer-binary'], 'EJ-Installer-9.9.9.msi', {
@@ -98,7 +98,7 @@ describe('Install page flow', () => {
 
     render(<Install />)
 
-    await screen.findByText('Artifact Store Console')
+    await screen.findByText('Ingest Artifact')
 
     const droppedFile = new File(['installer-binary-2'], 'EJ-Installer-2.0.0.msi', {
       type: 'application/x-msi',

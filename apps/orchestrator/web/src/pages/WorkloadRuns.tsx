@@ -474,6 +474,7 @@ export default function WorkloadRuns() {
                               type="checkbox"
                               checked={isSelected}
                               disabled={!isOnline}
+                              aria-label={node.displayName || node.hostname}
                               onChange={event => {
                                 if (!isOnline) return
                                 const newIds = event.target.checked
@@ -528,7 +529,7 @@ export default function WorkloadRuns() {
               </button>
               <button
                 type="submit"
-                disabled={submitting || publishedRevisions.length === 0}
+                disabled={submitting || publishedRevisions.length === 0 || (!showSummary && selectedOnlineNodeIds.length === 0)}
                 className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {submitting ? 'Creating...' : showSummary ? 'Confirm Create Run' : 'Create Run'}

@@ -1,6 +1,6 @@
 # as of 2026-04-24 03:45
 
-- [ ] UI: remove all header cards in ALL pages, but move the unique description on the Topbar instead (ex. on root "/" page, have: "Workload-first triage surface for node health, run actions, and node-level evidence." - move this to Topbar's "Phase 1 workload-first operations console". Do all to other pages as well so Topbar description now becomes dynamic) 
+- [x] UI: remove all header cards in ALL pages, but move the unique description on the Topbar instead (ex. on root "/" page, have: "Workload-first triage surface for node health, run actions, and node-level evidence." - move this to Topbar's "Phase 1 workload-first operations console". Do all to other pages as well so Topbar description now becomes dynamic) 
 - Home (/):
     - [x] UI: remove action panel, action controls in Node details popup window modal/dialog
     - [x] UI: NODES ONLINE status doesn't update, even though an agent/remote node was connected (showing status: online on /nodes page) - check for the other cards as well - need have real data frontend to backend wiring here
@@ -12,7 +12,7 @@
         - "Updating" a workload is just inserting the new version (with new packages version - if have, AND preUpgradeActions defined). Retain the old version of the workload for backwards compatibility.
 - [x] Remove /agent-local page
     - We don't need this anymore - we don't even need an Agent web UI now.
-- [ ] Need more test artifacts (zip file - bulk upload) and global JSON file with multiple workloads
+- [x] Need more test artifacts (zip file - bulk upload) and global JSON file with multiple workloads
     - artifacts = actual installer media + manifest/metadata (same name for bulk upload in a .zip flat file - to match artifact binaries to their corresponding manifests)
     - workloads referencing artifacts (in the zip file)
 

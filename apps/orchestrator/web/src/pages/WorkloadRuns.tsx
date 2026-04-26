@@ -40,6 +40,7 @@ export default function WorkloadRuns() {
     revisionId: '',
     mode: 'install' as WorkloadRun['mode'],
     targetNodeIds: [] as string[],
+    forceInstall: false,
   })
   const [workloadDetails, setWorkloadDetails] = useState<(WorkloadDefinition & { revisions: WorkloadRevision[] }) | null>(null)
   const [nodeFilter, setNodeFilter] = useState('')
@@ -109,6 +110,7 @@ export default function WorkloadRuns() {
       revisionId: '',
       mode: 'install',
       targetNodeIds: [],
+      forceInstall: false,
     })
     setWorkloadDetails(null)
     setNodeFilter('')
@@ -411,6 +413,18 @@ export default function WorkloadRuns() {
                         </option>
                       ))}
                     </select>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-sm text-[var(--text-soft)]">
+                    <input
+                      type="checkbox"
+                      checked={form.forceInstall}
+                      onChange={event =>
+                        setForm(current => ({ ...current, forceInstall: event.target.checked }))
+                      }
+                      className="h-4 w-4 rounded border-[var(--surface-border)]"
+                    />
+                    <span>Force reinstall</span>
                   </label>
                 </div>
 

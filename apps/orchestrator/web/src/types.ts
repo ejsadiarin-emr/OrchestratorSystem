@@ -285,6 +285,7 @@ export interface CreateWorkloadRunRequest {
   revisionId: string
   mode: WorkloadRunMode
   targetNodeIds: string[]
+  forceInstall?: boolean
 }
 
 export interface CreateNodeRequest {

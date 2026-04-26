@@ -206,7 +206,8 @@ public sealed class AgentRuntimeService : BackgroundService
                 OrchestratorBaseUrl = baseUrl,
                 AgentId = envelope.AgentId ?? "unknown",
                 RunId = envelope.RunId ?? payload.RunId.ToString(),
-                Sequence = envelope.Sequence
+                Sequence = envelope.Sequence,
+                ForceInstall = payload.ForceInstall
             };
 
             var result = await _pipelineExecutor.ExecuteAsync(

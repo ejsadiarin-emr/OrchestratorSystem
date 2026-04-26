@@ -1062,6 +1062,7 @@ export async function createWorkloadRun(request: CreateWorkloadRunRequest): Prom
       mode: request.mode,
       idempotencyKey,
       nodeIds: request.targetNodeIds,
+      forceInstall: request.forceInstall,
     }),
   })
   if (!response.ok) {

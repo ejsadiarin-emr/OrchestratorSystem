@@ -611,7 +611,7 @@ export default function WorkloadRuns() {
                       </span>
                     </td>
                     <td className="rounded-r-xl px-4 py-3 text-right">
-                      {(run.status === 'running' || run.status === 'assigned' || run.status === 'pending') && (
+                      {(run.status === 'running' || run.status === 'assigned' || run.status === 'pending' || run.status === 'queued') && (
                         <button
                           onClick={event => {
                             event.stopPropagation()

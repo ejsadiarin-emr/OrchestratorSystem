@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Progress } from '@/components/ui/progress'
 import { Stepper } from '@/components/ui/stepper'
 import { cn } from '@/lib/utils'
-import { Trash2, Upload, FileArchive, FileCode, AlertTriangle, CheckCircle2, XCircle, Package, X, Info } from 'lucide-react'
+import { Trash2, Upload, FileArchive, FileCode, AlertTriangle, CheckCircle2, XCircle, MinusCircle, Package, X, Info } from 'lucide-react'
 import { Modal, ModalContent, ModalHeader, ModalTitle, ModalDescription, ModalFooter } from '@/components/ui/modal'
 
 const ingestSteps = [
@@ -570,18 +570,28 @@ export default function ArtifactStore() {
                         'flex items-center justify-between rounded-md px-3 py-2 text-sm',
                         result.status === 'success'
                           ? 'bg-green-50 text-green-800'
-                          : 'bg-red-50 text-red-800'
+                          : result.status === 'skipped'
+                            ? 'bg-amber-50 text-amber-800'
+                            : 'bg-red-50 text-red-800'
                       )}
                     >
                       <span className="flex items-center gap-2 font-medium">
                         {result.status === 'success' ? (
                           <CheckCircle2 className="h-4 w-4" />
+                        ) : result.status === 'skipped' ? (
+                          <MinusCircle className="h-4 w-4" />
                         ) : (
                           <XCircle className="h-4 w-4" />
                         )}
                         {result.fileName}
                       </span>
-                      <span>{result.status === 'success' ? 'Success' : `Failed: ${result.reason ?? ''}`}</span>
+                      <span>
+                        {result.status === 'success'
+                          ? 'Success'
+                          : result.status === 'skipped'
+                            ? `Skipped: ${result.reason ?? ''}`
+                            : `Failed: ${result.reason ?? ''}`}
+                      </span>
                     </div>
                   ))}
                 </div>

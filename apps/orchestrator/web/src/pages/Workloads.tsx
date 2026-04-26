@@ -5,13 +5,15 @@ import {
   getWorkload,
   importBulkWorkloads,
   listArtifacts,
-  listWorkloadRevisions,
   listWorkloads,
   publishWorkloadRevision,
 } from '../services/api'
 import { Modal, ModalContent, ModalDescription, ModalFooter, ModalHeader, ModalTitle } from '../components/ui/modal'
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import type { ArtifactRecord, WorkloadDefinition, WorkloadRevision, BulkWorkloadImportResultItem } from '../types'
-import { Upload, FileJson, AlertTriangle, CheckCircle2, XCircle, Trash2 } from 'lucide-react'
+import { Upload, FileJson, AlertTriangle, CheckCircle2, XCircle, Trash2, Info, Plus } from 'lucide-react'
 
 interface RevisionForm {
   workloadId: string
@@ -28,13 +30,22 @@ function formatBytes(bytes?: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`
 }
 
+function statusBadgeClass(state?: string) {
+  switch (state) {
+    case 'published':
+      return 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-text)]'
+    case 'draft':
+      return 'border-amber-200 bg-amber-50 text-amber-700'
+    default:
+      return 'bg-[var(--surface-muted)] text-[var(--text-soft)]'
+  }
+}
+
 type DropMode = 'workloadDefinition' | 'workloadRevision' | null
 
 export default function Workloads() {
   const [workloads, setWorkloads] = useState<WorkloadDefinition[]>([])
   const [artifacts, setArtifacts] = useState<ArtifactRecord[]>([])
-  const [revisions, setRevisions] = useState<WorkloadRevision[]>([])
-  const [selectedWorkloadId, setSelectedWorkloadId] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -61,23 +72,10 @@ export default function Workloads() {
     packageIds: [],
   })
 
-  const refresh = async (activeWorkloadId?: string) => {
+  const refresh = async () => {
     const [workloadData, artifactData] = await Promise.all([listWorkloads(), listArtifacts()])
     setWorkloads(workloadData)
     setArtifacts(artifactData)
-
-    const fallbackWorkloadId = activeWorkloadId !== undefined ? activeWorkloadId : (selectedWorkloadId || workloadData[0]?.id || '')
-    const validWorkloadId = workloadData.some(w => w.id === fallbackWorkloadId) ? fallbackWorkloadId : (workloadData[0]?.id || '')
-    setSelectedWorkloadId(validWorkloadId)
-
-    if (validWorkloadId) {
-      const revisionData = await listWorkloadRevisions(validWorkloadId)
-      setRevisions(revisionData)
-      setRevisionForm(current => ({ ...current, workloadId: validWorkloadId }))
-    } else {
-      setRevisions([])
-      setRevisionForm(current => ({ ...current, workloadId: '' }))
-    }
   }
 
   useEffect(() => {
@@ -92,21 +90,6 @@ export default function Workloads() {
 
         setWorkloads(workloadData)
         setArtifacts(artifactData)
-
-        const fallbackWorkloadId = workloadData[0]?.id || ''
-        setSelectedWorkloadId(fallbackWorkloadId)
-
-        if (fallbackWorkloadId) {
-          const revisionData = await listWorkloadRevisions(fallbackWorkloadId)
-          if (!active) {
-            return
-          }
-          setRevisions(revisionData)
-          setRevisionForm(current => ({ ...current, workloadId: fallbackWorkloadId }))
-        } else {
-          setRevisions([])
-          setRevisionForm(current => ({ ...current, workloadId: '' }))
-        }
       } catch {
         if (active) {
           setError('Failed to load workloads and revisions.')
@@ -149,22 +132,48 @@ export default function Workloads() {
         })),
       })
       setRevisionForm(current => ({ ...current, packageIds: [] }))
-      await refresh(revisionForm.workloadId)
+      await refresh()
       setMessage(`Created WorkloadRevision draft ${created.revision}`)
       setIsRevisionModalOpen(false)
+
+      // refresh detail modal if open for same workload
+      if (detailWorkload && detailWorkload.id === created.workloadId) {
+        setDetailLoading(true)
+        try {
+          const updated = await getWorkload(created.workloadId)
+          setDetailWorkload(updated)
+        } catch {
+          // ignore detail refresh errors
+        } finally {
+          setDetailLoading(false)
+        }
+      }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Failed to create revision draft.')
     }
   }
 
-  const onPublishRevision = async (revisionId: string) => {
+  const onPublishRevision = async (workloadId: string, revisionId: string) => {
     setError(null)
     setMessage(null)
 
     try {
-      const published = await publishWorkloadRevision(selectedWorkloadId, revisionId)
-      await refresh(selectedWorkloadId)
+      const published = await publishWorkloadRevision(workloadId, revisionId)
+      await refresh()
       setMessage(`Published revision ${published.revision}. Revision is now immutable.`)
+
+      // refresh detail modal if open for same workload
+      if (detailWorkload && detailWorkload.id === workloadId) {
+        setDetailLoading(true)
+        try {
+          const updated = await getWorkload(workloadId)
+          setDetailWorkload(updated)
+        } catch {
+          // ignore detail refresh errors
+        } finally {
+          setDetailLoading(false)
+        }
+      }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Failed to publish revision.')
     }
@@ -177,10 +186,14 @@ export default function Workloads() {
 
     try {
       await deleteWorkload(workloadToDelete.id)
-      await refresh('')
+      await refresh()
       setMessage(`Deleted workload "${workloadToDelete.name}".`)
       setIsDeleteModalOpen(false)
       setWorkloadToDelete(null)
+      if (detailWorkload?.id === workloadToDelete.id) {
+        setIsDetailModalOpen(false)
+        setDetailWorkload(null)
+      }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Failed to delete workload.')
     }
@@ -282,12 +295,22 @@ export default function Workloads() {
     }
   }
 
+  const openCreateRevision = (workloadId: string) => {
+    setRevisionForm(current => ({ ...current, workloadId, packageIds: [] }))
+    setIsRevisionModalOpen(true)
+  }
+
   if (loading) {
     return <div className="text-center py-8">Loading...</div>
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold text-[var(--text-strong)]">Workload Definitions</h1>
+        <p className="mt-1 text-sm text-[var(--text-soft)]">Define WorkloadDefinition entities, then create immutable WorkloadRevision records with 2-3 ordered package steps.</p>
+      </div>
+
       {error && (
         <div className="rounded-lg border border-[var(--status-danger-border)] bg-[var(--status-danger-bg)] px-4 py-3 text-sm text-[var(--status-danger-text)]">
           {error}
@@ -408,8 +431,6 @@ export default function Workloads() {
                 onChange={event => {
                   const workloadId = event.target.value
                   setRevisionForm(current => ({ ...current, workloadId }))
-                  setSelectedWorkloadId(workloadId)
-                  listWorkloadRevisions(workloadId).then(setRevisions)
                 }}
                 className="mt-1 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2"
                 required
@@ -503,25 +524,38 @@ export default function Workloads() {
                 </p>
               </section>
 
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-[var(--text-strong)]">Revisions</p>
+                <Button variant="outline" size="sm" onClick={() => openCreateRevision(detailWorkload.id)}>
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  Create Revision
+                </Button>
+              </div>
+
               <section className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 text-sm">
-                <p className="font-medium text-[var(--text-strong)]">Revisions</p>
                 {detailWorkload.revisions.length === 0 ? (
-                  <p className="mt-2 text-[var(--text-soft)]">No revisions yet.</p>
+                  <p className="text-[var(--text-soft)]">No revisions yet.</p>
                 ) : (
-                  <div className="mt-2 space-y-2">
+                  <div className="space-y-2">
                     {detailWorkload.revisions.map(revision => (
                       <div key={revision.id} className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface)] p-3">
                         <div className="flex items-center justify-between gap-2">
                           <p className="font-medium text-[var(--text-strong)]">
                             {revision.revision}
                           </p>
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                            revision.state === 'published'
-                              ? 'border-[var(--status-success-border)] bg-[var(--status-success-bg)] text-[var(--status-success-text)]'
-                              : 'border-[var(--surface-border)] bg-[var(--surface-muted)] text-[var(--text-soft)]'
-                          }`}>
-                            {revision.state}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium border ${statusBadgeClass(revision.state)}`}>
+                              {revision.state}
+                            </span>
+                            {revision.state === 'draft' && (
+                              <button
+                                onClick={() => onPublishRevision(detailWorkload.id, revision.id)}
+                                className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
+                              >
+                                Publish
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <div className="mt-2 space-y-1">
                           {revision.packageSteps.map(step => (
@@ -570,85 +604,67 @@ export default function Workloads() {
         </ModalContent>
       </Modal>
 
-      <section className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
-        <h2 className="text-lg font-semibold text-[var(--text-strong)]">Definitions and Latest Revision</h2>
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full divide-y divide-[var(--surface-border)]">
-            <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-[var(--text-soft)]">
-                <th className="px-4 py-3">Workload</th>
-                <th className="px-4 py-3">Description</th>
-                <th className="px-4 py-3">Latest Revision</th>
-                <th className="px-4 py-3">Revision Status</th>
-                <th className="px-4 py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--surface-border)] text-sm">
-              {workloads.map(item => (
-                <tr
-                  key={item.id}
-                  onClick={() => openWorkloadDetail(item.id)}
-                  className="cursor-pointer hover:bg-[var(--surface-subtle)]"
-                >
-                  <td className="px-4 py-3 font-medium text-[var(--text-strong)]">{item.name}</td>
-                  <td className="px-4 py-3 text-[var(--text-soft)]">{item.description}</td>
-                  <td className="px-4 py-3 text-[var(--text-soft)]">{item.latestRevision?.revision ?? 'No revision yet'}</td>
-                  <td className="px-4 py-3">
-                    <span className="rounded-full bg-[var(--surface-muted)] px-2 py-1 text-xs text-[var(--text-soft)]">
+      <div>
+        <h2 className="text-lg font-semibold text-[var(--text-strong)] mb-4">Definitions and Latest Revision</h2>
+        {workloads.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-[var(--surface-border)] p-8 text-center">
+            <p className="text-sm text-[var(--text-soft)]">No workload definitions yet</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {workloads.map(item => (
+              <Card key={item.id}>
+                <CardHeader>
+                  <CardTitle>{item.name}</CardTitle>
+                  <CardDescription>{item.description}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="secondary">
+                      {item.latestRevision?.revision ?? 'No revision yet'}
+                    </Badge>
+                    <Badge variant="outline" className={statusBadgeClass(item.latestRevision?.state)}>
                       {item.latestRevision?.state ?? 'n/a'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={e => {
-                        e.stopPropagation()
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-[var(--text-soft)] space-y-1">
+                    <p>Created: {new Date(item.createdAt).toLocaleDateString()}</p>
+                    <p>Revisions: {item.latestRevision ? '1+' : '0'}</p>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex justify-between">
+                  <Button variant="outline" size="sm" onClick={() => openWorkloadDetail(item.id)}>
+                    <Info className="mr-1.5 h-3.5 w-3.5" />
+                    View Details
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => openCreateRevision(item.id)}
+                      title="Create revision"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => {
                         setWorkloadToDelete(item)
                         setIsDeleteModalOpen(true)
                       }}
-                      className="rounded-lg p-1.5 text-[var(--text-soft)] hover:bg-red-50 hover:text-red-600"
+                      className="text-red-600 hover:bg-red-50 hover:text-red-700"
                       title="Delete workload"
                     >
                       <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-[var(--surface-border)] bg-[var(--surface)] p-6 shadow-[var(--surface-shadow)]">
-        <h2 className="text-lg font-semibold text-[var(--text-strong)]">Revision List</h2>
-        <p className="mt-1 text-xs text-[var(--text-soft)]">Publish action transitions draft revisions to immutable published state.</p>
-        <div className="mt-4 space-y-3">
-          {revisions.length === 0 ? (
-            <p className="text-sm text-[var(--text-soft)]">No revisions for selected workload.</p>
-          ) : (
-            revisions.map(revision => (
-              <div key={revision.id} className="rounded-xl border border-[var(--surface-border)] p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--text-strong)]">Revision {revision.revision}</p>
-                    <p className="text-xs text-[var(--text-soft)]">{revision.packageSteps.length} package steps</p>
+                    </Button>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-full bg-[var(--surface-muted)] px-2 py-1 text-xs text-[var(--text-soft)]">{revision.state}</span>
-                    {revision.state === 'draft' && (
-                      <button
-                        onClick={() => onPublishRevision(revision.id)}
-                        className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700"
-                      >
-                        Publish Revision
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

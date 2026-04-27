@@ -31,6 +31,18 @@ public static class InstallOrUpgrade
         // Expand placeholder {artifactPath} in arguments
         arguments = arguments.Replace("{artifactPath}", artifactPath, StringComparison.OrdinalIgnoreCase);
 
+        // Apply default silent-install arguments when none are provided, so automated
+        // deployment on headless agents does not pop up installer UI.
+        if (string.IsNullOrWhiteSpace(arguments))
+        {
+            arguments = config.Type?.ToLowerInvariant() switch
+            {
+                "msi" => "/quiet /norestart",
+                "exe" => "/S",
+                _ => arguments
+            };
+        }
+
         var expectedExitCodes = config.ExpectedExitCodes is { Count: > 0 }
             ? config.ExpectedExitCodes
             : new List<int> { 0 };

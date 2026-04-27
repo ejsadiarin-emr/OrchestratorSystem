@@ -445,6 +445,29 @@ public sealed class WorkloadRunsController : ControllerBase
             .Where(p => packageIds.Contains(p.PackageId))
             .ToDictionaryAsync(p => p.PackageId);
 
+        var workloadIds = runs.Select(r => r.WorkloadId).Distinct().ToList();
+        var nodeStates = await _db.NodeWorkloadStates
+            .AsNoTracking()
+            .Where(s => s.NodeId == agentId && workloadIds.Contains(s.WorkloadId))
+            .ToDictionaryAsync(s => s.WorkloadId);
+
+        var currentRevisionIds = nodeStates.Values
+            .Where(s => s.CurrentRevisionId.HasValue && s.CurrentRevisionId.Value != Guid.Empty)
+            .Select(s => s.CurrentRevisionId!.Value)
+            .Distinct()
+            .ToList();
+
+        var currentWorkloadPackages = await _db.WorkloadPackages
+            .AsNoTracking()
+            .Where(wp => currentRevisionIds.Contains(wp.RevisionId))
+            .ToListAsync();
+
+        var currentPackageIds = currentWorkloadPackages.Select(wp => wp.PackageId).Distinct().ToList();
+        var currentPackageEntities = await _db.Packages
+            .AsNoTracking()
+            .Where(p => currentPackageIds.Contains(p.PackageId))
+            .ToDictionaryAsync(p => p.PackageId);
+
         var responses = runs.Select(r => new PendingWorkloadRunResponse
         {
             RunId = r.RunId,
@@ -453,49 +476,15 @@ public sealed class WorkloadRunsController : ControllerBase
             Mode = r.Mode,
             Packages = r.Revision.Packages
                 .OrderBy(p => p.PackageIndex)
-                .Select(p =>
-                {
-                    var pkg = packages.GetValueOrDefault(p.PackageId);
-                    _artifactStore.TryGetArtifactFileName(pkg?.Name ?? "", pkg?.Version ?? "", out var fn);
-
-                    var installType = string.IsNullOrWhiteSpace(pkg?.InstallType) || pkg.InstallType.Equals("unknown", StringComparison.OrdinalIgnoreCase)
-                        ? "exe"
-                        : pkg.InstallType;
-
-                    var expectedExitCodes = new List<int>();
-                    if (!string.IsNullOrWhiteSpace(pkg?.ExpectedExitCodesJson))
-                    {
-                        try { expectedExitCodes = JsonSerializer.Deserialize<List<int>>(pkg.ExpectedExitCodesJson) ?? new List<int> { 0 }; }
-                        catch { expectedExitCodes = new List<int> { 0 }; }
-                    }
-                    if (expectedExitCodes.Count == 0) expectedExitCodes = new List<int> { 0 };
-
-                    var timeoutSeconds = pkg?.TimeoutSeconds > 0 ? pkg.TimeoutSeconds : 300;
-
-                    DetectionConfig detection;
-                    try { detection = string.IsNullOrWhiteSpace(pkg?.DetectionConfigJson) ? null : JsonSerializer.Deserialize<DetectionConfig>(pkg.DetectionConfigJson); }
-                    catch { detection = null; }
-                    detection ??= new DetectionConfig { Type = "file", Path = pkg?.Name ?? "", ExpectedVersion = pkg?.Version ?? "" };
-
-                    return new PendingPackageDto
-                    {
-                        PackageEntityId = p.PackageId,
-                        Name = pkg?.Name ?? "",
-                        Version = pkg?.Version ?? "",
-                        Filename = fn ?? string.Empty,
-                        DownloadUrl = $"/api/artifacts/{p.PackageId}/download",
-                        InstallAdapter = new InstallAdapterConfig
-                        {
-                            Type = installType,
-                            Command = pkg?.SourcePath ?? "{artifactPath}",
-                            Arguments = pkg?.InstallArgs ?? "",
-                            UninstallArgs = pkg?.UninstallArgs ?? "",
-                            ExpectedExitCodes = expectedExitCodes,
-                            TimeoutSeconds = timeoutSeconds
-                        },
-                        Detection = detection
-                    };
-                }).ToList()
+                .Select(p => BuildPendingPackageDto(p, packages.GetValueOrDefault(p.PackageId), r.RunId))
+                .ToList(),
+            CurrentPackages = nodeStates.TryGetValue(r.WorkloadId, out var state) && state.CurrentRevisionId.HasValue && state.CurrentRevisionId.Value != Guid.Empty
+                ? currentWorkloadPackages
+                    .Where(wp => wp.RevisionId == state.CurrentRevisionId.Value)
+                    .OrderBy(wp => wp.PackageIndex)
+                    .Select(wp => BuildPendingPackageDto(wp, currentPackageEntities.GetValueOrDefault(wp.PackageId), r.RunId, isCurrentPackage: true))
+                    .ToList()
+                : new List<PendingPackageDto>()
         }).ToList();
 
         // Heartbeat: refresh node last-seen timestamp on every poll
@@ -659,6 +648,67 @@ public sealed class WorkloadRunsController : ControllerBase
         }
 
         return "Queued";
+    }
+
+    private PendingPackageDto BuildPendingPackageDto(WorkloadPackageEntity wp, PackageEntity? pkg, Guid runId, bool isCurrentPackage = false)
+    {
+        _artifactStore.TryGetArtifactFileName(pkg?.Name ?? "", pkg?.Version ?? "", out var fn);
+
+        var installType = string.IsNullOrWhiteSpace(pkg?.InstallType) || pkg.InstallType.Equals("unknown", StringComparison.OrdinalIgnoreCase)
+            ? "exe"
+            : pkg.InstallType;
+
+        var installArgs = pkg?.InstallArgs ?? "";
+        if (string.IsNullOrWhiteSpace(installArgs))
+        {
+            installArgs = installType.ToLowerInvariant() switch
+            {
+                "msi" => "/quiet /norestart",
+                "exe" => "/S",
+                _ => installArgs
+            };
+        }
+
+        var expectedExitCodes = new List<int>();
+        if (!string.IsNullOrWhiteSpace(pkg?.ExpectedExitCodesJson))
+        {
+            try { expectedExitCodes = JsonSerializer.Deserialize<List<int>>(pkg.ExpectedExitCodesJson) ?? new List<int> { 0 }; }
+            catch { expectedExitCodes = new List<int> { 0 }; }
+        }
+        if (expectedExitCodes.Count == 0) expectedExitCodes = new List<int> { 0 };
+
+        var timeoutSeconds = pkg?.TimeoutSeconds > 0 ? pkg.TimeoutSeconds : 300;
+
+        DetectionConfig detection;
+        try { detection = string.IsNullOrWhiteSpace(pkg?.DetectionConfigJson) ? null : JsonSerializer.Deserialize<DetectionConfig>(pkg.DetectionConfigJson); }
+        catch { detection = null; }
+        detection ??= new DetectionConfig { Type = "version_manifest", Path = pkg?.Name ?? "", ExpectedVersion = pkg?.Version ?? "" };
+
+        var hasArtifact = pkg is not null && _artifactStore.HasArtifactFile(pkg.Name, pkg.Version);
+        if (!hasArtifact && !isCurrentPackage)
+        {
+            _logger.LogWarning("Pending run {RunId} package {PackageId} ({PackageName}@{PackageVersion}) has no artifact in store. Skipping download URL.",
+                runId, wp.PackageId, pkg?.Name ?? "?", pkg?.Version ?? "?");
+        }
+
+        return new PendingPackageDto
+        {
+            PackageEntityId = wp.PackageId,
+            Name = pkg?.Name ?? "",
+            Version = pkg?.Version ?? "",
+            Filename = fn ?? string.Empty,
+            DownloadUrl = hasArtifact ? $"/api/artifacts/{wp.PackageId}/download" : string.Empty,
+            InstallAdapter = new InstallAdapterConfig
+            {
+                Type = installType,
+                Command = pkg?.SourcePath ?? "{artifactPath}",
+                Arguments = installArgs,
+                UninstallArgs = pkg?.UninstallArgs ?? "",
+                ExpectedExitCodes = expectedExitCodes,
+                TimeoutSeconds = timeoutSeconds
+            },
+            Detection = detection
+        };
     }
 
     private sealed class RevisionSnapshotEntry

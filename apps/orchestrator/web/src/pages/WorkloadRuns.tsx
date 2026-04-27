@@ -14,8 +14,7 @@ import { Modal, ModalContent, ModalDescription, ModalFooter, ModalHeader, ModalT
 
 const filterValues: Array<WorkloadRunStatus | 'all'> = [
   'all',
-  'pending',
-  'assigned',
+  'queued',
   'running',
   'completed',
   'failed',
@@ -80,7 +79,7 @@ export default function WorkloadRuns() {
   }, [filter, refresh])
 
   useEffect(() => {
-    const active = runs.filter(run => run.status === 'assigned' || run.status === 'running' || run.status === 'pending')
+    const active = runs.filter(run => run.status === 'queued' || run.status === 'running')
     const activeIds = new Set(active.map(run => run.id))
 
     active.forEach(run => {
@@ -258,8 +257,7 @@ export default function WorkloadRuns() {
   }
 
   const statusClasses: Record<WorkloadRunStatus, string> = {
-    pending: 'border-amber-200 bg-amber-50 text-amber-700',
-    assigned: 'border-sky-200 bg-sky-50 text-sky-700',
+    queued: 'border-amber-200 bg-amber-50 text-amber-700',
     running: 'border-cyan-200 bg-cyan-50 text-cyan-700',
     completed: 'border-emerald-200 bg-emerald-50 text-emerald-700',
     failed: 'border-rose-200 bg-rose-50 text-rose-700',
@@ -611,7 +609,7 @@ export default function WorkloadRuns() {
                       </span>
                     </td>
                     <td className="rounded-r-xl px-4 py-3 text-right">
-                      {(run.status === 'running' || run.status === 'assigned' || run.status === 'pending' || run.status === 'queued') && (
+                      {(run.status === 'running' || run.status === 'queued') && (
                         <button
                           onClick={event => {
                             event.stopPropagation()

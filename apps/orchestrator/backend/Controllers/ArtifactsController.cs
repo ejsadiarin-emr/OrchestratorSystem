@@ -576,7 +576,7 @@ public sealed class ArtifactsController : ControllerBase
             return Conflict(new { message = $"Artifact '{packageId}' version '{version}' already exists." });
         }
 
-        await _artifactStore.SaveArtifactAndManifestAsync(packageId, version, stream, resolvedManifestJson, HttpContext.RequestAborted);
+        await _artifactStore.SaveArtifactAndManifestAsync(packageId, version, stream, resolvedManifestJson, HttpContext.RequestAborted, fileName: Path.GetFileName(assembledPath));
 
         var packageEntityId = DeterministicGuid($"{packageId}-{version}");
         var existingPackage = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId, HttpContext.RequestAborted);

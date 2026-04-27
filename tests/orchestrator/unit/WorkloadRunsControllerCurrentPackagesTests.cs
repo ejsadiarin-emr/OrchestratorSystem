@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Moq;
 
 namespace DeploymentPoC.Orchestrator.Tests.Controllers;
@@ -78,7 +79,13 @@ public class WorkloadRunsControllerCurrentPackagesTests
 
     private WorkloadRunsController CreateController()
     {
-        var controller = new WorkloadRunsController(_db, _policyEvaluation, _hubContextMock.Object);
+        var configMock = new Mock<Microsoft.Extensions.Configuration.IConfiguration>();
+        configMock.Setup(c => c["ArtifactStore:RootPath"]).Returns(_tempArtifactPath);
+        var artifactStore = new DeploymentPoC.Orchestrator.Services.ArtifactStoreService(configMock.Object);
+        var dispatcherLoggerMock = new Mock<ILogger<WorkloadRunDispatcher>>();
+        var dispatcher = new WorkloadRunDispatcher(_db, _hubContextMock.Object, artifactStore, dispatcherLoggerMock.Object);
+        var loggerMock = new Mock<ILogger<WorkloadRunsController>>();
+        var controller = new WorkloadRunsController(_db, _policyEvaluation, dispatcher, loggerMock.Object);
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext()

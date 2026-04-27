@@ -1232,7 +1232,7 @@ export async function listNodeWorkloadStates(): Promise<NodeWorkloadState[]> {
     workloadId: s.workloadId ?? s.workload_id,
     workloadRevision: s.currentRevisionId ?? s.current_revision_id,
     runId: s.runId ?? '',
-    status: s.state ?? s.status ?? 'pending',
+    status: s.state ?? s.status ?? 'queued',
     updatedAt: s.updatedAt ?? new Date().toISOString(),
   }))
 }
@@ -1241,7 +1241,7 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
   return {
     totalNodes: nodes.length,
     connectedNodes: nodes.filter(node => node.status === 'online').length,
-    activeWorkloadRuns: runs.filter(run => run.status === 'running' || run.status === 'assigned' || run.status === 'pending').length,
+    activeWorkloadRuns: runs.filter(run => run.status === 'running' || run.status === 'queued').length,
     failedWorkloadRuns: runs.filter(run => run.status === 'failed').length,
     workloadDefinitions: workloads.length,
   }
@@ -1287,7 +1287,7 @@ export async function getOrchestratorHomeData(): Promise<OrchestratorHomeData> {
     const runState: DashboardNodeRow['runState'] =
       state?.status === 'running'
         ? 'update'
-        : state?.status === 'pending'
+        : state?.status === 'queued'
           ? 'pending-approval'
           : node.status === 'offline'
             ? 'failed'
@@ -1358,7 +1358,7 @@ export async function getOrchestratorHomeData(): Promise<OrchestratorHomeData> {
     artifactsStored: artifacts.length,
     activeRuns24h,
     failedRuns24h,
-    pendingApprovals: workloadStates.filter(s => s.status === 'pending').length,
+    pendingApprovals: workloadStates.filter(s => s.status === 'queued').length,
     controlPlaneLatencyP95Ms: 0,
   }
 

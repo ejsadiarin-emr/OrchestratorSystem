@@ -601,7 +601,7 @@ public sealed class WorkloadsController : ControllerBase
                             UninstallArgs = adapter.UninstallArgs,
                             ExpectedExitCodesJson = adapter.ExpectedExitCodesJson,
                             TimeoutSeconds = adapter.TimeoutSeconds,
-                            DetectionConfigJson = adapter.DetectionConfigJson,
+                            DetectionConfigJson = adapter.DetectionConfigJson ?? "",
                             CreatedAtUtc = now
                         };
                         _db.Packages.Add(packageEntity);

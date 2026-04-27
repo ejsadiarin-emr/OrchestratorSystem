@@ -109,10 +109,11 @@ export default function Workloads() {
   }, [])
 
   const selectedPackages = useMemo(() => {
-    return artifacts.filter(artifact => revisionForm.packageIds.includes(artifact.id))
+    return artifacts.filter(artifact =>
+      revisionForm.packageIds.includes(artifact.packageEntityId ?? artifact.id))
   }, [artifacts, revisionForm.packageIds])
 
-  const canCreateRevision = revisionForm.packageIds.length >= 2 && revisionForm.packageIds.length <= 3
+  const canCreateRevision = revisionForm.packageIds.length >= 1
 
   const onCreateRevision = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -124,7 +125,7 @@ export default function Workloads() {
         workloadId: revisionForm.workloadId,
         revision: revisionForm.revision,
         packageSteps: selectedPackages.map((artifact, index) => ({
-          packageId: artifact.id,
+          packageId: artifact.packageEntityId ?? artifact.id,
           packageName: artifact.manifest.packageId ?? artifact.fileName,
           packageVersion: artifact.manifest.version ?? '0.0.0',
           packageIndex: index + 1,
@@ -459,7 +460,7 @@ export default function Workloads() {
                 className="mt-1 h-28 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2"
               >
                 {artifacts.map(artifact => (
-                  <option key={artifact.id} value={artifact.id}>
+                  <option key={artifact.id} value={artifact.packageEntityId ?? artifact.id}>
                     {artifact.manifest.packageId} {artifact.manifest.version}
                   </option>
                 ))}

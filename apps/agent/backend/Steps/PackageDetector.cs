@@ -124,34 +124,48 @@ public static class PackageDetector
             searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python310"));
             searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python311"));
             searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python312"));
+            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python313"));
+            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python314"));
+        }
+
+        // Binary name aliases for common packages
+        var namesToSearch = new List<string> { path };
+        if (string.Equals(path, "nodejs", StringComparison.OrdinalIgnoreCase))
+        {
+            namesToSearch.Insert(0, "node");
+        }
+        else if (string.Equals(path, "python", StringComparison.OrdinalIgnoreCase))
+        {
+            namesToSearch.Add("python3");
         }
 
         foreach (var dir in searchPaths.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var fullPath = Path.Combine(dir, path);
-            if (File.Exists(fullPath))
+            foreach (var name in namesToSearch)
             {
-                var fileConfig = new DetectionConfig
+                var fullPath = Path.Combine(dir, name);
+                if (File.Exists(fullPath))
                 {
-                    Type = "file",
-                    Path = fullPath,
-                    ExpectedVersion = config.ExpectedVersion
-                };
-                return DetectFileAsync(fileConfig, ct);
-            }
-
-            if (OperatingSystem.IsWindows())
-            {
-                var exePath = fullPath + ".exe";
-                if (File.Exists(exePath))
-                {
-                    var fileConfig = new DetectionConfig
+                    return DetectFileAsync(new DetectionConfig
                     {
-                        Type = "file",
-                        Path = exePath,
+                        Type = config.Type,
+                        Path = fullPath,
                         ExpectedVersion = config.ExpectedVersion
-                    };
-                    return DetectFileAsync(fileConfig, ct);
+                    }, ct);
+                }
+
+                if (OperatingSystem.IsWindows())
+                {
+                    var exePath = fullPath + ".exe";
+                    if (File.Exists(exePath))
+                    {
+                        return DetectFileAsync(new DetectionConfig
+                        {
+                            Type = config.Type,
+                            Path = exePath,
+                            ExpectedVersion = config.ExpectedVersion
+                        }, ct);
+                    }
                 }
             }
         }
@@ -169,10 +183,20 @@ public static class PackageDetector
     private static string NormalizeVersion(string version)
     {
         var v = version.Trim();
+
+        // Strip leading comparison operators (==, >=, <=, >, <, =)
+        var opMatch = System.Text.RegularExpressions.Regex.Match(v, @"^(==|>=|<=|>|<|=)");
+        if (opMatch.Success)
+        {
+            v = v[opMatch.Length..];
+        }
+
+        // Strip trailing .0 segments
         while (v.EndsWith(".0", StringComparison.Ordinal) && v.Count(c => c == '.') > 1)
         {
             v = v[..^2];
         }
+
         return v;
     }
 }

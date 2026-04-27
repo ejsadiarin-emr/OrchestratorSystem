@@ -313,7 +313,7 @@ public sealed class InstallOrUpgradeTests
 
             try
             {
-                var result = await InstallOrUpgrade.ExecuteAsync(config, artifactPath, CancellationToken.None);
+                var result = await InstallOrUpgrade.ExecuteAsync(config, artifactPath, new Microsoft.Extensions.Logging.Abstractions.NullLogger<object>(), CancellationToken.None);
                 Assert.That(result.Success, Is.True);
                 Assert.That(File.Exists(tempFile), Is.True);
             }
@@ -341,7 +341,7 @@ public sealed class InstallOrUpgradeTests
             TimeoutSeconds = 5
         };
 
-        var result = await InstallOrUpgrade.ExecuteAsync(config, "/nonexistent/artifact.bin", CancellationToken.None);
+        var result = await InstallOrUpgrade.ExecuteAsync(config, "/nonexistent/artifact.bin", new Microsoft.Extensions.Logging.Abstractions.NullLogger<object>(), CancellationToken.None);
         Assert.That(result.Success, Is.False);
         Assert.That(result.Error, Is.EqualTo("artifact_not_found"));
     }
@@ -362,7 +362,7 @@ public sealed class InstallOrUpgradeTests
                 TimeoutSeconds = 5
             };
 
-            var result = await InstallOrUpgrade.ExecuteAsync(config, artifactPath, CancellationToken.None);
+            var result = await InstallOrUpgrade.ExecuteAsync(config, artifactPath, new Microsoft.Extensions.Logging.Abstractions.NullLogger<object>(), CancellationToken.None);
             Assert.That(result.Success, Is.False);
             Assert.That(result.Error, Is.EqualTo("exit_code_1"));
         }
@@ -389,8 +389,8 @@ public sealed class InstallOrUpgradeTests
                 TimeoutSeconds = 5
             };
 
-            var result = await InstallOrUpgrade.ExecuteAsync(config, artifactPath, CancellationToken.None);
-            Assert.That(result.Success, Is.True);
+                var result = await InstallOrUpgrade.ExecuteAsync(config, artifactPath, new Microsoft.Extensions.Logging.Abstractions.NullLogger<object>(), CancellationToken.None);
+                Assert.That(result.Success, Is.True);
         }
         finally
         {

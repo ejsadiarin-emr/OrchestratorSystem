@@ -37,6 +37,11 @@ public sealed class ArtifactStoreService
         return File.Exists(GetArtifactPath(packageId, version)) || File.Exists(GetManifestPath(packageId, version));
     }
 
+    public bool HasArtifactFile(string packageId, string version)
+    {
+        return File.Exists(GetArtifactPath(packageId, version));
+    }
+
     public bool DeleteArtifactAsync(string packageId, string version)
     {
         try

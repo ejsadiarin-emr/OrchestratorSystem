@@ -176,6 +176,21 @@ public sealed class AgentRuntimeService : BackgroundService
             }
 
             // Build PipelineContext from PendingWorkloadRunResponse
+            static PackageAssignment MapPackage(PendingPackageDto p) => new()
+            {
+                PackageEntityId = p.PackageEntityId,
+                PackageId = p.PackageEntityId.ToString(),
+                Name = p.Name,
+                Version = p.Version,
+                ArtifactFileName = p.Filename,
+                DownloadUrl = p.DownloadUrl,
+                InstallAdapter = p.InstallAdapter,
+                Detection = p.Detection
+            };
+
+            var targetPackages = run.Packages.Select(MapPackage).ToList();
+            var currentPackages = run.CurrentPackages.Select(MapPackage).ToList();
+
             var context = new PipelineContext
             {
                 Payload = new AssignRunPayload
@@ -185,20 +200,10 @@ public sealed class AgentRuntimeService : BackgroundService
                     WorkloadName = run.WorkloadName,
                     Mode = run.Mode,
                     NodeId = nodeId,
-                    Packages = run.Packages.Select(p => new PackageAssignment
-                    {
-                        PackageEntityId = p.PackageEntityId,
-                        PackageId = p.PackageEntityId.ToString(),
-                        Name = p.Name,
-                        Version = p.Version,
-                        ArtifactFileName = p.Filename,
-                        DownloadUrl = p.DownloadUrl,
-                        InstallAdapter = p.InstallAdapter,
-                        Detection = p.Detection
-                    }).ToList(),
-                    CurrentPackages = new List<PackageAssignment>()
+                    Packages = targetPackages,
+                    CurrentPackages = currentPackages
                 },
-                CurrentPackages = new List<PackageAssignment>(),
+                CurrentPackages = currentPackages,
                 OrchestratorBaseUrl = http.BaseAddress?.ToString().TrimEnd('/') ?? "",
                 AgentId = nodeId.ToString(),
                 RunId = run.RunId.ToString(),
@@ -219,7 +224,7 @@ public sealed class AgentRuntimeService : BackgroundService
                             if (msg.Payload is StepStatusPayload stepPayload)
                             {
                                 await http.PostAsJsonAsync(
-                                    $"/api/workload-runs/{run.RunId}/timeline",
+                                    $"/api/workload-runs/{run.RunId}/timeline?agent_id={nodeId}",
                                     new
                                     {
                                         step = stepPayload.StepName,

@@ -1,3 +1,5 @@
+using DeploymentPoC.Contracts.Runtime.RunPayloads;
+
 namespace DeploymentPoC.Orchestrator.Contracts.Api.WorkloadRuns;
 
 public sealed class CreateWorkloadRunResponse
@@ -50,6 +52,7 @@ public sealed class PendingWorkloadRunResponse
     public string WorkloadName { get; set; } = string.Empty;
     public string Mode { get; set; } = string.Empty;
     public List<PendingPackageDto> Packages { get; set; } = new();
+    public List<PendingPackageDto> CurrentPackages { get; set; } = new();
 }
 
 public sealed class PendingPackageDto
@@ -59,6 +62,8 @@ public sealed class PendingPackageDto
     public string Version { get; set; } = string.Empty;
     public string Filename { get; set; } = string.Empty;
     public string DownloadUrl { get; set; } = string.Empty;
+    public InstallAdapterConfig InstallAdapter { get; set; } = new();
+    public DetectionConfig Detection { get; set; } = new();
 }
 
 public sealed class RunStatusUpdateRequest

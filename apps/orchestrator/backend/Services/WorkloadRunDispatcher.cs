@@ -146,6 +146,15 @@ public sealed class WorkloadRunDispatcher
                     : rawInstallType;
                 string command = pkg?.SourcePath ?? artifactPath;
                 string arguments = pkg?.InstallArgs ?? "";
+                if (string.IsNullOrWhiteSpace(arguments))
+                {
+                    arguments = installType.ToLowerInvariant() switch
+                    {
+                        "msi" => "/quiet /norestart",
+                        "exe" => "/S",
+                        _ => arguments
+                    };
+                }
 
                 var expectedExitCodes = new List<int>();
                 if (!string.IsNullOrWhiteSpace(pkg?.ExpectedExitCodesJson))
@@ -166,6 +175,12 @@ public sealed class WorkloadRunDispatcher
                 }
 
                 _artifactStore.TryGetArtifactFileName(pkg?.Name ?? "", pkg?.Version ?? "", out var artifactFileName);
+                var hasArtifact = pkg is not null && _artifactStore.HasArtifactFile(pkg.Name, pkg.Version);
+                if (!hasArtifact)
+                {
+                    _logger.LogWarning("Dispatch run package {PackageName}@{PackageVersion} has no artifact in store. Skipping download URL.",
+                        pkg?.Name ?? "?", pkg?.Version ?? "?");
+                }
 
                 var timeoutSeconds = pkg?.TimeoutSeconds > 0 ? pkg.TimeoutSeconds : 300;
                 return new PackageAssignment
@@ -176,6 +191,7 @@ public sealed class WorkloadRunDispatcher
                     Version = pkg?.Version ?? "",
                     Channel = "stable",
                     ArtifactFileName = artifactFileName,
+                    DownloadUrl = hasArtifact ? $"/api/artifacts/{wp.PackageId}/download" : string.Empty,
                     InstallAdapter = new InstallAdapterConfig
                     {
                         Type = installType,
@@ -207,7 +223,7 @@ public sealed class WorkloadRunDispatcher
 
         return new DetectionConfig
         {
-            Type = "file",
+            Type = "version_manifest",
             Path = pkg?.Name ?? "",
             ExpectedVersion = pkg?.Version ?? ""
         };

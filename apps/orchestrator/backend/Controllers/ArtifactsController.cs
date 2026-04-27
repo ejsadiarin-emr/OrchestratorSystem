@@ -697,6 +697,7 @@ public sealed class ArtifactsController : ControllerBase
     }
 
     [HttpGet("{packageEntityId:guid}/download")]
+    [HttpHead("{packageEntityId:guid}/download")]
     public async Task<IActionResult> DownloadByPackageEntityId(Guid packageEntityId)
     {
         var package = await _db.Packages

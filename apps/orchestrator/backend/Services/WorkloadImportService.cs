@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using DeploymentPoC.Contracts.Runtime.RunPayloads;
 using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Data.Entities;
@@ -55,7 +57,7 @@ public sealed class WorkloadImportService
 
         var entity = new PackageEntity
         {
-            PackageId = Guid.NewGuid(),
+            PackageId = DeterministicGuid($"{manifest.PackageId}-{manifest.Version}"),
             Name = manifest.PackageId,
             Version = manifest.Version,
             SourcePath = sourcePath,
@@ -69,6 +71,13 @@ public sealed class WorkloadImportService
         await _db.SaveChangesAsync();
 
         return [entity.PackageId];
+    }
+
+    private static Guid DeterministicGuid(string input)
+    {
+        using var md5 = MD5.Create();
+        var hash = md5.ComputeHash(Encoding.UTF8.GetBytes(input));
+        return new Guid(hash);
     }
 
     public async Task<List<WorkloadPackageEntity>> CreateWorkloadPackageEntitiesAsync(

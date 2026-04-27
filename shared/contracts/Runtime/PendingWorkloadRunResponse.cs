@@ -9,4 +9,5 @@ public sealed class PendingWorkloadRunResponse
     public string WorkloadName { get; set; } = string.Empty;
     public string Mode { get; set; } = string.Empty;
     public List<PendingPackageDto> Packages { get; set; } = new();
+    public List<PendingPackageDto> CurrentPackages { get; set; } = new();
 }

@@ -91,11 +91,69 @@ public static class PackageDetector
 
     private static Task<PreCheckResult> DetectVersionManifestAsync(DetectionConfig config, CancellationToken ct)
     {
-        // PoC Phase 1: version_manifest detection falls back to file check if a path is provided,
-        // otherwise assumes not present so the package is actually installed.
-        if (!string.IsNullOrWhiteSpace(config.Path) && File.Exists(config.Path))
+        if (string.IsNullOrWhiteSpace(config.Path))
         {
-            return DetectFileAsync(config, ct);
+            return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent });
+        }
+
+        var path = config.Path;
+
+        // If it's a full path, do a simple file check.
+        if (path.Contains(Path.DirectorySeparatorChar) || path.Contains(Path.AltDirectorySeparatorChar))
+        {
+            if (File.Exists(path))
+            {
+                return DetectFileAsync(config, ct);
+            }
+            return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent, Error = "file_not_found" });
+        }
+
+        // It's a command name — search PATH and common Windows install directories.
+        var searchPaths = new List<string>();
+
+        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
+        searchPaths.AddRange(pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries));
+
+        if (OperatingSystem.IsWindows())
+        {
+            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Git", "cmd"));
+            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Git", "cmd"));
+            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nodejs"));
+            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "nodejs"));
+            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Python"));
+            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python310"));
+            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python311"));
+            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python312"));
+        }
+
+        foreach (var dir in searchPaths.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var fullPath = Path.Combine(dir, path);
+            if (File.Exists(fullPath))
+            {
+                var fileConfig = new DetectionConfig
+                {
+                    Type = "file",
+                    Path = fullPath,
+                    ExpectedVersion = config.ExpectedVersion
+                };
+                return DetectFileAsync(fileConfig, ct);
+            }
+
+            if (OperatingSystem.IsWindows())
+            {
+                var exePath = fullPath + ".exe";
+                if (File.Exists(exePath))
+                {
+                    var fileConfig = new DetectionConfig
+                    {
+                        Type = "file",
+                        Path = exePath,
+                        ExpectedVersion = config.ExpectedVersion
+                    };
+                    return DetectFileAsync(fileConfig, ct);
+                }
+            }
         }
 
         return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent });

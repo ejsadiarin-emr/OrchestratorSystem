@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using DeploymentPoC.Contracts.Runtime.RunPayloads;
 using DeploymentPoC.Orchestrator.Contracts.Api;
 using DeploymentPoC.Orchestrator.Contracts.Api.WorkloadRuns;
 using DeploymentPoC.Orchestrator.Data;
@@ -456,16 +457,54 @@ public sealed class WorkloadRunsController : ControllerBase
                 {
                     var pkg = packages.GetValueOrDefault(p.PackageId);
                     _artifactStore.TryGetArtifactFileName(pkg?.Name ?? "", pkg?.Version ?? "", out var fn);
+
+                    var installType = string.IsNullOrWhiteSpace(pkg?.InstallType) || pkg.InstallType.Equals("unknown", StringComparison.OrdinalIgnoreCase)
+                        ? "exe"
+                        : pkg.InstallType;
+
+                    var expectedExitCodes = new List<int>();
+                    if (!string.IsNullOrWhiteSpace(pkg?.ExpectedExitCodesJson))
+                    {
+                        try { expectedExitCodes = JsonSerializer.Deserialize<List<int>>(pkg.ExpectedExitCodesJson) ?? new List<int> { 0 }; }
+                        catch { expectedExitCodes = new List<int> { 0 }; }
+                    }
+                    if (expectedExitCodes.Count == 0) expectedExitCodes = new List<int> { 0 };
+
+                    var timeoutSeconds = pkg?.TimeoutSeconds > 0 ? pkg.TimeoutSeconds : 300;
+
+                    DetectionConfig detection;
+                    try { detection = string.IsNullOrWhiteSpace(pkg?.DetectionConfigJson) ? null : JsonSerializer.Deserialize<DetectionConfig>(pkg.DetectionConfigJson); }
+                    catch { detection = null; }
+                    detection ??= new DetectionConfig { Type = "file", Path = pkg?.Name ?? "", ExpectedVersion = pkg?.Version ?? "" };
+
                     return new PendingPackageDto
                     {
                         PackageEntityId = p.PackageId,
                         Name = pkg?.Name ?? "",
                         Version = pkg?.Version ?? "",
                         Filename = fn ?? string.Empty,
-                        DownloadUrl = $"/api/artifacts/{p.PackageId}/download"
+                        DownloadUrl = $"/api/artifacts/{p.PackageId}/download",
+                        InstallAdapter = new InstallAdapterConfig
+                        {
+                            Type = installType,
+                            Command = pkg?.SourcePath ?? "{artifactPath}",
+                            Arguments = pkg?.InstallArgs ?? "",
+                            UninstallArgs = pkg?.UninstallArgs ?? "",
+                            ExpectedExitCodes = expectedExitCodes,
+                            TimeoutSeconds = timeoutSeconds
+                        },
+                        Detection = detection
                     };
                 }).ToList()
         }).ToList();
+
+        // Heartbeat: refresh node last-seen timestamp on every poll
+        var node = await _db.Nodes.FindAsync(agentId);
+        if (node is not null)
+        {
+            node.LastSeenUtc = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+        }
 
         return Ok(responses);
     }
@@ -476,18 +515,39 @@ public sealed class WorkloadRunsController : ControllerBase
         var now = DateTime.UtcNow;
         var isFinal = request.Status is "Completed" or "Failed" or "Cancelled";
 
-        var updated = await _db.WorkloadRuns
-            .Where(r => r.RunId == runId && r.State == "Queued")
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(r => r.State, request.Status)
-                .SetProperty(r => r.UpdatedAtUtc, now)
-                .SetProperty(r => r.CompletedAtUtc, r => isFinal ? now : r.CompletedAtUtc));
-
-        if (updated == 0)
+        // Atomic claim: only allow Queued -> Running transition when still Queued
+        if (request.Status == "Running")
         {
-            return Conflict(new { message = "Run already claimed or not found" });
+            var updated = await _db.WorkloadRuns
+                .Where(r => r.RunId == runId && r.State == "Queued")
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(r => r.State, request.Status)
+                    .SetProperty(r => r.UpdatedAtUtc, now)
+                    .SetProperty(r => r.CompletedAtUtc, r => r.CompletedAtUtc));
+
+            if (updated == 0)
+            {
+                return Conflict(new { message = "Run already claimed or not found" });
+            }
+
+            return NoContent();
         }
 
+        // Final status update: allow from Running or Queued -> Completed/Failed/Cancelled
+        var run = await _db.WorkloadRuns.FirstOrDefaultAsync(r => r.RunId == runId);
+        if (run == null)
+        {
+            return NotFound();
+        }
+
+        run.State = request.Status;
+        run.UpdatedAtUtc = now;
+        if (isFinal)
+        {
+            run.CompletedAtUtc = now;
+        }
+
+        await _db.SaveChangesAsync();
         return NoContent();
     }
 

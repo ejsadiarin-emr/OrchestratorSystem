@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -17,6 +18,7 @@ public sealed class AgentRuntimeService : BackgroundService
     private readonly ILogger<AgentRuntimeService> _logger;
     private readonly PipelineExecutor _pipelineExecutor;
     private readonly IHubConnectionFactory _hubConnectionFactory;
+    private readonly IHttpClientFactory _httpClientFactory;
     private IHubConnection? _connection;
     private Timer? _heartbeatTimer;
     private Guid? _nodeId;
@@ -25,20 +27,33 @@ public sealed class AgentRuntimeService : BackgroundService
         IConfiguration configuration,
         ILogger<AgentRuntimeService> logger,
         PipelineExecutor pipelineExecutor,
-        IHubConnectionFactory hubConnectionFactory)
+        IHubConnectionFactory hubConnectionFactory,
+        IHttpClientFactory httpClientFactory)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _pipelineExecutor = pipelineExecutor ?? throw new ArgumentNullException(nameof(pipelineExecutor));
         _hubConnectionFactory = hubConnectionFactory ?? throw new ArgumentNullException(nameof(hubConnectionFactory));
+        _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var baseUrl = _configuration["Orchestrator:BaseUrl"] ?? "http://localhost:5000";
-        var hubUrl = $"{baseUrl.TrimEnd('/')}/hubs/agent";
         var nodeIdString = _configuration["Agent:NodeId"];
 
+        if (!Guid.TryParse(nodeIdString, out var nodeId))
+        {
+            _logger.LogError("Agent:NodeId is not configured or invalid. Polling loop cannot start.");
+            return;
+        }
+
+        _nodeId = nodeId;
+        _logger.LogInformation("Agent polling loop starting. NodeId={NodeId}, Orchestrator={BaseUrl}", nodeId, baseUrl);
+
+        // TODO: Remove SignalR connection code after polling is validated
+        /*
+        var hubUrl = $"{baseUrl.TrimEnd('/')}/hubs/agent";
         _logger.LogInformation("AgentRuntimeService starting. Connecting to orchestrator at {HubUrl}", hubUrl);
 
         _connection = _hubConnectionFactory.Create(hubUrl);
@@ -92,35 +107,23 @@ public sealed class AgentRuntimeService : BackgroundService
         await _connection.StartAsync(stoppingToken);
         _logger.LogInformation("Connected to orchestrator SignalR hub");
 
-        // Identify with the orchestrator if we have a NodeId
-        if (!string.IsNullOrWhiteSpace(nodeIdString) && Guid.TryParse(nodeIdString, out var nodeId))
+        try
         {
-            _nodeId = nodeId;
-            try
-            {
-                await _connection.InvokeAsync("Identify", nodeId, stoppingToken);
-                _logger.LogInformation("Identified with orchestrator as NodeId={NodeId}", nodeId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Failed to identify with orchestrator");
-            }
+            await _connection.InvokeAsync("Identify", nodeId, stoppingToken);
+            _logger.LogInformation("Identified with orchestrator as NodeId={NodeId}", nodeId);
         }
-        else
+        catch (Exception ex)
         {
-            _logger.LogWarning("No Agent:NodeId configured; cannot identify with orchestrator for targeted AssignRun delivery");
+            _logger.LogWarning(ex, "Failed to identify with orchestrator");
         }
 
-        if (_nodeId.HasValue)
-        {
-            var intervalSeconds = _configuration.GetValue<double?>("Agent:HeartbeatIntervalSeconds") ?? 15.0;
-            var interval = TimeSpan.FromSeconds(intervalSeconds);
-            _heartbeatTimer = new Timer(
-                async _ => await SendHeartbeatAsync(),
-                null,
-                interval,
-                interval);
-        }
+        var intervalSeconds = _configuration.GetValue<double?>("Agent:HeartbeatIntervalSeconds") ?? 15.0;
+        var interval = TimeSpan.FromSeconds(intervalSeconds);
+        _heartbeatTimer = new Timer(
+            async _ => await SendHeartbeatAsync(),
+            null,
+            interval,
+            interval);
 
         try
         {
@@ -133,6 +136,123 @@ public sealed class AgentRuntimeService : BackgroundService
             {
                 await _connection.DisposeAsync();
             }
+        }
+        */
+
+        var http = _httpClientFactory.CreateClient();
+        http.BaseAddress = new Uri(baseUrl);
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await PollAndProcessAsync(http, nodeId, stoppingToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Poll cycle failed — will retry");
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+        }
+    }
+
+    private async Task PollAndProcessAsync(HttpClient http, Guid nodeId, CancellationToken ct)
+    {
+        var runs = await http.GetFromJsonAsync<List<PendingWorkloadRunResponse>>(
+            $"/api/workload-runs/pending?agent_id={nodeId}", ct);
+
+        foreach (var run in runs ?? [])
+        {
+            // Atomic claim
+            var claimResponse = await http.PatchAsJsonAsync(
+                $"/api/workload-runs/{run.RunId}",
+                new { status = "Running" }, ct);
+
+            if (!claimResponse.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Failed to claim run {RunId}. Status={Status}", run.RunId, claimResponse.StatusCode);
+                continue;
+            }
+
+            // Build PipelineContext from PendingWorkloadRunResponse
+            var context = new PipelineContext
+            {
+                Payload = new AssignRunPayload
+                {
+                    RunId = run.RunId,
+                    WorkloadId = run.WorkloadId,
+                    WorkloadName = run.WorkloadName,
+                    Mode = run.Mode,
+                    NodeId = nodeId,
+                    Packages = run.Packages.Select(p => new PackageAssignment
+                    {
+                        PackageEntityId = p.PackageEntityId,
+                        PackageId = p.PackageEntityId.ToString(),
+                        Name = p.Name,
+                        Version = p.Version,
+                        ArtifactFileName = p.Filename,
+                        DownloadUrl = p.DownloadUrl,
+                        InstallAdapter = p.InstallAdapter,
+                        Detection = p.Detection
+                    }).ToList(),
+                    CurrentPackages = new List<PackageAssignment>()
+                },
+                CurrentPackages = new List<PackageAssignment>(),
+                OrchestratorBaseUrl = http.BaseAddress?.ToString().TrimEnd('/') ?? "",
+                AgentId = nodeId.ToString(),
+                RunId = run.RunId.ToString(),
+                Sequence = 0,
+                ForceInstall = false
+            };
+
+            // Fire and forget — don't await, so poll loop isn't blocked
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var result = await _pipelineExecutor.ExecuteAsync(
+                        context,
+                        async (msg, msgCt) =>
+                        {
+                            // Send step status via HTTP POST
+                            if (msg.Payload is StepStatusPayload stepPayload)
+                            {
+                                await http.PostAsJsonAsync(
+                                    $"/api/workload-runs/{run.RunId}/timeline",
+                                    new
+                                    {
+                                        step = stepPayload.StepName,
+                                        status = stepPayload.Status,
+                                        message = stepPayload.Error
+                                    }, msgCt);
+                            }
+                        },
+                        ct);
+
+                    // Report final status
+                    await http.PatchAsJsonAsync(
+                        $"/api/workload-runs/{run.RunId}",
+                        new
+                        {
+                            status = result.Success ? "Completed" : "Failed",
+                            error = result.Error
+                        }, ct);
+
+                    _logger.LogInformation("Pipeline completed: RunId={RunId}, Success={Success}", run.RunId, result.Success);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Pipeline failed for RunId={RunId}", run.RunId);
+                    try
+                    {
+                        await http.PatchAsJsonAsync(
+                            $"/api/workload-runs/{run.RunId}",
+                            new { status = "Failed", error = ex.Message }, ct);
+                    }
+                    catch { /* best effort */ }
+                }
+            }, ct);
         }
     }
 

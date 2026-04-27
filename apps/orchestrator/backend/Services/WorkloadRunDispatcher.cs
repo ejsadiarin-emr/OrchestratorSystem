@@ -100,8 +100,10 @@ public sealed class WorkloadRunDispatcher
 
         var groupName = $"node-{run.NodeId}";
         _logger.LogInformation("Sending AssignRun to group {GroupName} for RunId={RunId}", groupName, run.RunId);
-        await _hubContext.Clients.Group(groupName).SendAsync("AssignRun", envelope, ct);
-        _logger.LogInformation("AssignRun sent to group {GroupName} for RunId={RunId}", groupName, run.RunId);
+
+        // TODO: remove after polling validated — SignalR push disabled in favor of HTTP polling
+        // await _hubContext.Clients.Group(groupName).SendAsync("AssignRun", envelope, ct);
+        _logger.LogInformation("AssignRun queued (SignalR push disabled — agent will poll). Group={GroupName}, RunId={RunId}", groupName, run.RunId);
     }
 
     public async Task DispatchQueuedRunsAsync(Guid nodeId, CancellationToken ct = default)

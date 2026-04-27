@@ -137,7 +137,9 @@ public class PipelineExecutor
             }
 
             // Step 1: Acquire artifact
-            var artifactUrl = $"{context.OrchestratorBaseUrl.TrimEnd('/')}/api/artifacts/{package.Name}/{package.Version}";
+            var artifactUrl = !string.IsNullOrEmpty(package.DownloadUrl)
+                ? $"{context.OrchestratorBaseUrl.TrimEnd('/')}{package.DownloadUrl}"
+                : $"{context.OrchestratorBaseUrl.TrimEnd('/')}/api/artifacts/{package.Name}/{package.Version}";
             var destFileName = !string.IsNullOrEmpty(package.ArtifactFileName)
                 ? $"{package.PackageId}-{package.Version}-{package.ArtifactFileName}"
                 : $"{package.PackageId}-{package.Version}";

@@ -6,6 +6,7 @@ using DeploymentPoC.Orchestrator.Contracts.Api.WorkloadRuns;
 using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Data.Entities;
 using DeploymentPoC.Orchestrator.Services;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.Data.Sqlite;
@@ -21,13 +22,15 @@ public sealed class WorkloadRunsController : ControllerBase
     private readonly InstallerDbContext _db;
     private readonly PolicyEvaluationService _policyEvaluation;
     private readonly WorkloadRunDispatcher _dispatcher;
+    private readonly ArtifactStoreService _artifactStore;
     private readonly ILogger<WorkloadRunsController> _logger;
 
-    public WorkloadRunsController(InstallerDbContext db, PolicyEvaluationService policyEvaluation, WorkloadRunDispatcher dispatcher, ILogger<WorkloadRunsController> logger)
+    public WorkloadRunsController(InstallerDbContext db, PolicyEvaluationService policyEvaluation, WorkloadRunDispatcher dispatcher, ArtifactStoreService artifactStore, ILogger<WorkloadRunsController> logger)
     {
         _db = db;
         _policyEvaluation = policyEvaluation;
         _dispatcher = dispatcher;
+        _artifactStore = artifactStore;
         _logger = logger;
     }
 
@@ -422,6 +425,91 @@ public sealed class WorkloadRunsController : ControllerBase
         {
             Steps = stepDtos
         });
+    }
+
+    [HttpGet("pending")]
+    public async Task<ActionResult<List<PendingWorkloadRunResponse>>> GetPending([FromQuery(Name = "agent_id")] Guid agentId)
+    {
+        var runs = await _db.WorkloadRuns
+            .AsNoTracking()
+            .Where(r => r.NodeId == agentId && r.State == "Queued")
+            .Include(r => r.Workload)
+            .Include(r => r.Revision)
+            .ThenInclude(rev => rev.Packages)
+            .ToListAsync();
+
+        var packageIds = runs.SelectMany(r => r.Revision.Packages.Select(p => p.PackageId)).Distinct().ToList();
+        var packages = await _db.Packages
+            .AsNoTracking()
+            .Where(p => packageIds.Contains(p.PackageId))
+            .ToDictionaryAsync(p => p.PackageId);
+
+        var responses = runs.Select(r => new PendingWorkloadRunResponse
+        {
+            RunId = r.RunId,
+            WorkloadId = r.WorkloadId,
+            WorkloadName = r.Workload?.Name ?? string.Empty,
+            Mode = r.Mode,
+            Packages = r.Revision.Packages
+                .OrderBy(p => p.PackageIndex)
+                .Select(p =>
+                {
+                    var pkg = packages.GetValueOrDefault(p.PackageId);
+                    _artifactStore.TryGetArtifactFileName(pkg?.Name ?? "", pkg?.Version ?? "", out var fn);
+                    return new PendingPackageDto
+                    {
+                        PackageEntityId = p.PackageId,
+                        Name = pkg?.Name ?? "",
+                        Version = pkg?.Version ?? "",
+                        Filename = fn ?? string.Empty,
+                        DownloadUrl = $"/api/artifacts/{p.PackageId}/download"
+                    };
+                }).ToList()
+        }).ToList();
+
+        return Ok(responses);
+    }
+
+    [HttpPatch("{runId:guid}")]
+    public async Task<IActionResult> UpdateStatus(Guid runId, [FromBody] RunStatusUpdateRequest request)
+    {
+        var now = DateTime.UtcNow;
+        var isFinal = request.Status is "Completed" or "Failed" or "Cancelled";
+
+        var updated = await _db.WorkloadRuns
+            .Where(r => r.RunId == runId && r.State == "Queued")
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(r => r.State, request.Status)
+                .SetProperty(r => r.UpdatedAtUtc, now)
+                .SetProperty(r => r.CompletedAtUtc, r => isFinal ? now : r.CompletedAtUtc));
+
+        if (updated == 0)
+        {
+            return Conflict(new { message = "Run already claimed or not found" });
+        }
+
+        return NoContent();
+    }
+
+    [HttpPost("{runId:guid}/timeline")]
+    public async Task<IActionResult> AddTimelineEvent(Guid runId, [FromBody] TimelineEventRequest request, [FromQuery(Name = "agent_id")] Guid agentId)
+    {
+        var entity = new WorkloadRunTimelineEntity
+        {
+            RunId = runId,
+            NodeId = agentId,
+            MessageType = "step",
+            Sequence = 0,
+            StepName = request.Step,
+            Status = request.Status,
+            Detail = request.Message,
+            AtUtc = DateTime.UtcNow
+        };
+
+        _db.WorkloadRunTimelines.Add(entity);
+        await _db.SaveChangesAsync();
+
+        return StatusCode(StatusCodes.Status201Created);
     }
 
     [HttpPost("{runId:guid}/cancel")]

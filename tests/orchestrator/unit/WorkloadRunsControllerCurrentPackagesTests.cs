@@ -85,7 +85,7 @@ public class WorkloadRunsControllerCurrentPackagesTests
         var dispatcherLoggerMock = new Mock<ILogger<WorkloadRunDispatcher>>();
         var dispatcher = new WorkloadRunDispatcher(_db, _hubContextMock.Object, artifactStore, dispatcherLoggerMock.Object);
         var loggerMock = new Mock<ILogger<WorkloadRunsController>>();
-        var controller = new WorkloadRunsController(_db, _policyEvaluation, dispatcher, loggerMock.Object);
+        var controller = new WorkloadRunsController(_db, _policyEvaluation, dispatcher, artifactStore, loggerMock.Object);
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext()

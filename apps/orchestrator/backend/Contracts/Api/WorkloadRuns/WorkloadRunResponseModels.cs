@@ -42,3 +42,34 @@ public sealed class CancelWorkloadRunResponse
     public string State { get; set; } = string.Empty;
     public DateTime CancelledAtUtc { get; set; }
 }
+
+public sealed class PendingWorkloadRunResponse
+{
+    public Guid RunId { get; set; }
+    public Guid WorkloadId { get; set; }
+    public string WorkloadName { get; set; } = string.Empty;
+    public string Mode { get; set; } = string.Empty;
+    public List<PendingPackageDto> Packages { get; set; } = new();
+}
+
+public sealed class PendingPackageDto
+{
+    public Guid PackageEntityId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Version { get; set; } = string.Empty;
+    public string Filename { get; set; } = string.Empty;
+    public string DownloadUrl { get; set; } = string.Empty;
+}
+
+public sealed class RunStatusUpdateRequest
+{
+    public string Status { get; set; } = string.Empty;
+    public string? Error { get; set; }
+}
+
+public sealed class TimelineEventRequest
+{
+    public string Step { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string? Message { get; set; }
+}

@@ -696,6 +696,41 @@ public sealed class ArtifactsController : ControllerBase
         }
     }
 
+    [HttpGet("{packageEntityId:guid}/download")]
+    public async Task<IActionResult> DownloadByPackageEntityId(Guid packageEntityId)
+    {
+        var package = await _db.Packages
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.PackageId == packageEntityId, HttpContext.RequestAborted);
+
+        if (package is null)
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var stream = _artifactStore.OpenRead(package.Name, package.Version);
+            return File(stream, "application/octet-stream", enableRangeProcessing: true);
+        }
+        catch (ArgumentException)
+        {
+            return BadRequest();
+        }
+        catch (FileNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (DirectoryNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (IOException)
+        {
+            return Problem(title: "Artifact read failure", statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
     [HttpDelete("{packageId}/{version}")]
     public async Task<IActionResult> Delete(string packageId, string version)
     {

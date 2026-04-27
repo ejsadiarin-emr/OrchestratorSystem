@@ -85,7 +85,8 @@ public static class PackageDetector
     private static Task<PreCheckResult> DetectRegistryAsync(DetectionConfig config, CancellationToken ct)
     {
         // PoC Phase 1: registry detection is a stub.
-        return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied });
+        // Conservative fallback: assume not present so the package is actually installed.
+        return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent });
     }
 
     private static Task<PreCheckResult> DetectVersionManifestAsync(DetectionConfig config, CancellationToken ct)

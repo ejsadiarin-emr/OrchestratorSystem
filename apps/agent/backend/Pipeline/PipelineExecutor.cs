@@ -177,7 +177,7 @@ public class PipelineExecutor
                 package.PackageId,
                 package.InstallAdapter.Type);
 
-            var installResult = await InstallOrUpgrade.ExecuteAsync(package.InstallAdapter, destinationPath, stepCt);
+            var installResult = await InstallOrUpgrade.ExecuteAsync(package.InstallAdapter, destinationPath, _logger, stepCt);
             await SendStepStatusAsync(sendMessageAsync, context, "InstallOrUpgrade", package, installResult.Success, installResult.Error);
             context.RecordStep("InstallOrUpgrade", package.PackageIndex, package.PackageId, installResult.Success, installResult.Error);
 

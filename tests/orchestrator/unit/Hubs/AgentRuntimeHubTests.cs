@@ -2,6 +2,7 @@ using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Data.Entities;
 using DeploymentPoC.Orchestrator.Hubs;
 using DeploymentPoC.Orchestrator.Runtime;
+using DeploymentPoC.Orchestrator.Services;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -35,10 +36,17 @@ public class AgentRuntimeHubTests
         _db = new InstallerDbContext(options);
         _db.Database.EnsureCreated();
 
+        var hubContextMock = new Mock<IHubContext<AgentRuntimeHub>>();
+        var configMock = new Mock<Microsoft.Extensions.Configuration.IConfiguration>();
+        configMock.Setup(c => c["ArtifactStore:RootPath"]).Returns(Path.Combine(Path.GetTempPath(), "test-artifacts"));
+        var artifactStore = new DeploymentPoC.Orchestrator.Services.ArtifactStoreService(configMock.Object);
+        var dispatcherLoggerMock = new Mock<ILogger<WorkloadRunDispatcher>>();
+        var dispatcher = new WorkloadRunDispatcher(_db, hubContextMock.Object, artifactStore, dispatcherLoggerMock.Object);
         _hub = new AgentRuntimeHub(
             stateService,
             _connectionTracker,
             _db,
+            dispatcher,
             _loggerMock.Object);
     }
 

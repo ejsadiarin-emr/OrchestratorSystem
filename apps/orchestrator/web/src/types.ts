@@ -102,7 +102,7 @@ export type WorkloadRevisionState = 'draft' | 'published'
 
 export type WorkloadRunMode = 'install' | 'update' | 'rollback'
 
-export type WorkloadRunStatus = 'pending' | 'assigned' | 'running' | 'completed' | 'failed' | 'cancelled'
+export type WorkloadRunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
 
 export interface WorkloadPackageStep {
   packageId: string

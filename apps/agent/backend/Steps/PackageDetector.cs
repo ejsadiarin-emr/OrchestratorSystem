@@ -35,6 +35,7 @@ public static class PackageDetector
         {
             "file" => DetectFileAsync(config, ct),
             "registry" => DetectRegistryAsync(config, ct),
+            "version_manifest" => DetectVersionManifestAsync(config, ct),
             _ => Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent, Error = $"unsupported_detection_type:{config.Type}" })
         };
     }
@@ -84,6 +85,18 @@ public static class PackageDetector
     private static Task<PreCheckResult> DetectRegistryAsync(DetectionConfig config, CancellationToken ct)
     {
         // PoC Phase 1: registry detection is a stub.
+        return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied });
+    }
+
+    private static Task<PreCheckResult> DetectVersionManifestAsync(DetectionConfig config, CancellationToken ct)
+    {
+        // PoC Phase 1: version_manifest detection falls back to file check if a path is provided,
+        // otherwise treats the package as satisfied since it was just installed.
+        if (!string.IsNullOrWhiteSpace(config.Path) && File.Exists(config.Path))
+        {
+            return DetectFileAsync(config, ct);
+        }
+
         return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied });
     }
 

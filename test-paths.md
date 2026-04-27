@@ -1,2 +1,4 @@
-- SQLite db: /home/ejs/DeploymentPoC/apps/orchestrator/backend/data/deployment-poc.db
-- local artifact store (directory): ./apps/orchestrator/backend/bin/Release/net10.0/linux-x64/artifacts/
+- SQLite db: `apps/orchestrator/backend/bin/Release/net10.0/win-x64/publish/data/deployment-poc.db`
+- Local artifact store (directory): `apps/orchestrator/backend/bin/Release/net10.0/win-x64/publish/artifacts/`
+- Orchestrator binary: `apps/orchestrator/backend/bin/Release/net10.0/win-x64/publish/DeploymentPoC.Orchestrator.exe`
+- Agent binary: `apps/agent/backend/bin/Release/net10.0/win-x64/publish/DeploymentPoC.Agent.exe`

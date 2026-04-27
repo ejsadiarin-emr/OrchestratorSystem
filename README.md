@@ -103,7 +103,7 @@ The frontend is embedded in the backend's `wwwroot/` folder and served automatic
 
 ```bash
 cd apps/agent/backend
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
 ```
 
 **Output:** `apps/agent/backend/bin/Release/net10.0/win-x64/DeploymentPoC.Agent.exe`

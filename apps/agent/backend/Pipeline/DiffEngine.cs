@@ -52,7 +52,7 @@ public static class DiffEngine
         }
 
         var unchangedToChanged = unchanged
-            .Where(p => preCheckResults.TryGetValue(p.Name, out var r) && r.Status == PreCheckStatus.WrongVersion)
+            .Where(p => preCheckResults.TryGetValue(p.Name, out var r) && (r.Status == PreCheckStatus.WrongVersion || r.Status == PreCheckStatus.NotPresent))
             .ToList();
 
         foreach (var package in unchangedToChanged)

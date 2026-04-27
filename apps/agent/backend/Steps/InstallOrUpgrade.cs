@@ -28,6 +28,14 @@ public static class InstallOrUpgrade
             command = artifactPath;
         }
 
+        // MSI files cannot be executed directly; invoke via msiexec
+        if (string.Equals(config.Type, "msi", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(command, artifactPath, StringComparison.OrdinalIgnoreCase))
+        {
+            command = "msiexec";
+            arguments = $"/i \"{artifactPath}\" {arguments}".Trim();
+        }
+
         // Expand placeholder {artifactPath} in arguments
         arguments = arguments.Replace("{artifactPath}", artifactPath, StringComparison.OrdinalIgnoreCase);
 

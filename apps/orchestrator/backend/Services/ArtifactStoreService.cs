@@ -86,14 +86,14 @@ public sealed class ArtifactStoreService
         }
     }
 
-    public async Task<bool> SaveArtifactAsync(string packageId, string version, Stream source, CancellationToken cancellationToken = default)
+    public async Task<bool> SaveArtifactAsync(string packageId, string version, Stream source, CancellationToken cancellationToken = default, string? fileName = null)
     {
         if (ExistsAny(packageId, version))
         {
             return false;
         }
 
-        var artifactPath = GetArtifactPath(packageId, version);
+        var artifactPath = GetArtifactPath(packageId, version, fileName);
         Directory.CreateDirectory(Path.GetDirectoryName(artifactPath)!);
 
         await using var file = File.Create(artifactPath);
@@ -115,14 +115,14 @@ public sealed class ArtifactStoreService
         return true;
     }
 
-    public async Task<bool> SaveArtifactAndManifestAsync(string packageId, string version, Stream artifactStream, string manifestJson, CancellationToken cancellationToken = default)
+    public async Task<bool> SaveArtifactAndManifestAsync(string packageId, string version, Stream artifactStream, string manifestJson, CancellationToken cancellationToken = default, string? fileName = null)
     {
         if (ExistsAny(packageId, version))
         {
             return false;
         }
 
-        var artifactPath = GetArtifactPath(packageId, version);
+        var artifactPath = GetArtifactPath(packageId, version, fileName);
         var manifestPath = GetManifestPath(packageId, version);
         var versionDir = Path.GetDirectoryName(artifactPath)!;
         Directory.CreateDirectory(versionDir);
@@ -154,6 +154,19 @@ public sealed class ArtifactStoreService
     public Stream OpenRead(string packageId, string version)
     {
         return File.OpenRead(GetArtifactPath(packageId, version));
+    }
+
+    public bool TryGetArtifactFileName(string packageId, string version, out string? fileName)
+    {
+        var artifactPath = GetArtifactPath(packageId, version);
+        if (!File.Exists(artifactPath))
+        {
+            fileName = null;
+            return false;
+        }
+
+        fileName = Path.GetFileName(artifactPath);
+        return true;
     }
 
     public bool TryGetMetadata(string packageId, string version, out ArtifactFileMetadata metadata)
@@ -215,9 +228,11 @@ public sealed class ArtifactStoreService
                 }
 
                 var manifestPath = Path.Combine(versionDir, "resolved-manifest.json");
-                var artifactPath = Path.Combine(versionDir, "artifact.bin");
+                var artifactFile = Directory.EnumerateFiles(versionDir)
+                    .FirstOrDefault(f => !string.Equals(Path.GetFileName(f), "resolved-manifest.json", StringComparison.OrdinalIgnoreCase));
+                var artifactPath = artifactFile ?? Path.Combine(versionDir, "artifact.bin");
                 var hasManifest = File.Exists(manifestPath);
-                var hasArtifact = File.Exists(artifactPath);
+                var hasArtifact = artifactFile is not null;
 
                 if (!hasManifest && !hasArtifact)
                 {
@@ -271,7 +286,7 @@ public sealed class ArtifactStoreService
                         Id = $"{packageId}-{version}",
                         PackageId = packageId,
                         Version = version,
-                        FileName = manifest?.PackageId is not null ? $"{manifest.PackageId}-{version}.bin" : $"{packageId}-{version}.bin",
+                        FileName = hasArtifact ? Path.GetFileName(artifactPath) : (manifest?.PackageId is not null ? $"{manifest.PackageId}-{version}.bin" : $"{packageId}-{version}.bin"),
                         Channel = manifest?.Channel,
                         ArtifactType = manifest?.ArtifactType,
                         VerificationResult = manifest?.OriginMetadata?.VerificationResult,
@@ -348,18 +363,38 @@ public sealed class ArtifactStoreService
         public string? RiskLevel { get; set; }
     }
 
-    private string GetArtifactPath(string packageId, string version)
+    private string GetArtifactPath(string packageId, string version, string? fileName = null)
     {
         ValidatePathSegment(packageId, nameof(packageId));
         ValidatePathSegment(version, nameof(version));
 
-        var candidatePath = Path.GetFullPath(Path.Combine(_rootPath, packageId, version, "artifact.bin"));
-        if (!candidatePath.StartsWith(_rootPathWithSeparator, StringComparison.Ordinal))
+        var versionDir = Path.GetFullPath(Path.Combine(_rootPath, packageId, version));
+        if (!versionDir.StartsWith(_rootPathWithSeparator, StringComparison.Ordinal) && versionDir != _rootPath)
         {
             throw new ArgumentException("Resolved path is outside artifact root.");
         }
 
-        return candidatePath;
+        if (fileName is not null)
+        {
+            var candidatePath = Path.GetFullPath(Path.Combine(versionDir, SanitizeFileName(fileName)));
+            if (!candidatePath.StartsWith(versionDir + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            {
+                throw new ArgumentException("Resolved path is outside version directory.");
+            }
+            return candidatePath;
+        }
+
+        if (Directory.Exists(versionDir))
+        {
+            var artifactFile = Directory.EnumerateFiles(versionDir)
+                .FirstOrDefault(f => !string.Equals(Path.GetFileName(f), "resolved-manifest.json", StringComparison.OrdinalIgnoreCase));
+            if (artifactFile is not null)
+            {
+                return artifactFile;
+            }
+        }
+
+        return Path.Combine(versionDir, "artifact.bin");
     }
 
     private string GetManifestPath(string packageId, string version)
@@ -374,6 +409,20 @@ public sealed class ArtifactStoreService
         }
 
         return candidatePath;
+    }
+
+    private static string SanitizeFileName(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return "artifact.bin";
+        }
+
+        var name = Path.GetFileName(fileName);
+        var invalidChars = Path.GetInvalidFileNameChars();
+        var sanitized = new string(name.Select(c => invalidChars.Contains(c) ? '_' : c).ToArray());
+
+        return sanitized;
     }
 
     private static void ValidatePathSegment(string segment, string parameterName)

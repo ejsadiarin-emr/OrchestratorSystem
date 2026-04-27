@@ -14,12 +14,14 @@ public sealed class WorkloadRunDispatcher
 {
     private readonly InstallerDbContext _db;
     private readonly IHubContext<AgentRuntimeHub> _hubContext;
+    private readonly ArtifactStoreService _artifactStore;
     private readonly ILogger<WorkloadRunDispatcher> _logger;
 
-    public WorkloadRunDispatcher(InstallerDbContext db, IHubContext<AgentRuntimeHub> hubContext, ILogger<WorkloadRunDispatcher> logger)
+    public WorkloadRunDispatcher(InstallerDbContext db, IHubContext<AgentRuntimeHub> hubContext, ArtifactStoreService artifactStore, ILogger<WorkloadRunDispatcher> logger)
     {
         _db = db;
         _hubContext = hubContext;
+        _artifactStore = artifactStore;
         _logger = logger;
     }
 
@@ -128,7 +130,7 @@ public sealed class WorkloadRunDispatcher
         }
     }
 
-    private static List<PackageAssignment> BuildPackageAssignments(List<WorkloadPackageEntity> workloadPackages, List<PackageEntity> packageEntities)
+    private List<PackageAssignment> BuildPackageAssignments(List<WorkloadPackageEntity> workloadPackages, List<PackageEntity> packageEntities)
     {
         return workloadPackages
             .OrderBy(p => p.PackageIndex)
@@ -136,20 +138,12 @@ public sealed class WorkloadRunDispatcher
             {
                 const string artifactPath = "{artifactPath}";
                 var pkg = packageEntities.FirstOrDefault(p => p.PackageId == wp.PackageId);
-                var installType = pkg?.InstallType ?? "exe";
-                var isMsi = string.Equals(installType, "msi", StringComparison.OrdinalIgnoreCase);
-                string command;
-                string arguments;
-                if (isMsi)
-                {
-                    command = "msiexec.exe";
-                    arguments = $"/i \"{artifactPath}\" {pkg?.InstallArgs ?? ""}";
-                }
-                else
-                {
-                    command = artifactPath;
-                    arguments = pkg?.InstallArgs ?? "";
-                }
+                var rawInstallType = pkg?.InstallType ?? "exe";
+                var installType = string.IsNullOrWhiteSpace(rawInstallType) || rawInstallType.Equals("unknown", StringComparison.OrdinalIgnoreCase)
+                    ? "exe"
+                    : rawInstallType;
+                string command = pkg?.SourcePath ?? artifactPath;
+                string arguments = pkg?.InstallArgs ?? "";
 
                 var expectedExitCodes = new List<int>();
                 if (!string.IsNullOrWhiteSpace(pkg?.ExpectedExitCodesJson))
@@ -166,8 +160,10 @@ public sealed class WorkloadRunDispatcher
 
                 if (expectedExitCodes.Count == 0)
                 {
-                    expectedExitCodes = isMsi ? new List<int> { 0, 3010 } : new List<int> { 0 };
+                    expectedExitCodes = new List<int> { 0 };
                 }
+
+                _artifactStore.TryGetArtifactFileName(pkg?.Name ?? "", pkg?.Version ?? "", out var artifactFileName);
 
                 var timeoutSeconds = pkg?.TimeoutSeconds > 0 ? pkg.TimeoutSeconds : 300;
                 return new PackageAssignment
@@ -177,6 +173,7 @@ public sealed class WorkloadRunDispatcher
                     Name = pkg?.Name ?? "",
                     Version = pkg?.Version ?? "",
                     Channel = "stable",
+                    ArtifactFileName = artifactFileName,
                     InstallAdapter = new InstallAdapterConfig
                     {
                         Type = installType,

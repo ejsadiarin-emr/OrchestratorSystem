@@ -3,10 +3,12 @@ using DeploymentPoC.Orchestrator.Contracts.Api;
 using DeploymentPoC.Orchestrator.Contracts.Api.Workloads;
 using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Data.Entities;
+using DeploymentPoC.Orchestrator.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Moq;
 
 namespace DeploymentPoC.Orchestrator.Tests.Controllers;
 
@@ -37,7 +39,10 @@ public class WorkloadsControllerTests
 
     private WorkloadsController CreateController()
     {
-        return new WorkloadsController(_db);
+        var configMock = new Mock<Microsoft.Extensions.Configuration.IConfiguration>();
+        configMock.Setup(c => c["ArtifactStore:RootPath"]).Returns(Path.Combine(Path.GetTempPath(), "test-artifacts"));
+        var artifactStore = new ArtifactStoreService(configMock.Object);
+        return new WorkloadsController(_db, artifactStore);
     }
 
     [Test]

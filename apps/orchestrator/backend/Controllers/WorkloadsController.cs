@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using DeploymentPoC.Orchestrator.Services;
 
 namespace DeploymentPoC.Orchestrator.Controllers;
 
@@ -16,10 +17,12 @@ namespace DeploymentPoC.Orchestrator.Controllers;
 public sealed class WorkloadsController : ControllerBase
 {
     private readonly InstallerDbContext _db;
+    private readonly ArtifactStoreService _artifactStore;
 
-    public WorkloadsController(InstallerDbContext db)
+    public WorkloadsController(InstallerDbContext db, ArtifactStoreService artifactStore)
     {
         _db = db;
+        _artifactStore = artifactStore;
     }
 
     [HttpPost]
@@ -385,25 +388,40 @@ public sealed class WorkloadsController : ControllerBase
         return new Guid(hash);
     }
 
-    private static (string InstallType, string SourcePath, string InstallArgs, string UninstallArgs, string ExpectedExitCodesJson, int TimeoutSeconds)
-        ResolvePlaceholderAdapter(string packageId)
+    private async Task<(string InstallType, string SourcePath, string InstallArgs, string UninstallArgs, string ExpectedExitCodesJson, int TimeoutSeconds)>
+        ResolvePlaceholderAdapter(string packageId, string version)
     {
-        return packageId.ToLowerInvariant() switch
+        var manifestJson = await _artifactStore.GetResolvedManifestAsync(packageId, version);
+        if (!string.IsNullOrWhiteSpace(manifestJson))
         {
-            var p when p.StartsWith("git-") =>
-                ("exe", "{artifactPath}", "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS /COMPONENTS=\"icons,extreg,shellassoc\"", "/VERYSILENT /UNINSTALL", "[0]", 300),
-            var p when p.StartsWith("nodejs-") =>
-                ("msi", "msiexec.exe", "/i \"{artifactPath}\" /quiet /norestart", "/x \"{artifactPath}\" /qn /norestart", "[0,3010]", 300),
-            var p when p.StartsWith("7zip-") =>
-                ("exe", "{artifactPath}", "/S /D=C:\\Program Files\\7-Zip", "/S _?=\"{artifactPath}\"", "[0]", 120),
-            var p when p.StartsWith("python-") =>
-                ("exe", "{artifactPath}", "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0", "/quiet /uninstall", "[0]", 300),
-            var p when p.StartsWith("dotnet-runtime-") =>
-                ("exe", "{artifactPath}", "/quiet /norestart", "/quiet /uninstall /norestart", "[0,3010]", 300),
-            var p when p.StartsWith("test-agent-") =>
-                ("exe", "{artifactPath}", "/S", "/S _?=\"{artifactPath}\"", "[0]", 60),
-            _ => ("unknown", "{artifactPath}", "", "", "[0]", 300)
-        };
+            try
+            {
+                var manifest = System.Text.Json.JsonSerializer.Deserialize<ResolvedManifest>(manifestJson, new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+                if (manifest?.InstallAdapter is not null)
+                {
+                    var adapter = manifest.InstallAdapter;
+                    return (
+                        string.IsNullOrWhiteSpace(adapter.Type) ? "exe" : adapter.Type,
+                        string.IsNullOrWhiteSpace(adapter.Command) ? "{artifactPath}" : adapter.Command,
+                        adapter.Arguments ?? "",
+                        "",
+                        adapter.ExpectedExitCodes is { Count: > 0 }
+                            ? System.Text.Json.JsonSerializer.Serialize(adapter.ExpectedExitCodes)
+                            : "[0]",
+                        adapter.TimeoutSeconds > 0 ? adapter.TimeoutSeconds : 300
+                    );
+                }
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // fallback to default
+            }
+        }
+
+        return ("exe", "{artifactPath}", "", "", "[0]", 300);
     }
 
     [HttpPost("bulk-import")]
@@ -546,7 +564,7 @@ public sealed class WorkloadsController : ControllerBase
 
                     if (existingPackage is null)
                     {
-                        var adapter = ResolvePlaceholderAdapter(packageId);
+                        var adapter = await ResolvePlaceholderAdapter(packageId, version);
                         var packageEntity = new PackageEntity
                         {
                             PackageId = deterministicId,

@@ -7,6 +7,7 @@ public sealed class PackageAssignment
     public string Name { get; set; } = string.Empty;
     public string Version { get; set; } = string.Empty;
     public string Channel { get; set; } = string.Empty;
+    public string? ArtifactFileName { get; set; }
     public InstallAdapterConfig InstallAdapter { get; set; } = new();
     public DetectionConfig Detection { get; set; } = new();
 }

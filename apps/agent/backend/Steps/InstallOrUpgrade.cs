@@ -13,11 +13,6 @@ public static class InstallOrUpgrade
             return new InstallResult { Success = false, Error = "invalid_config" };
         }
 
-        if (string.IsNullOrWhiteSpace(config.Command))
-        {
-            return new InstallResult { Success = false, Error = "missing_command" };
-        }
-
         if (!File.Exists(artifactPath))
         {
             return new InstallResult { Success = false, Error = "artifact_not_found" };
@@ -25,6 +20,13 @@ public static class InstallOrUpgrade
 
         var command = config.Command;
         var arguments = config.Arguments ?? string.Empty;
+
+        // fallback: if command is missing or is the placeholder itself, execute the artifact directly
+        if (string.IsNullOrWhiteSpace(command) ||
+            string.Equals(command, "{artifactPath}", StringComparison.OrdinalIgnoreCase))
+        {
+            command = artifactPath;
+        }
 
         // Expand placeholder {artifactPath} in arguments
         arguments = arguments.Replace("{artifactPath}", artifactPath, StringComparison.OrdinalIgnoreCase);
@@ -74,6 +76,53 @@ public static class InstallOrUpgrade
             }
 
             return new InstallResult { Success = true };
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 740)
+        {
+            // ERROR_ELEVATION_REQUIRED: retry with UAC elevation via runas verb
+            try
+            {
+                using var elevatedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                elevatedCts.CancelAfter(timeout);
+
+                using var elevatedProcess = new Process();
+                elevatedProcess.StartInfo.FileName = command;
+                elevatedProcess.StartInfo.Arguments = arguments;
+                elevatedProcess.StartInfo.UseShellExecute = true;
+                elevatedProcess.StartInfo.Verb = "runas";
+                elevatedProcess.StartInfo.CreateNoWindow = true;
+
+                elevatedProcess.Start();
+
+                try
+                {
+                    await elevatedProcess.WaitForExitAsync(elevatedCts.Token);
+                }
+                catch (OperationCanceledException) when (elevatedCts.Token.IsCancellationRequested && !ct.IsCancellationRequested)
+                {
+                    try { elevatedProcess.Kill(); } catch { /* best-effort */ }
+                    return new InstallResult { Success = false, Error = "install_timeout" };
+                }
+
+                if (!expectedExitCodes.Contains(elevatedProcess.ExitCode))
+                {
+                    return new InstallResult
+                    {
+                        Success = false,
+                        Error = $"exit_code_{elevatedProcess.ExitCode}"
+                    };
+                }
+
+                return new InstallResult { Success = true };
+            }
+            catch (Win32Exception retryEx) when (retryEx.NativeErrorCode == 1223)
+            {
+                return new InstallResult { Success = false, Error = "elevation_denied" };
+            }
+            catch (Win32Exception retryEx)
+            {
+                return new InstallResult { Success = false, Error = $"win32_error_{retryEx.NativeErrorCode}" };
+            }
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 2)
         {

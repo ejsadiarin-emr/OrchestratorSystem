@@ -133,14 +133,25 @@ public sealed class ArtifactIngestService
             var templateDefaults = TryGetTemplateDefaults(manifest.PackageId);
             var analyzerType = TryAnalyzeFileContent(fileStream, fileName);
 
+            var command = string.IsNullOrWhiteSpace(adapter.Command) ? "{artifactPath}" : adapter.Command.Trim();
+            if (!string.Equals(command, "{artifactPath}", StringComparison.OrdinalIgnoreCase))
+            {
+                var commandFileName = Path.GetFileName(command);
+                var artifactFileName = Path.GetFileName(fileName);
+                if (string.Equals(commandFileName, artifactFileName, StringComparison.OrdinalIgnoreCase))
+                {
+                    command = "{artifactPath}";
+                }
+            }
+
             var result = new InstallAdapter
             {
                 Type = string.IsNullOrWhiteSpace(adapter.Type)
                     ? (analyzerType ?? templateDefaults?.Type ?? ResolveAdapterType(fileName))
                     : adapter.Type.Trim().ToLowerInvariant(),
-                Command = string.IsNullOrWhiteSpace(adapter.Command) ? "artifact.bin" : adapter.Command.Trim(),
+                Command = command,
                 Arguments = adapter.Arguments ?? string.Empty,
-                ExpectedExitCodes = adapter.ExpectedExitCodes?.Count > 0 ? adapter.ExpectedExitCodes : new List<int> { 0, 3010 },
+                ExpectedExitCodes = adapter.ExpectedExitCodes?.Count > 0 ? adapter.ExpectedExitCodes : new List<int> { 0 },
                 TimeoutSeconds = adapter.TimeoutSeconds > 0 ? adapter.TimeoutSeconds.Value : 1800
             };
 
@@ -186,14 +197,9 @@ public sealed class ArtifactIngestService
         return (new InstallAdapter
         {
             Type = type,
-            Command = "artifact.bin",
-            Arguments = type switch
-            {
-                "msi" => "/qn /norestart",
-                "exe" => "/quiet /norestart",
-                _ => string.Empty
-            },
-            ExpectedExitCodes = new List<int> { 0, 3010 },
+            Command = "{artifactPath}",
+            Arguments = string.Empty,
+            ExpectedExitCodes = new List<int> { 0 },
             TimeoutSeconds = 1800
         }, defaultSources);
     }

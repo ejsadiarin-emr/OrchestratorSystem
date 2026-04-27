@@ -137,8 +137,11 @@ public class PipelineExecutor
             }
 
             // Step 1: Acquire artifact
-            var artifactUrl = $"{context.OrchestratorBaseUrl.TrimEnd('/')}/api/artifacts/{package.PackageId}/{package.Version}";
-            var destinationPath = Path.Combine(Path.GetTempPath(), $"agent-artifacts", context.RunId, $"{package.PackageId}-{package.Version}");
+            var artifactUrl = $"{context.OrchestratorBaseUrl.TrimEnd('/')}/api/artifacts/{package.Name}/{package.Version}";
+            var destFileName = !string.IsNullOrEmpty(package.ArtifactFileName)
+                ? $"{package.PackageId}-{package.Version}-{package.ArtifactFileName}"
+                : $"{package.PackageId}-{package.Version}";
+            var destinationPath = Path.Combine(Path.GetTempPath(), "agent-artifacts", context.RunId, destFileName);
 
             _logger.LogInformation(
                 "Step AcquireArtifact: PackageIndex={PackageIndex}, PackageId={PackageId}, Url={ArtifactUrl}",

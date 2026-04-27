@@ -44,7 +44,7 @@ public sealed class WorkloadImportService
 
     public async Task<List<Guid>> EnsurePackageEntitiesAsync(ResolvedManifest manifest)
     {
-        var sourcePath = $"{manifest.PackageId}/{manifest.Version}/artifact.bin";
+        var sourcePath = manifest.InstallAdapter?.Command ?? string.Empty;
         var existing = await _db.Packages
             .SingleOrDefaultAsync(p => p.Name == manifest.PackageId && p.Version == manifest.Version);
 
@@ -59,8 +59,8 @@ public sealed class WorkloadImportService
             Name = manifest.PackageId,
             Version = manifest.Version,
             SourcePath = sourcePath,
-            InstallType = manifest.InstallAdapter.Type,
-            InstallArgs = manifest.InstallAdapter.Arguments,
+            InstallType = manifest.InstallAdapter?.Type ?? "exe",
+            InstallArgs = manifest.InstallAdapter?.Arguments ?? string.Empty,
             DetectionConfigJson = System.Text.Json.JsonSerializer.Serialize(manifest.Detection),
             CreatedAtUtc = DateTime.UtcNow
         };

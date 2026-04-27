@@ -111,7 +111,7 @@ public sealed class ArtifactsController : ControllerBase
                 return Conflict(new { message = $"Artifact '{packageId}' version '{version}' already exists." });
             }
 
-            await _artifactStore.SaveArtifactAndManifestAsync(packageId, version, extracted.MediaStream, resolvedManifestJson, HttpContext.RequestAborted);
+            await _artifactStore.SaveArtifactAndManifestAsync(packageId, version, extracted.MediaStream, resolvedManifestJson, HttpContext.RequestAborted, fileName: extracted.MediaFileName);
 
             var packageEntityId = DeterministicGuid($"{packageId}-{version}");
             var existingPackage = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId, HttpContext.RequestAborted);
@@ -123,7 +123,7 @@ public sealed class ArtifactsController : ControllerBase
                     Name = result.ResolvedManifest.PackageId,
                     Version = result.ResolvedManifest.Version,
                     SourcePath = result.ResolvedManifest.InstallAdapter?.Command ?? string.Empty,
-                    InstallType = result.ResolvedManifest.ArtifactType ?? "msi",
+                    InstallType = result.ResolvedManifest.InstallAdapter?.Type ?? "exe",
                     InstallArgs = result.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
                     ExpectedExitCodesJson = JsonSerializer.Serialize(
                         result.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
@@ -203,7 +203,7 @@ public sealed class ArtifactsController : ControllerBase
             return Conflict(new { message = $"Artifact '{packageId2}' version '{version2}' already exists." });
         }
 
-        await _artifactStore.SaveArtifactAndManifestAsync(packageId2, version2, stream, resolvedManifestJson2, HttpContext.RequestAborted);
+        await _artifactStore.SaveArtifactAndManifestAsync(packageId2, version2, stream, resolvedManifestJson2, HttpContext.RequestAborted, fileName: file.FileName);
 
         var packageEntityId2 = DeterministicGuid($"{packageId2}-{version2}");
         var existingPackage2 = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId2, HttpContext.RequestAborted);
@@ -215,7 +215,7 @@ public sealed class ArtifactsController : ControllerBase
                 Name = ingestResult.ResolvedManifest.PackageId,
                 Version = ingestResult.ResolvedManifest.Version,
                 SourcePath = ingestResult.ResolvedManifest.InstallAdapter?.Command ?? string.Empty,
-                InstallType = ingestResult.ResolvedManifest.ArtifactType ?? "msi",
+                InstallType = ingestResult.ResolvedManifest.InstallAdapter?.Type ?? "exe",
                 InstallArgs = ingestResult.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
                 ExpectedExitCodesJson = JsonSerializer.Serialize(
                     ingestResult.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
@@ -322,7 +322,7 @@ public sealed class ArtifactsController : ControllerBase
                 continue;
             }
 
-            await _artifactStore.SaveArtifactAndManifestAsync(packageId, version, artifact.MediaStream, resolvedManifestJson, HttpContext.RequestAborted);
+            await _artifactStore.SaveArtifactAndManifestAsync(packageId, version, artifact.MediaStream, resolvedManifestJson, HttpContext.RequestAborted, fileName: artifact.MediaFileName);
 
             var packageEntityId = DeterministicGuid($"{packageId}-{version}");
             var existingPackage = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId, HttpContext.RequestAborted);
@@ -334,7 +334,7 @@ public sealed class ArtifactsController : ControllerBase
                     Name = result.ResolvedManifest.PackageId,
                     Version = result.ResolvedManifest.Version,
                     SourcePath = result.ResolvedManifest.InstallAdapter?.Command ?? string.Empty,
-                    InstallType = result.ResolvedManifest.ArtifactType ?? "msi",
+                    InstallType = result.ResolvedManifest.InstallAdapter?.Type ?? "exe",
                     InstallArgs = result.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
                     ExpectedExitCodesJson = JsonSerializer.Serialize(
                         result.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
@@ -588,7 +588,7 @@ public sealed class ArtifactsController : ControllerBase
                 Name = result.ResolvedManifest.PackageId,
                 Version = result.ResolvedManifest.Version,
                 SourcePath = result.ResolvedManifest.InstallAdapter?.Command ?? string.Empty,
-                InstallType = result.ResolvedManifest.ArtifactType ?? "msi",
+                InstallType = result.ResolvedManifest.InstallAdapter?.Type ?? "exe",
                 InstallArgs = result.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
                 ExpectedExitCodesJson = JsonSerializer.Serialize(
                     result.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),

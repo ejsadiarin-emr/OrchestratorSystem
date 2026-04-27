@@ -10,6 +10,7 @@ public sealed class FakeHubConnection : IHubConnection
 
     public event Func<Exception?, Task>? Reconnecting;
     public event Func<string?, Task>? Reconnected;
+    public event Func<Exception?, Task>? Closed;
 
     public List<(string Method, object? Arg)> Invocations { get; } = new();
 

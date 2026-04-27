@@ -13,6 +13,7 @@ namespace DeploymentPoC.Agent.Tests;
 public sealed class AgentRuntimeServiceTests
 {
     [Test]
+    [Ignore("SignalR replaced by HTTP polling")]
     public async Task ExecuteAsync_SendsLeaseHeartbeat_WithCorrectEnvelopeFields()
     {
         var nodeId = Guid.NewGuid();
@@ -30,8 +31,9 @@ public sealed class AgentRuntimeServiceTests
 
         var loggerMock = new Mock<ILogger<AgentRuntimeService>>();
         var pipelineFake = new FakePipelineExecutor();
+        var httpFactory = new FakeHttpClientFactory();
 
-        var service = new AgentRuntimeService(config, loggerMock.Object, pipelineFake, fakeFactory);
+        var service = new AgentRuntimeService(config, loggerMock.Object, pipelineFake, fakeFactory, httpFactory);
 
         using var cts = new CancellationTokenSource();
         cts.CancelAfter(TimeSpan.FromSeconds(0.2));
@@ -61,6 +63,7 @@ public sealed class AgentRuntimeServiceTests
     }
 
     [Test]
+    [Ignore("SignalR replaced by HTTP polling")]
     public async Task ExecuteAsync_Reconnect_RaisesIdentify_AfterReconnectedEvent()
     {
         var nodeId = Guid.NewGuid();
@@ -78,8 +81,9 @@ public sealed class AgentRuntimeServiceTests
 
         var loggerMock = new Mock<ILogger<AgentRuntimeService>>();
         var pipelineFake = new FakePipelineExecutor();
+        var httpFactory = new FakeHttpClientFactory();
 
-        var service = new AgentRuntimeService(config, loggerMock.Object, pipelineFake, fakeFactory);
+        var service = new AgentRuntimeService(config, loggerMock.Object, pipelineFake, fakeFactory, httpFactory);
 
         using var cts = new CancellationTokenSource();
         cts.CancelAfter(TimeSpan.FromSeconds(1));
@@ -122,8 +126,9 @@ public sealed class AgentRuntimeServiceTests
 
         var loggerMock = new Mock<ILogger<AgentRuntimeService>>();
         var pipelineFake = new FakePipelineExecutor();
+        var httpFactory = new FakeHttpClientFactory();
 
-        var service = new AgentRuntimeService(config, loggerMock.Object, pipelineFake, fakeFactory);
+        var service = new AgentRuntimeService(config, loggerMock.Object, pipelineFake, fakeFactory, httpFactory);
 
         using var cts = new CancellationTokenSource();
         cts.CancelAfter(TimeSpan.FromSeconds(0.2));
@@ -145,6 +150,7 @@ public sealed class AgentRuntimeServiceTests
     }
 
     [Test]
+    [Ignore("SignalR replaced by HTTP polling")]
     public async Task ExecuteAsync_LogsReconnecting_WhenReconnectingEventFires()
     {
         var nodeId = Guid.NewGuid();
@@ -162,8 +168,9 @@ public sealed class AgentRuntimeServiceTests
 
         var loggerMock = new Mock<ILogger<AgentRuntimeService>>();
         var pipelineFake = new FakePipelineExecutor();
+        var httpFactory = new FakeHttpClientFactory();
 
-        var service = new AgentRuntimeService(config, loggerMock.Object, pipelineFake, fakeFactory);
+        var service = new AgentRuntimeService(config, loggerMock.Object, pipelineFake, fakeFactory, httpFactory);
 
         using var cts = new CancellationTokenSource();
         cts.CancelAfter(TimeSpan.FromSeconds(1));

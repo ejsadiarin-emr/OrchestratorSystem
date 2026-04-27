@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using Microsoft.Extensions.Logging;
 
 namespace DeploymentPoC.Agent.Steps;
 
@@ -12,10 +13,12 @@ public sealed class AcquireArtifact
     private readonly HttpClient _http;
     private readonly string? _artifactRootPath;
     private readonly HashSet<string>? _allowedHosts;
+    private readonly ILogger? _logger;
 
-    public AcquireArtifact(HttpClient http, AcquireArtifactOptions? options = null)
+    public AcquireArtifact(HttpClient http, AcquireArtifactOptions? options = null, ILogger? logger = null)
     {
         _http = http;
+        _logger = logger;
 
         if (!string.IsNullOrWhiteSpace(options?.ArtifactRootPath))
         {
@@ -63,10 +66,18 @@ public sealed class AcquireArtifact
             return new AcquireArtifactResult { Success = false, Error = destinationValidationError };
         }
 
+        var timeoutSeconds = request.DownloadTimeoutSeconds > 0
+            ? request.DownloadTimeoutSeconds
+            : 300;
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+        var linkedCt = timeoutCts.Token;
+
         try
         {
             using var headRequest = new HttpRequestMessage(HttpMethod.Head, artifactUri);
-            using var headResponse = await _http.SendAsync(headRequest, ct);
+            using var headResponse = await _http.SendAsync(headRequest, linkedCt);
             if (!headResponse.IsSuccessStatusCode)
             {
                 return new AcquireArtifactResult { Success = false, Error = $"head_{(int)headResponse.StatusCode}" };
@@ -85,68 +96,171 @@ public sealed class AcquireArtifact
 
             await using (var output = File.Create(destinationPath))
             {
-                if (expectedLength is null or <= 0)
+if (expectedLength is null or <= 0)
                 {
-                    bytesWritten = await DownloadFullAsync(artifactUri, output, ct);
+                    bytesWritten = await DownloadFullAsync(artifactUri, output, linkedCt);
                 }
                 else
                 {
                     var from = 0L;
+                    const int MaxRetries = 3;
 
                     while (from < expectedLength.Value)
                     {
                         var to = Math.Min(from + request.ChunkSizeBytes - 1, expectedLength.Value - 1);
+                        var chunkDownloaded = false;
 
-                        using var getRequest = new HttpRequestMessage(HttpMethod.Get, artifactUri);
-                        getRequest.Headers.Range = new RangeHeaderValue(from, to);
-
-                        using var response = await _http.SendAsync(getRequest, HttpCompletionOption.ResponseHeadersRead, ct);
-                        if (response.StatusCode == HttpStatusCode.PartialContent)
+                        for (var attempt = 0; attempt <= MaxRetries; attempt++)
                         {
-                            if (!IsValidContentRange(response.Content.Headers.ContentRange, from, to, expectedLength.Value))
+                            using var attemptTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                            attemptTimeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+                            var attemptCt = attemptTimeoutCts.Token;
+
+                            try
                             {
+                                using var getRequest = new HttpRequestMessage(HttpMethod.Get, artifactUri);
+                                getRequest.Headers.Range = new RangeHeaderValue(from, to);
+
+                                _logger?.LogInformation(
+                                    "Downloading chunk {From}-{To} for {ArtifactUrl}",
+                                    from, to, artifactUri);
+
+                                using var response = await _http.SendAsync(getRequest, HttpCompletionOption.ResponseHeadersRead, attemptCt);
+
+                                if ((int)response.StatusCode >= 400 && (int)response.StatusCode < 500)
+                                {
+                                    downloadFailure = new AcquireArtifactResult
+                                    {
+                                        Success = false,
+                                        Error = $"range_{(int)response.StatusCode}"
+                                    };
+                                    chunkDownloaded = true;
+                                    break;
+                                }
+
+                                if (response.StatusCode == HttpStatusCode.PartialContent)
+                                {
+                                    if (!IsValidContentRange(response.Content.Headers.ContentRange, from, to, expectedLength.Value))
+                                    {
+                                        downloadFailure = new AcquireArtifactResult
+                                        {
+                                            Success = false,
+                                            Error = "invalid_partial_content_range"
+                                        };
+                                        chunkDownloaded = true;
+                                    break;
+                                    }
+
+                                    var expectedChunkLength = to - from + 1;
+                                    await using var responseBody = await response.Content.ReadAsStreamAsync(attemptCt);
+                                    var copiedChunkLength = await CopyToAsyncCountingBytes(responseBody, output, attemptCt);
+                                    if (copiedChunkLength != expectedChunkLength)
+                                    {
+                                        downloadFailure = new AcquireArtifactResult
+                                        {
+                                            Success = false,
+                                            Error = "invalid_partial_content_length"
+                                        };
+                                        chunkDownloaded = true;
+                                        break;
+                                    }
+
+                                    _logger?.LogInformation(
+                                        "Downloaded chunk {From}-{To} ({BytesRead} bytes) for {ArtifactUrl}. Progress: {ProgressPercent}%",
+                                        from, to, copiedChunkLength, artifactUri,
+                                        expectedLength.Value > 0 ? (double)(to + 1) / expectedLength.Value * 100 : 0);
+
+                                    from = to + 1;
+                                    chunkDownloaded = true;
+                                    break;
+                                }
+
+                                if (response.StatusCode == HttpStatusCode.OK)
+                                {
+                                    var contentLength = response.Content.Headers.ContentLength;
+
+                                    output.SetLength(0);
+                                    output.Position = 0;
+                                    await response.Content.CopyToAsync(output, attemptCt);
+
+                                    if (contentLength.HasValue && output.Length != contentLength.Value)
+                                    {
+                                        downloadFailure = new AcquireArtifactResult
+                                        {
+                                            Success = false,
+                                            Error = $"content_length_mismatch on 200 OK: declared {contentLength.Value} bytes, got {output.Length}"
+                                        };
+                                        chunkDownloaded = true;
+                                        break;
+                                    }
+
+                                    bytesWritten = output.Length;
+                                    chunkDownloaded = true;
+                                    break;
+                                }
+
                                 downloadFailure = new AcquireArtifactResult
                                 {
                                     Success = false,
-                                    Error = "invalid_partial_content_range"
+                                    Error = $"range_{(int)response.StatusCode}"
                                 };
+                                chunkDownloaded = true;
                                 break;
                             }
-
-                            var expectedChunkLength = to - from + 1;
-                            await using var responseBody = await response.Content.ReadAsStreamAsync(ct);
-                            var copiedChunkLength = await CopyToAsyncCountingBytes(responseBody, output, ct);
-                            if (copiedChunkLength != expectedChunkLength)
+                            catch (Exception ex) when (ex is IOException or HttpRequestException or TaskCanceledException)
                             {
+                                if (ct.IsCancellationRequested)
+                                {
+                                    throw;
+                                }
+
+                                if (attempt < MaxRetries)
+                                {
+                                    output.Seek(from, SeekOrigin.Begin);
+                                    await Task.Delay(TimeSpan.FromSeconds(1 << attempt), ct);
+                                    continue;
+                                }
+
                                 downloadFailure = new AcquireArtifactResult
                                 {
                                     Success = false,
-                                    Error = "invalid_partial_content_length"
+                                    Error = "chunk_download_failed_after_retries"
                                 };
+                                chunkDownloaded = true;
                                 break;
                             }
-
-                            from = to + 1;
-                            continue;
                         }
 
-                        if (response.StatusCode == HttpStatusCode.OK)
+                        if (downloadFailure is not null)
                         {
-                            output.SetLength(0);
-                            output.Position = 0;
-                            await response.Content.CopyToAsync(output, ct);
                             break;
                         }
+
+                        if (!chunkDownloaded)
+                        {
+                            downloadFailure = new AcquireArtifactResult
+                            {
+                                Success = false,
+                                Error = "chunk_download_failed_after_retries"
+                            };
+                            break;
+                        }
+                    }
+
+                    bytesWritten = output.Length;
+
+                    if (downloadFailure is null && expectedLength.HasValue && expectedLength.Value > 0 && bytesWritten != expectedLength.Value)
+                    {
+                        _logger?.LogError(
+                            "Download size mismatch for {ArtifactUrl}: expected {Expected} bytes, got {Actual}",
+                            request.ArtifactUrl, expectedLength.Value, bytesWritten);
 
                         downloadFailure = new AcquireArtifactResult
                         {
                             Success = false,
-                            Error = $"range_{(int)response.StatusCode}"
+                            Error = $"content_length_mismatch: expected {expectedLength.Value} bytes, got {bytesWritten}"
                         };
-                        break;
                     }
-
-                    bytesWritten = output.Length;
                 }
             }
 
@@ -156,13 +270,28 @@ public sealed class AcquireArtifact
                 return downloadFailure;
             }
 
-            var finalResult = await FinalizeResultAsync(request, destinationPath, bytesWritten, ct);
+            var finalResult = await FinalizeResultAsync(request, destinationPath, bytesWritten, linkedCt);
             if (!finalResult.Success)
             {
                 TryDeletePartialFile(destinationPath);
             }
 
             return finalResult;
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            TryDeletePartialFile(destinationPath);
+            return new AcquireArtifactResult { Success = false, Error = "download_timeout" };
+        }
+        catch (OperationCanceledException)
+        {
+            TryDeletePartialFile(destinationPath);
+            return new AcquireArtifactResult { Success = false, Error = "cancelled" };
+        }
+        catch (InvalidOperationException ex)
+        {
+            TryDeletePartialFile(destinationPath);
+            return new AcquireArtifactResult { Success = false, Error = ex.Message };
         }
         catch (HttpRequestException)
         {
@@ -190,7 +319,16 @@ public sealed class AcquireArtifact
     {
         using var response = await _http.GetAsync(artifactUri, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
+
+        var declaredLength = response.Content.Headers.ContentLength;
         await response.Content.CopyToAsync(output, ct);
+
+        if (declaredLength.HasValue && output.Length != declaredLength.Value)
+        {
+            throw new InvalidOperationException(
+                $"Full download size mismatch: declared {declaredLength.Value} bytes, got {output.Length}");
+        }
+
         return output.Length;
     }
 
@@ -397,7 +535,13 @@ public sealed class AcquireArtifact
             return false;
         }
 
-        return contentRange.Length is not null && contentRange.Length.Value == expectedLength;
+        if (contentRange.Length.HasValue)
+        {
+            return contentRange.Length.Value == expectedLength;
+        }
+
+        return contentRange.From.HasValue && contentRange.To.HasValue
+            && contentRange.To.Value >= contentRange.From.Value;
     }
 
     private static string NormalizeDirectoryPath(string path)

@@ -1,4 +1,5 @@
 using DeploymentPoC.Contracts.Runtime.RunPayloads;
+using Microsoft.Extensions.Logging;
 using System.ComponentModel;
 using System.Diagnostics;
 
@@ -6,7 +7,7 @@ namespace DeploymentPoC.Agent.Steps;
 
 public static class InstallOrUpgrade
 {
-    public static async Task<InstallResult> ExecuteAsync(InstallAdapterConfig config, string artifactPath, CancellationToken ct)
+    public static async Task<InstallResult> ExecuteAsync(InstallAdapterConfig config, string artifactPath, ILogger logger, CancellationToken ct)
     {
         if (config is null)
         {
@@ -26,6 +27,14 @@ public static class InstallOrUpgrade
             string.Equals(command, "{artifactPath}", StringComparison.OrdinalIgnoreCase))
         {
             command = artifactPath;
+        }
+
+        // MSI files cannot be executed directly; invoke via msiexec
+        if (string.Equals(config.Type, "msi", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(command, artifactPath, StringComparison.OrdinalIgnoreCase))
+        {
+            command = "msiexec";
+            arguments = $"/i \"{artifactPath}\" {arguments}".Trim();
         }
 
         // Expand placeholder {artifactPath} in arguments
@@ -50,6 +59,8 @@ public static class InstallOrUpgrade
         var timeout = config.TimeoutSeconds > 0
             ? TimeSpan.FromSeconds(config.TimeoutSeconds)
             : TimeSpan.FromSeconds(300);
+
+        logger.LogInformation("Executing install command: FileName={FileName}, Arguments={Arguments}", command, arguments);
 
         try
         {

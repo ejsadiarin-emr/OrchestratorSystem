@@ -388,7 +388,18 @@ public sealed class WorkloadsController : ControllerBase
         return new Guid(hash);
     }
 
-    private async Task<(string InstallType, string SourcePath, string InstallArgs, string UninstallArgs, string ExpectedExitCodesJson, int TimeoutSeconds)>
+    private sealed class AdapterResolution
+    {
+        public string InstallType { get; set; } = "exe";
+        public string SourcePath { get; set; } = "{artifactPath}";
+        public string InstallArgs { get; set; } = "";
+        public string UninstallArgs { get; set; } = "";
+        public string ExpectedExitCodesJson { get; set; } = "[0]";
+        public int TimeoutSeconds { get; set; } = 300;
+        public string? DetectionConfigJson { get; set; }
+    }
+
+    private async Task<AdapterResolution>
         ResolvePlaceholderAdapter(string packageId, string version)
     {
         var manifestJson = await _artifactStore.GetResolvedManifestAsync(packageId, version);
@@ -403,16 +414,30 @@ public sealed class WorkloadsController : ControllerBase
                 if (manifest?.InstallAdapter is not null)
                 {
                     var adapter = manifest.InstallAdapter;
-                    return (
-                        string.IsNullOrWhiteSpace(adapter.Type) ? "exe" : adapter.Type,
-                        string.IsNullOrWhiteSpace(adapter.Command) ? "{artifactPath}" : adapter.Command,
-                        adapter.Arguments ?? "",
-                        "",
-                        adapter.ExpectedExitCodes is { Count: > 0 }
+                    string? detectionConfigJson = null;
+                    if (manifest.Detection is not null)
+                    {
+                        var detectionConfig = new DeploymentPoC.Contracts.Runtime.RunPayloads.DetectionConfig
+                        {
+                            Type = manifest.Detection.Type ?? "version_manifest",
+                            Path = manifest.Detection.Path ?? packageId,
+                            ExpectedVersion = manifest.Detection.ExpectedVersion ?? version
+                        };
+                        detectionConfigJson = System.Text.Json.JsonSerializer.Serialize(detectionConfig);
+                    }
+
+                    return new AdapterResolution
+                    {
+                        InstallType = string.IsNullOrWhiteSpace(adapter.Type) ? "exe" : adapter.Type,
+                        SourcePath = string.IsNullOrWhiteSpace(adapter.Command) ? "{artifactPath}" : adapter.Command,
+                        InstallArgs = adapter.Arguments ?? "",
+                        UninstallArgs = "",
+                        ExpectedExitCodesJson = adapter.ExpectedExitCodes is { Count: > 0 }
                             ? System.Text.Json.JsonSerializer.Serialize(adapter.ExpectedExitCodes)
                             : "[0]",
-                        adapter.TimeoutSeconds > 0 ? adapter.TimeoutSeconds : 300
-                    );
+                        TimeoutSeconds = adapter.TimeoutSeconds > 0 ? adapter.TimeoutSeconds : 300,
+                        DetectionConfigJson = detectionConfigJson
+                    };
                 }
             }
             catch (System.Text.Json.JsonException)
@@ -421,7 +446,7 @@ public sealed class WorkloadsController : ControllerBase
             }
         }
 
-        return ("exe", "{artifactPath}", "", "", "[0]", 300);
+        return new AdapterResolution();
     }
 
     [HttpPost("bulk-import")]
@@ -576,6 +601,7 @@ public sealed class WorkloadsController : ControllerBase
                             UninstallArgs = adapter.UninstallArgs,
                             ExpectedExitCodesJson = adapter.ExpectedExitCodesJson,
                             TimeoutSeconds = adapter.TimeoutSeconds,
+                            DetectionConfigJson = adapter.DetectionConfigJson ?? "",
                             CreatedAtUtc = now
                         };
                         _db.Packages.Add(packageEntity);

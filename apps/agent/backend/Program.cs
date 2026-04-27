@@ -64,7 +64,7 @@ builder.Configuration["Orchestrator:BaseUrl"] = config.OrchestratorUrl;
 
 var hostConfig = new HostPlatformConfiguration();
 hostConfig.ConfigureHostForPlatform(builder.Host);
-builder.Services.AddHttpClient();
+builder.Services.AddHttpClient().ConfigureHttpClientDefaults(b => b.ConfigureHttpClient(client => client.Timeout = TimeSpan.FromSeconds(600)));
 builder.Services.AddSingleton<PipelineExecutor>();
 builder.Services.AddSingleton<IHubConnectionFactory, HubConnectionFactory>();
 builder.Services.AddHostedService<AgentRuntimeService>();

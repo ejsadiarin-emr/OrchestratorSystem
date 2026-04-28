@@ -596,10 +596,61 @@ public sealed class ArtifactsController : ControllerBase
         }
 
         var manifest = session.Manifest ?? new ArtifactIngestManifest();
-        using var stream = new MemoryStream(assembledBytes);
-        var result = _artifactIngest.Ingest(Path.GetFileName(assembledPath), stream, manifest, actorId);
+        try
+        {
+            using var stream = new MemoryStream(assembledBytes);
+            var result = _artifactIngest.Ingest(Path.GetFileName(assembledPath), stream, manifest, actorId);
 
-        if (!result.IsValid)
+            if (!result.IsValid)
+            {
+                return BadRequest(new Contracts.Api.ValidationErrorResponse
+                {
+                    Errors = result.Errors
+                });
+            }
+
+            var resolvedManifestJson = JsonSerializer.Serialize(result.ResolvedManifest, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+
+            var packageId = result.ResolvedManifest!.PackageId;
+            var version = result.ResolvedManifest.Version;
+            if (_artifactStore.ExistsAny(packageId, version))
+            {
+                return Conflict(new { message = $"Artifact '{packageId}' version '{version}' already exists." });
+            }
+
+            await _artifactStore.SaveArtifactAndManifestAsync(packageId, version, stream, resolvedManifestJson, HttpContext.RequestAborted, fileName: Path.GetFileName(assembledPath));
+
+            var packageEntityId = DeterministicGuid($"{packageId}-{version}");
+            var existingPackage = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId, HttpContext.RequestAborted);
+            if (existingPackage is null)
+            {
+                _db.Packages.Add(new PackageEntity
+                {
+                    PackageId = packageEntityId,
+                    Name = result.ResolvedManifest.PackageId,
+                    Version = result.ResolvedManifest.Version,
+                    SourcePath = result.ResolvedManifest.InstallAdapter?.Command ?? string.Empty,
+                    InstallType = result.ResolvedManifest.InstallAdapter?.Type ?? "exe",
+                    InstallArgs = result.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
+                    ExpectedExitCodesJson = JsonSerializer.Serialize(
+                        result.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
+                    DetectionConfigJson = JsonSerializer.Serialize(result.ResolvedManifest.Detection),
+                    TimeoutSeconds = result.ResolvedManifest.InstallAdapter?.TimeoutSeconds ?? 300,
+                    CreatedAtUtc = DateTime.UtcNow
+                });
+                await _db.SaveChangesAsync(HttpContext.RequestAborted);
+            }
+
+            return StatusCode(StatusCodes.Status201Created, new
+            {
+                resolvedManifest = result.ResolvedManifest,
+                packageEntityId
+            });
+        }
+        finally
         {
             try
             {
@@ -609,62 +660,7 @@ public sealed class ArtifactsController : ControllerBase
             {
                 // never fail cleanup
             }
-
-            return BadRequest(new Contracts.Api.ValidationErrorResponse
-            {
-                Errors = result.Errors
-            });
         }
-
-        var resolvedManifestJson = JsonSerializer.Serialize(result.ResolvedManifest, new JsonSerializerOptions
-        {
-            WriteIndented = true
-        });
-
-        var packageId = result.ResolvedManifest!.PackageId;
-        var version = result.ResolvedManifest.Version;
-        if (_artifactStore.ExistsAny(packageId, version))
-        {
-            return Conflict(new { message = $"Artifact '{packageId}' version '{version}' already exists." });
-        }
-
-        await _artifactStore.SaveArtifactAndManifestAsync(packageId, version, stream, resolvedManifestJson, HttpContext.RequestAborted, fileName: Path.GetFileName(assembledPath));
-
-        var packageEntityId = DeterministicGuid($"{packageId}-{version}");
-        var existingPackage = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId, HttpContext.RequestAborted);
-        if (existingPackage is null)
-        {
-            _db.Packages.Add(new PackageEntity
-            {
-                PackageId = packageEntityId,
-                Name = result.ResolvedManifest.PackageId,
-                Version = result.ResolvedManifest.Version,
-                SourcePath = result.ResolvedManifest.InstallAdapter?.Command ?? string.Empty,
-                InstallType = result.ResolvedManifest.InstallAdapter?.Type ?? "exe",
-                InstallArgs = result.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
-                ExpectedExitCodesJson = JsonSerializer.Serialize(
-                    result.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
-                DetectionConfigJson = JsonSerializer.Serialize(result.ResolvedManifest.Detection),
-                TimeoutSeconds = result.ResolvedManifest.InstallAdapter?.TimeoutSeconds ?? 300,
-                CreatedAtUtc = DateTime.UtcNow
-            });
-            await _db.SaveChangesAsync(HttpContext.RequestAborted);
-        }
-
-        try
-        {
-            _uploadSession.DeleteSession(sessionId);
-        }
-        catch
-        {
-            // never fail cleanup
-        }
-
-        return StatusCode(StatusCodes.Status201Created, new
-        {
-            resolvedManifest = result.ResolvedManifest,
-            packageEntityId
-        });
     }
 
     private static Guid DeterministicGuid(string input)

@@ -166,26 +166,31 @@ $PythonManifestNewer | ConvertTo-Json -Depth 10 | Set-Content -Path (Join-Path $
 
 Write-Host "Manifests generated."
 Write-Host ""
-Write-Host "=== Moving artifacts to $OutputDir ==="
+Write-Host "=== Creating zip archives ==="
 
-# Move manifests to output dir
-Move-Item -Path (Join-Path $TempDir "${DbeaverBaseOlder}.manifest.json") -Destination $OutputDir -Force
-Move-Item -Path (Join-Path $TempDir "${PythonBaseOlder}.manifest.json") -Destination $OutputDir -Force
-Move-Item -Path (Join-Path $TempDir "${DbeaverBaseNewer}.manifest.json") -Destination $OutputDir -Force
-Move-Item -Path (Join-Path $TempDir "${PythonBaseNewer}.manifest.json") -Destination $OutputDir -Force
+$V1ZipName = "amazing-workload-artifacts-v1.zip"
+$V2ZipName = "amazing-workload-artifacts-v2.zip"
+$V1ZipPath = Join-Path $OutputDir $V1ZipName
+$V2ZipPath = Join-Path $OutputDir $V2ZipName
 
-# Optionally move the binaries too (uncomment if desired)
-# Move-Item -Path (Join-Path $TempDir $DbeaverExeOlder) -Destination $OutputDir -Force
-# Move-Item -Path (Join-Path $TempDir $PythonExeOlder) -Destination $OutputDir -Force
-# Move-Item -Path (Join-Path $TempDir $DbeaverExeNewer) -Destination $OutputDir -Force
-# Move-Item -Path (Join-Path $TempDir $PythonExeNewer) -Destination $OutputDir -Force
+# Create v1 zip (older versions)
+Compress-Archive -Path (
+    Join-Path $TempDir "${DbeaverBaseOlder}.manifest.json"),
+                    (Join-Path $TempDir "${PythonBaseOlder}.manifest.json") `
+    -DestinationPath $V1ZipPath -Force
+Write-Host "Created $V1ZipName"
+
+# Create v2 zip (newer versions)
+Compress-Archive -Path (
+    Join-Path $TempDir "${DbeaverBaseNewer}.manifest.json"),
+                    (Join-Path $TempDir "${PythonBaseNewer}.manifest.json") `
+    -DestinationPath $V2ZipPath -Force
+Write-Host "Created $V2ZipName"
 
 Write-Host ""
 Write-Host "=== Cleaning up temporary files ==="
 Remove-Item -Recurse -Force $TempDir
 
 Write-Host ""
-Write-Host "Done. Manifests created in: $OutputDir"
+Write-Host "Done. Zip archives created in: $OutputDir"
 Get-ChildItem -Path $OutputDir -Filter "*amazing*" -ErrorAction SilentlyContinue
-Get-ChildItem -Path $OutputDir -Filter "dbeaver-ce-*.manifest.json" -ErrorAction SilentlyContinue
-Get-ChildItem -Path $OutputDir -Filter "python-*.manifest.json" -ErrorAction SilentlyContinue

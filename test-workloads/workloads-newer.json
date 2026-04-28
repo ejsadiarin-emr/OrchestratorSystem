@@ -27,5 +27,24 @@
       "7zip-26.00",
       "git-2.48.1"
     ]
+  },
+  {
+    "name": "DBMS Workload",
+    "slug": "dbms-workload",
+    "description": "Database management tools with GUI installers for interactive testing.",
+    "version": "2.0.0",
+    "packages": [
+      "dbeaver-24.3.0",
+      "notepadplusplus-8.7.5"
+    ]
+  },
+  {
+    "name": "Editor Workload",
+    "slug": "editor-workload",
+    "description": "Lightweight text editor with a GUI installer for interactive testing.",
+    "version": "2.0.0",
+    "packages": [
+      "notepadplusplus-8.7.5"
+    ]
   }
 ]

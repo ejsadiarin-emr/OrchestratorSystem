@@ -15,18 +15,24 @@ GIT_VERSION="2.47.1"
 NODE_VERSION="22.14.0"
 PYTHON_VERSION="3.13.3"
 ZIP_VERSION="24.09"
+DBEAVER_VERSION="24.3.0"
+NPP_VERSION="8.7.5"
 
 # Filenames
 GIT_EXE="Git-${GIT_VERSION}-64-bit.exe"
 NODE_MSI="node-v${NODE_VERSION}-x64.msi"
 PYTHON_EXE="python-${PYTHON_VERSION}-amd64.exe"
 ZIP_EXE="7z$(echo "$ZIP_VERSION" | tr -d '.')-x64.exe"
+DBEAVER_EXE="dbeaver-ce-${DBEAVER_VERSION}-x86_64-setup.exe"
+NPP_EXE="npp.${NPP_VERSION}.Installer.x64.exe"
 
 # Download URLs
 GIT_URL="https://github.com/git-for-windows/git/releases/download/v${GIT_VERSION}.windows.1/${GIT_EXE}"
 NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/${NODE_MSI}"
 PYTHON_URL="https://www.python.org/ftp/python/${PYTHON_VERSION}/${PYTHON_EXE}"
 ZIP_URL="https://www.7-zip.org/a/${ZIP_EXE}"
+DBEAVER_URL="https://github.com/dbeaver/dbeaver/releases/download/${DBEAVER_VERSION}/${DBEAVER_EXE}"
+NPP_URL="https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v${NPP_VERSION}/${NPP_EXE}"
 
 echo "=== Downloading test artifacts to $TEMP_DIR ==="
 cd "$TEMP_DIR"
@@ -50,6 +56,8 @@ download_file "$GIT_URL" "$GIT_EXE"
 download_file "$NODE_URL" "$NODE_MSI"
 download_file "$PYTHON_URL" "$PYTHON_EXE"
 download_file "$ZIP_URL" "$ZIP_EXE"
+download_file "$DBEAVER_URL" "$DBEAVER_EXE"
+download_file "$NPP_URL" "$NPP_EXE"
 
 echo ""
 echo "=== Generating manifest files ==="
@@ -157,6 +165,56 @@ cat > "${ZIP_BASE}.manifest.json" <<EOF
 }
 EOF
 
+# DBeaver manifest
+DBEAVER_BASE="${DBEAVER_EXE%.*}"
+cat > "${DBEAVER_BASE}.manifest.json" <<EOF
+{
+  "packageId": "dbeaver",
+  "version": "${DBEAVER_VERSION}",
+  "channel": "stable",
+  "artifactType": "exe",
+  "verificationResult": "pass",
+  "installAdapter": {
+    "type": "exe",
+    "command": "${DBEAVER_EXE}",
+    "arguments": "/S /allusers",
+    "expectedExitCodes": [0],
+    "timeoutSeconds": 300
+  },
+  "policyTags": {
+    "retryabilityClass": "non-idempotent",
+    "idempotencyMode": "none",
+    "riskLevel": "low",
+    "approvalRequired": false
+  }
+}
+EOF
+
+# Notepad++ manifest
+NPP_BASE="${NPP_EXE%.*}"
+cat > "${NPP_BASE}.manifest.json" <<EOF
+{
+  "packageId": "notepadplusplus",
+  "version": "${NPP_VERSION}",
+  "channel": "stable",
+  "artifactType": "exe",
+  "verificationResult": "pass",
+  "installAdapter": {
+    "type": "exe",
+    "command": "${NPP_EXE}",
+    "arguments": "/S",
+    "expectedExitCodes": [0],
+    "timeoutSeconds": 120
+  },
+  "policyTags": {
+    "retryabilityClass": "non-idempotent",
+    "idempotencyMode": "none",
+    "riskLevel": "low",
+    "approvalRequired": false
+  }
+}
+EOF
+
 echo "Manifests generated."
 echo ""
 echo "=== Creating artifact-bulk-older.zip ==="
@@ -169,7 +227,11 @@ zip -j "$OUTPUT_DIR/artifact-bulk-older.zip" \
   "$PYTHON_EXE" \
   "${PYTHON_BASE}.manifest.json" \
   "$ZIP_EXE" \
-  "${ZIP_BASE}.manifest.json"
+  "${ZIP_BASE}.manifest.json" \
+  "$DBEAVER_EXE" \
+  "${DBEAVER_BASE}.manifest.json" \
+  "$NPP_EXE" \
+  "${NPP_BASE}.manifest.json"
 
 echo ""
 echo "=== Cleaning up temporary files ==="

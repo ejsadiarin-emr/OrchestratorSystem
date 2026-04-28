@@ -1,0 +1,174 @@
+PS C:\Users\E1560951\DeploymentPoC\.worktrees\bugfix-worktree\apps\agent\backend\bin\Release\net10.0\win-x64\publish> .\DeploymentPoC.Agent.exe
+Auto-connecting with stored config. NodeId=f3ec164b-e8f3-40e3-8e09-3eea6a7bb9ac
+warn: Microsoft.AspNetCore.StaticFiles.StaticFileMiddleware[16]
+      The WebRootPath was not found: C:\Users\E1560951\DeploymentPoC\.worktrees\bugfix-worktree\apps\agent\backend\bin\Release\net10.0\win-x64\publish\wwwroot. Static files may be unavailable.
+info: DeploymentPoC.Agent.Services.AgentRuntimeService[0]
+      Agent polling loop starting. NodeId=f3ec164b-e8f3-40e3-8e09-3eea6a7bb9ac, Orchestrator=http://localhost:5000
+warn: Microsoft.AspNetCore.StaticFiles.StaticFileMiddleware[16]
+      The WebRootPath was not found: C:\Users\E1560951\DeploymentPoC\.worktrees\bugfix-worktree\apps\agent\backend\bin\Release\net10.0\win-x64\publish\wwwroot. Static files may be unavailable.
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5001
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: C:\Users\E1560951\DeploymentPoC\.worktrees\bugfix-worktree\apps\agent\backend\bin\Release\net10.0\win-x64\publish\
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 98.0875ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 107.7242ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 32.5072ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 32.7039ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 281.5868ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 281.7942ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 36.274ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 36.5258ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 86.2475ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 86.428ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request PATCH http://localhost:5000/api/workload-runs/6c085675-44c8-42d9-aeea-f620855ee7bc
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request PATCH http://localhost:5000/api/workload-runs/6c085675-44c8-42d9-aeea-f620855ee7bc
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 154.4128ms - 204
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 154.5813ms - 204
+info: DeploymentPoC.Agent.Pipeline.PipelineExecutor[0]
+      Step PreCheckProbe: PackageIndex=0, PackageId=7f196ee1-5c8e-13b6-c8b4-c94ae9c7b880
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:5000/api/workload-runs/6c085675-44c8-42d9-aeea-f620855ee7bc/timeline?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request POST http://localhost:5000/api/workload-runs/6c085675-44c8-42d9-aeea-f620855ee7bc/timeline?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 212.8515ms - 201
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 212.9755ms - 201
+info: DeploymentPoC.Agent.Pipeline.PipelineExecutor[0]
+      Step PreCheckProbe: PackageIndex=0, PackageId=7aec2fb0-a5c8-70ee-8d29-a6d2963ecf5a
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:5000/api/workload-runs/6c085675-44c8-42d9-aeea-f620855ee7bc/timeline?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request POST http://localhost:5000/api/workload-runs/6c085675-44c8-42d9-aeea-f620855ee7bc/timeline?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 12.8081ms - 201
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 12.9507ms - 201
+info: DeploymentPoC.Agent.Pipeline.PipelineExecutor[0]
+      Pipeline diff computed: Added=0, Removed=0, Changed=2, Unchanged=0
+info: DeploymentPoC.Agent.Pipeline.PipelineExecutor[0]
+      Pipeline starting: RunId=6c085675-44c8-42d9-aeea-f620855ee7bc, Workload=Amazing Workload, Mode=update, TargetPackages=2
+info: DeploymentPoC.Agent.Pipeline.PipelineExecutor[0]
+      Step AcquireArtifact: PackageIndex=0, PackageId=7f196ee1-5c8e-13b6-c8b4-c94ae9c7b880, Url=http://localhost:5000/api/artifacts/dbeaver/26.0.3
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request HEAD http://localhost:5000/api/artifacts/dbeaver/26.0.3
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request HEAD http://localhost:5000/api/artifacts/dbeaver/26.0.3
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 55.3779ms - 404
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 55.5433ms - 404
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:5000/api/workload-runs/6c085675-44c8-42d9-aeea-f620855ee7bc/timeline?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request POST http://localhost:5000/api/workload-runs/6c085675-44c8-42d9-aeea-f620855ee7bc/timeline?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 7.741ms - 201
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 7.8995ms - 201
+fail: DeploymentPoC.Agent.Pipeline.PipelineExecutor[0]
+      Pipeline halted at AcquireArtifact: PackageIndex=0, Error=head_404
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request POST http://localhost:5000/api/workload-runs/6c085675-44c8-42d9-aeea-f620855ee7bc/timeline?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request POST http://localhost:5000/api/workload-runs/6c085675-44c8-42d9-aeea-f620855ee7bc/timeline?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 9.0793ms - 201
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 9.2824ms - 201
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request PATCH http://localhost:5000/api/workload-runs/6c085675-44c8-42d9-aeea-f620855ee7bc
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request PATCH http://localhost:5000/api/workload-runs/6c085675-44c8-42d9-aeea-f620855ee7bc
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 26.5038ms - 204
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 26.6267ms - 204
+info: DeploymentPoC.Agent.Services.AgentRuntimeService[0]
+      Pipeline completed: RunId=6c085675-44c8-42d9-aeea-f620855ee7bc, Success=False
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 35.529ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 35.6216ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 18.5926ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 18.9806ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 28.403ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 28.5538ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 32.3942ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 32.5658ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 7.839ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 8.043ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[100]
+      Start processing HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[100]
+      Sending HTTP request GET http://localhost:5000/api/workload-runs/pending?*
+info: System.Net.Http.HttpClient.Default.ClientHandler[101]
+      Received HTTP response headers after 6.7063ms - 200
+info: System.Net.Http.HttpClient.Default.LogicalHandler[101]
+      End processing HTTP request after 6.7972ms - 200

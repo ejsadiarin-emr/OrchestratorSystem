@@ -246,6 +246,95 @@ public sealed class ArtifactsController : ControllerBase
         return read == 2 && buffer[0] == 0x50 && buffer[1] == 0x4B;
     }
 
+    private async Task<List<object>> ProcessBulkArtifactsAsync(Stream stream, string actorId, CancellationToken cancellationToken)
+    {
+        var extraction = _artifactZip.ExtractAndValidateBulkZip(stream);
+        var results = new List<object>();
+
+        foreach (var artifact in extraction.Artifacts)
+        {
+            var result = _artifactIngest.Ingest(artifact.MediaFileName, artifact.MediaStream, artifact.Manifest, actorId);
+            if (!result.IsValid)
+            {
+                results.Add(new
+                {
+                    fileName = artifact.MediaFileName,
+                    status = "failed",
+                    reason = string.Join("; ", result.Errors.Select(e => e.Error)),
+                    artifact = (object?)null
+                });
+                continue;
+            }
+
+            var resolvedManifestJson = JsonSerializer.Serialize(result.ResolvedManifest, new JsonSerializerOptions
+            {
+                WriteIndented = true
+            });
+
+            var packageId = result.ResolvedManifest!.PackageId;
+            var version = result.ResolvedManifest.Version;
+            if (_artifactStore.ExistsAny(packageId, version))
+            {
+                results.Add(new
+                {
+                    fileName = artifact.MediaFileName,
+                    status = "skipped",
+                    reason = $"Artifact '{packageId}' version '{version}' already exists.",
+                    artifact = (object?)null
+                });
+                continue;
+            }
+
+            await _artifactStore.SaveArtifactAndManifestAsync(packageId, version, artifact.MediaStream, resolvedManifestJson, cancellationToken, fileName: artifact.MediaFileName);
+
+            var packageEntityId = DeterministicGuid($"{packageId}-{version}");
+            var existingPackage = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId, cancellationToken);
+            if (existingPackage is null)
+            {
+                _db.Packages.Add(new PackageEntity
+                {
+                    PackageId = packageEntityId,
+                    Name = result.ResolvedManifest.PackageId,
+                    Version = result.ResolvedManifest.Version,
+                    SourcePath = result.ResolvedManifest.InstallAdapter?.Command ?? string.Empty,
+                    InstallType = result.ResolvedManifest.InstallAdapter?.Type ?? "exe",
+                    InstallArgs = result.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
+                    ExpectedExitCodesJson = JsonSerializer.Serialize(
+                        result.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
+                    DetectionConfigJson = JsonSerializer.Serialize(result.ResolvedManifest.Detection),
+                    TimeoutSeconds = result.ResolvedManifest.InstallAdapter?.TimeoutSeconds ?? 300,
+                    CreatedAtUtc = DateTime.UtcNow
+                });
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+
+            results.Add(new
+            {
+                fileName = artifact.MediaFileName,
+                status = "success",
+                reason = (string?)null,
+                artifact = new
+                {
+                    packageId = result.ResolvedManifest.PackageId,
+                    version = result.ResolvedManifest.Version
+                }
+            });
+        }
+
+        foreach (var error in extraction.Errors)
+        {
+            results.Add(new
+            {
+                fileName = (string?)null,
+                status = "failed",
+                reason = error,
+                artifact = (object?)null
+            });
+        }
+
+        return results;
+    }
+
     [HttpPost("bulk")]
     [RequestSizeLimit(2L * 1024 * 1024 * 1024)]
     [RequestFormLimits(MultipartBodyLengthLimit = 2L * 1024 * 1024 * 1024)]
@@ -285,92 +374,8 @@ public sealed class ArtifactsController : ControllerBase
         }
 
         await using var stream = file.OpenReadStream();
-        var extraction = _artifactZip.ExtractAndValidateBulkZip(stream);
         var actorId = User?.Identity?.Name ?? "anonymous";
-
-        var results = new List<object>();
-
-        foreach (var artifact in extraction.Artifacts)
-        {
-            var result = _artifactIngest.Ingest(artifact.MediaFileName, artifact.MediaStream, artifact.Manifest, actorId);
-            if (!result.IsValid)
-            {
-                results.Add(new
-                {
-                    fileName = artifact.MediaFileName,
-                    status = "failed",
-                    reason = string.Join("; ", result.Errors.Select(e => e.Error)),
-                    artifact = (object?)null
-                });
-                continue;
-            }
-
-            var resolvedManifestJson = JsonSerializer.Serialize(result.ResolvedManifest, new JsonSerializerOptions
-            {
-                WriteIndented = true
-            });
-
-            var packageId = result.ResolvedManifest!.PackageId;
-            var version = result.ResolvedManifest.Version;
-            if (_artifactStore.ExistsAny(packageId, version))
-            {
-                results.Add(new
-                {
-                    fileName = artifact.MediaFileName,
-                    status = "skipped",
-                    reason = $"Artifact '{packageId}' version '{version}' already exists.",
-                    artifact = (object?)null
-                });
-                continue;
-            }
-
-            await _artifactStore.SaveArtifactAndManifestAsync(packageId, version, artifact.MediaStream, resolvedManifestJson, HttpContext.RequestAborted, fileName: artifact.MediaFileName);
-
-            var packageEntityId = DeterministicGuid($"{packageId}-{version}");
-            var existingPackage = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId, HttpContext.RequestAborted);
-            if (existingPackage is null)
-            {
-                _db.Packages.Add(new PackageEntity
-                {
-                    PackageId = packageEntityId,
-                    Name = result.ResolvedManifest.PackageId,
-                    Version = result.ResolvedManifest.Version,
-                    SourcePath = result.ResolvedManifest.InstallAdapter?.Command ?? string.Empty,
-                    InstallType = result.ResolvedManifest.InstallAdapter?.Type ?? "exe",
-                    InstallArgs = result.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
-                    ExpectedExitCodesJson = JsonSerializer.Serialize(
-                        result.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
-                    DetectionConfigJson = JsonSerializer.Serialize(result.ResolvedManifest.Detection),
-                    TimeoutSeconds = result.ResolvedManifest.InstallAdapter?.TimeoutSeconds ?? 300,
-                    CreatedAtUtc = DateTime.UtcNow
-                });
-                await _db.SaveChangesAsync(HttpContext.RequestAborted);
-            }
-
-            results.Add(new
-            {
-                fileName = artifact.MediaFileName,
-                status = "success",
-                reason = (string?)null,
-                artifact = new
-                {
-                    packageId = result.ResolvedManifest.PackageId,
-                    version = result.ResolvedManifest.Version
-                }
-            });
-        }
-
-        foreach (var error in extraction.Errors)
-        {
-            results.Add(new
-            {
-                fileName = (string?)null,
-                status = "failed",
-                reason = error,
-                artifact = (object?)null
-            });
-        }
-
+        var results = await ProcessBulkArtifactsAsync(stream, actorId, HttpContext.RequestAborted);
         return Ok(new { results });
     }
 
@@ -547,6 +552,41 @@ public sealed class ArtifactsController : ControllerBase
 
         await using var stream = System.IO.File.OpenRead(assembledPath);
         var actorId = User?.Identity?.Name ?? "anonymous";
+
+        // Detect bulk ZIP by attempting extraction; if valid artifacts found, process as bulk
+        var isBulkZip = false;
+        try
+        {
+            var bulkExtraction = _artifactZip.ExtractAndValidateBulkZip(stream);
+            if (bulkExtraction.Artifacts.Count > 0 && bulkExtraction.Errors.Count == 0)
+            {
+                isBulkZip = true;
+                stream.Position = 0;
+                var results = await ProcessBulkArtifactsAsync(stream, actorId, HttpContext.RequestAborted);
+
+                try
+                {
+                    _uploadSession.DeleteSession(sessionId);
+                }
+                catch
+                {
+                    // never fail cleanup
+                }
+
+                return Ok(new { results });
+            }
+        }
+        catch
+        {
+            // not a valid bulk zip, fall through to single-artifact ingest
+        }
+
+        if (isBulkZip)
+        {
+            // already handled above
+            return Ok(new { results = new List<object>() });
+        }
+
         var manifest = session.Manifest ?? new ArtifactIngestManifest();
         var result = _artifactIngest.Ingest(Path.GetFileName(assembledPath), stream, manifest, actorId);
 
@@ -600,16 +640,16 @@ public sealed class ArtifactsController : ControllerBase
                 CreatedAtUtc = DateTime.UtcNow
             });
             await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        }
 
-            try
-            {
-                _uploadSession.DeleteSession(sessionId);
+        try
+        {
+            _uploadSession.DeleteSession(sessionId);
         }
         catch
         {
             // never fail cleanup
         }
-    }
 
         return StatusCode(StatusCodes.Status201Created, new
         {

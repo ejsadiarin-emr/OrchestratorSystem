@@ -638,6 +638,38 @@ export async function uploadBulkArtifacts(
   })
 }
 
+export async function uploadBulkArtifactsChunked(
+  file: File,
+  onProgress?: UploadProgressCallback,
+): Promise<BulkIngestResult> {
+  const session = await createUploadSession()
+  const totalChunks = Math.ceil(file.size / CHUNK_SIZE)
+  let uploadedBytes = 0
+
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * CHUNK_SIZE
+    const end = Math.min(start + CHUNK_SIZE, file.size)
+    const chunk = file.slice(start, end)
+
+    await uploadChunk(session.sessionId, i, totalChunks, chunk)
+
+    uploadedBytes += chunk.size
+    if (onProgress) {
+      onProgress(uploadedBytes, file.size)
+    }
+  }
+
+  const response = await fetch(`/api/artifacts/upload-sessions/${encodeURIComponent(session.sessionId)}/complete`, {
+    method: 'POST',
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to complete bulk upload session: ${response.status}`)
+  }
+
+  return response.json() as Promise<BulkIngestResult>
+}
+
 export async function listArtifacts(): Promise<ArtifactRecord[]> {
   const response = await fetch('/api/artifacts')
   if (!response.ok) {

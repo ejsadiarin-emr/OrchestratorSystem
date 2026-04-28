@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ArtifactManifest, ArtifactRecord, BulkIngestResultItem } from '../types'
-import { deleteArtifact, listArtifacts, suggestManifestFromFile, uploadArtifactWithProgress, uploadArtifactWithProgressChunked, uploadBulkArtifacts } from '../services/api'
+import { deleteArtifact, listArtifacts, suggestManifestFromFile, uploadArtifactWithProgress, uploadArtifactWithProgressChunked, uploadBulkArtifacts, uploadBulkArtifactsChunked } from '../services/api'
 import { detectArtifactPairs, extractManifestFromZip, extractZipEntries, isZipFile } from '../lib/zip-preview'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -223,7 +223,9 @@ export default function ArtifactStore() {
     setUploadError('')
 
     try {
-      const result = await uploadBulkArtifacts(file, (loaded, total) => {
+      const useChunked = file.size > CHUNKED_UPLOAD_THRESHOLD
+      const uploader = useChunked ? uploadBulkArtifactsChunked : uploadBulkArtifacts
+      const result = await uploader(file, (loaded, total) => {
         setUploadProgress(Math.round((loaded / total) * 100))
       })
 

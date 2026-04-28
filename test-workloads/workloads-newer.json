@@ -51,7 +51,7 @@
     "name": "Amazing Workload",
     "slug": "amazing-workload",
     "description": "A workload that includes both a database management tool and a programming language, providing a versatile environment for development and testing.",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "packages": [
       "dbeaver-26.0.3",
       "python-3.14.4"

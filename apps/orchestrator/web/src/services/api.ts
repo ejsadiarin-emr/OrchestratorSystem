@@ -403,10 +403,10 @@ export async function uploadArtifact(request: ArtifactUploadRequest): Promise<Ar
 }
 
 export async function createUploadSession(manifest?: ArtifactManifest): Promise<UploadSession> {
-  const response = await fetch('/api/artifacts/upload-session', {
+  const response = await fetch('/api/artifacts/upload-sessions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: manifest ? JSON.stringify({ manifest }) : undefined,
+    body: manifest ? JSON.stringify(manifest) : undefined,
   })
 
   if (!response.ok) {
@@ -418,12 +418,9 @@ export async function createUploadSession(manifest?: ArtifactManifest): Promise<
 
 export async function uploadChunk(sessionId: string, index: number, totalChunks: number, chunk: Blob): Promise<void> {
   const formData = new FormData()
-  formData.append('sessionId', sessionId)
-  formData.append('chunkIndex', String(index))
-  formData.append('totalChunks', String(totalChunks))
   formData.append('chunk', chunk)
 
-  const response = await fetch('/api/artifacts/upload-chunk', {
+  const response = await fetch(`/api/artifacts/upload-sessions/${encodeURIComponent(sessionId)}/chunks?index=${index}&totalChunks=${totalChunks}`, {
     method: 'POST',
     body: formData,
   })
@@ -434,10 +431,8 @@ export async function uploadChunk(sessionId: string, index: number, totalChunks:
 }
 
 export async function completeUploadSession(sessionId: string): Promise<ArtifactIngestResult> {
-  const response = await fetch('/api/artifacts/upload-complete', {
+  const response = await fetch(`/api/artifacts/upload-sessions/${encodeURIComponent(sessionId)}/complete`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId }),
   })
 
   if (!response.ok) {
@@ -445,6 +440,64 @@ export async function completeUploadSession(sessionId: string): Promise<Artifact
   }
 
   return response.json() as Promise<ArtifactIngestResult>
+}
+
+const CHUNK_SIZE = 10 * 1024 * 1024 // 10 MB
+
+export async function uploadArtifactWithProgressChunked(
+  request: ArtifactUploadRequest,
+  onProgress?: UploadProgressCallback,
+): Promise<ArtifactIngestResult> {
+  if (!request.file) {
+    throw new Error('file is required for chunked upload')
+  }
+
+  if (!request.manifest || !request.manifest.packageId || !request.manifest.version) {
+    throw new Error('manifest JSON part is required for chunked upload')
+  }
+
+  if (request.manifest.channel && !validateManifestChannel(request.manifest.channel)) {
+    throw new Error('manifest.channel must be one of stable, canary, test')
+  }
+
+  const session = await createUploadSession(request.manifest)
+  const totalChunks = Math.ceil(request.file.size / CHUNK_SIZE)
+  let uploadedBytes = 0
+
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * CHUNK_SIZE
+    const end = Math.min(start + CHUNK_SIZE, request.file.size)
+    const chunk = request.file.slice(start, end)
+
+    await uploadChunk(session.sessionId, i, totalChunks, chunk)
+
+    uploadedBytes += chunk.size
+    if (onProgress) {
+      onProgress(uploadedBytes, request.file.size)
+    }
+  }
+
+  const result = await completeUploadSession(session.sessionId)
+
+  const artifact: ArtifactRecord = {
+    id: `${result.artifact.manifest.packageId}-${result.artifact.manifest.version}`,
+    packageEntityId: result.artifact.packageEntityId,
+    fileName: request.file.name,
+    createdAt: new Date().toISOString(),
+    detachedSignaturePresent: Boolean(request.detachedSignature),
+    manifest: result.artifact.manifest,
+  }
+
+  const steps: IngestStep[] = [
+    { id: 'upload', label: 'Receive multipart request (file + manifest + optional detachedSignature)', status: 'completed' },
+    { id: 'analyze', label: 'Analyze installer media and prefill metadata', status: 'completed' },
+    { id: 'verify', label: 'Verify digest, signatures, and origin metadata', status: 'completed' },
+    { id: 'store', label: 'Store immutable artifact and write audit record', status: 'completed' },
+  ]
+
+  artifacts.unshift(artifact)
+  writeWorkloadAudit('Artifact ingested', `${artifact.id} accepted and available for new WorkloadRevision drafts.`)
+  return { artifact, steps }
 }
 
 export async function uploadArtifactWithProgress(

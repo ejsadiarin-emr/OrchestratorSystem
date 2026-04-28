@@ -219,7 +219,7 @@ public sealed class ArtifactStoreService
         foreach (var packageDir in Directory.GetDirectories(_rootPath))
         {
             var packageId = Path.GetFileName(packageDir);
-            if (string.IsNullOrWhiteSpace(packageId))
+            if (string.IsNullOrWhiteSpace(packageId) || packageId.StartsWith("_", StringComparison.Ordinal))
             {
                 continue;
             }

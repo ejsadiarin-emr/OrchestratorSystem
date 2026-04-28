@@ -550,19 +550,27 @@ public sealed class ArtifactsController : ControllerBase
             });
         }
 
-        await using var stream = System.IO.File.OpenRead(assembledPath);
         var actorId = User?.Identity?.Name ?? "anonymous";
+
+        // Copy assembled file to memory so the file handle is closed before cleanup
+        byte[] assembledBytes;
+        await using (var fileStream = System.IO.File.OpenRead(assembledPath))
+        {
+            assembledBytes = new byte[fileStream.Length];
+            await fileStream.ReadExactlyAsync(assembledBytes, 0, assembledBytes.Length, HttpContext.RequestAborted);
+        }
 
         // Detect bulk ZIP by attempting extraction; if valid artifacts found, process as bulk
         var isBulkZip = false;
         try
         {
-            var bulkExtraction = _artifactZip.ExtractAndValidateBulkZip(stream);
+            using var detectionStream = new MemoryStream(assembledBytes);
+            var bulkExtraction = _artifactZip.ExtractAndValidateBulkZip(detectionStream);
             if (bulkExtraction.Artifacts.Count > 0 && bulkExtraction.Errors.Count == 0)
             {
                 isBulkZip = true;
-                stream.Position = 0;
-                var results = await ProcessBulkArtifactsAsync(stream, actorId, HttpContext.RequestAborted);
+                using var processStream = new MemoryStream(assembledBytes);
+                var results = await ProcessBulkArtifactsAsync(processStream, actorId, HttpContext.RequestAborted);
 
                 try
                 {
@@ -588,6 +596,7 @@ public sealed class ArtifactsController : ControllerBase
         }
 
         var manifest = session.Manifest ?? new ArtifactIngestManifest();
+        using var stream = new MemoryStream(assembledBytes);
         var result = _artifactIngest.Ingest(Path.GetFileName(assembledPath), stream, manifest, actorId);
 
         if (!result.IsValid)

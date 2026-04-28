@@ -1,0 +1,22 @@
+﻿{
+    "packageId":  "python",
+    "version":  "3.14.4",
+    "installAdapter":  {
+                           "expectedExitCodes":  [
+                                                     0
+                                                 ],
+                           "timeoutSeconds":  300,
+                           "command":  "python-3.14.4-amd64.exe",
+                           "arguments":  "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0",
+                           "type":  "exe"
+                       },
+    "channel":  "stable",
+    "artifactType":  "exe",
+    "policyTags":  {
+                       "idempotencyMode":  "none",
+                       "riskLevel":  "low",
+                       "retryabilityClass":  "non-idempotent",
+                       "approvalRequired":  false
+                   },
+    "verificationResult":  "pass"
+}

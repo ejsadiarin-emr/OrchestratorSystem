@@ -1,0 +1,27 @@
+﻿{
+    "detection":  {
+                      "path":  "dbeaver",
+                      "expectedVersion":  "24.3.0",
+                      "type":  "version_manifest"
+                  },
+    "verificationResult":  "pass",
+    "channel":  "stable",
+    "policyTags":  {
+                       "idempotencyMode":  "none",
+                       "riskLevel":  "low",
+                       "retryabilityClass":  "non-idempotent",
+                       "approvalRequired":  false
+                   },
+    "version":  "24.3.0",
+    "installAdapter":  {
+                           "expectedExitCodes":  [
+                                                     0
+                                                 ],
+                           "timeoutSeconds":  300,
+                           "command":  "dbeaver-ce-24.3.0-x86_64-setup.exe",
+                           "arguments":  "/S /allusers",
+                           "type":  "exe"
+                       },
+    "packageId":  "dbeaver",
+    "artifactType":  "exe"
+}

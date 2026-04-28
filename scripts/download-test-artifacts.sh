@@ -181,6 +181,11 @@ cat > "${DBEAVER_BASE}.manifest.json" <<EOF
     "expectedExitCodes": [0],
     "timeoutSeconds": 300
   },
+  "detection": {
+    "type": "version_manifest",
+    "path": "dbeaver",
+    "expectedVersion": "${DBEAVER_VERSION}"
+  },
   "policyTags": {
     "retryabilityClass": "non-idempotent",
     "idempotencyMode": "none",
@@ -205,6 +210,11 @@ cat > "${NPP_BASE}.manifest.json" <<EOF
     "arguments": "/S",
     "expectedExitCodes": [0],
     "timeoutSeconds": 120
+  },
+  "detection": {
+    "type": "version_manifest",
+    "path": "notepad++",
+    "expectedVersion": "${NPP_VERSION}"
   },
   "policyTags": {
     "retryabilityClass": "non-idempotent",

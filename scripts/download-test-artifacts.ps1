@@ -173,6 +173,11 @@ $DbeaverManifest = @{
         expectedExitCodes = @(0)
         timeoutSeconds = 300
     }
+    detection = @{
+        type = "version_manifest"
+        path = "dbeaver"
+        expectedVersion = $DbeaverVersion
+    }
     policyTags = @{
         retryabilityClass = "non-idempotent"
         idempotencyMode = "none"
@@ -196,6 +201,11 @@ $NppManifest = @{
         arguments = "/S"
         expectedExitCodes = @(0)
         timeoutSeconds = 120
+    }
+    detection = @{
+        type = "version_manifest"
+        path = "notepad++"
+        expectedVersion = $NppVersion
     }
     policyTags = @{
         retryabilityClass = "non-idempotent"

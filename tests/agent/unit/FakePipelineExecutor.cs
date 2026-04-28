@@ -1,12 +1,13 @@
 using DeploymentPoC.Agent.Pipeline;
 using DeploymentPoC.Contracts.Runtime;
+using Microsoft.Extensions.Configuration;
 
 namespace DeploymentPoC.Agent.Tests;
 
 public sealed class FakePipelineExecutor : PipelineExecutor
 {
     public FakePipelineExecutor()
-        : base(new FakeHttpClientFactory(), new FakeLogger<PipelineExecutor>())
+        : base(new FakeHttpClientFactory(), new FakeLogger<PipelineExecutor>(), new ConfigurationBuilder().Build())
     {
     }
 
@@ -29,7 +30,7 @@ public sealed class DelayingPipelineExecutor : PipelineExecutor
     private readonly TaskCompletionSource _startedTcs = new();
 
     public DelayingPipelineExecutor(TimeSpan delay)
-        : base(new FakeHttpClientFactory(), new FakeLogger<PipelineExecutor>())
+        : base(new FakeHttpClientFactory(), new FakeLogger<PipelineExecutor>(), new ConfigurationBuilder().Build())
     {
         _delay = delay;
     }
@@ -58,7 +59,7 @@ public sealed class CancellablePipelineExecutor : PipelineExecutor
     private readonly TaskCompletionSource _cancelledTcs = new();
 
     public CancellablePipelineExecutor()
-        : base(new FakeHttpClientFactory(), new FakeLogger<PipelineExecutor>())
+        : base(new FakeHttpClientFactory(), new FakeLogger<PipelineExecutor>(), new ConfigurationBuilder().Build())
     {
     }
 

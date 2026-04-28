@@ -8,6 +8,8 @@ public sealed class AcquireArtifactRequest
 
     public int ChunkSizeBytes { get; set; } = 2 * 1024 * 1024;
 
+    public bool UseChunkedDownload { get; set; } = true;
+
     public string? ExpectedSha256 { get; set; }
 
     public int DownloadTimeoutSeconds { get; set; }

@@ -1,6 +1,7 @@
 using DeploymentPoC.Agent.Steps;
 using DeploymentPoC.Contracts.Runtime;
 using DeploymentPoC.Contracts.Runtime.RunPayloads;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace DeploymentPoC.Agent.Pipeline;
@@ -9,11 +10,13 @@ public class PipelineExecutor
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<PipelineExecutor> _logger;
+    private readonly IConfiguration _configuration;
 
-    public PipelineExecutor(IHttpClientFactory httpClientFactory, ILogger<PipelineExecutor> logger)
+    public PipelineExecutor(IHttpClientFactory httpClientFactory, ILogger<PipelineExecutor> logger, IConfiguration configuration)
     {
         _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
     }
 
     public virtual async Task<PipelineResult> ExecuteAsync(
@@ -151,10 +154,15 @@ public class PipelineExecutor
                 package.PackageId,
                 artifactUrl);
 
+            var chunkSizeBytes = _configuration.GetValue<int?>("Agent:ChunkSizeBytes") ?? 2 * 1024 * 1024;
+            var useChunkedDownload = _configuration.GetValue<bool?>("Agent:UseChunkedDownload") ?? true;
+
             var acquireResult = await acquire.ExecuteAsync(new AcquireArtifactRequest
             {
                 ArtifactUrl = artifactUrl,
                 DestinationPath = destinationPath,
+                ChunkSizeBytes = chunkSizeBytes,
+                UseChunkedDownload = useChunkedDownload,
                 ExpectedSha256 = package.ExpectedSha256
             }, stepCt);
 

@@ -96,7 +96,7 @@ public sealed class AcquireArtifact
 
             await using (var output = File.Create(destinationPath))
             {
-if (expectedLength is null or <= 0)
+                if (expectedLength is null or <= 0 || !request.UseChunkedDownload)
                 {
                     bytesWritten = await DownloadFullAsync(artifactUri, output, linkedCt);
                 }

@@ -108,38 +108,18 @@ public static class PackageDetector
             return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent, Error = "file_not_found" });
         }
 
-        // It's a command name — search PATH and common Windows install directories.
-        var searchPaths = new List<string>();
-
-        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
-        searchPaths.AddRange(pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries));
-
+        // It's a command name — search PATH and common install directories dynamically.
+        // No package-specific paths or aliases are hardcoded; manifests must specify
+        // the exact binary name in detection.path (e.g. "node" not "nodejs").
+        var namesToSearch = new List<string> { path };
         if (OperatingSystem.IsWindows())
         {
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Git", "cmd"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Git", "cmd"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nodejs"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "nodejs"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Python"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python310"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python311"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python312"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python313"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python314"));
+            namesToSearch.Add(path + ".exe");
         }
 
-        // Binary name aliases for common packages
-        var namesToSearch = new List<string> { path };
-        if (string.Equals(path, "nodejs", StringComparison.OrdinalIgnoreCase))
-        {
-            namesToSearch.Insert(0, "node");
-        }
-        else if (string.Equals(path, "python", StringComparison.OrdinalIgnoreCase))
-        {
-            namesToSearch.Add("python3");
-        }
-
-        foreach (var dir in searchPaths.Distinct(StringComparer.OrdinalIgnoreCase))
+        // 1. Search PATH
+        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
+        foreach (var dir in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
         {
             foreach (var name in namesToSearch)
             {
@@ -153,18 +133,43 @@ public static class PackageDetector
                         ExpectedVersion = config.ExpectedVersion
                     }, ct);
                 }
+            }
+        }
 
-                if (OperatingSystem.IsWindows())
+        // 2. Search common Windows install roots and their immediate subdirectories.
+        // This covers GUI installers that drop into C:\Program Files\{ProductName}.
+        if (OperatingSystem.IsWindows())
+        {
+            var searchRoots = new[]
+            {
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs")
+            };
+
+            foreach (var root in searchRoots.Where(r => !string.IsNullOrWhiteSpace(r) && Directory.Exists(r)))
+            {
+                var directoriesToSearch = new List<string> { root };
+                try
                 {
-                    var exePath = fullPath + ".exe";
-                    if (File.Exists(exePath))
+                    directoriesToSearch.AddRange(Directory.GetDirectories(root));
+                }
+                catch { /* ignore permission errors */ }
+
+                foreach (var dir in directoriesToSearch)
+                {
+                    foreach (var name in namesToSearch)
                     {
-                        return DetectFileAsync(new DetectionConfig
+                        var fullPath = Path.Combine(dir, name);
+                        if (File.Exists(fullPath))
                         {
-                            Type = config.Type,
-                            Path = exePath,
-                            ExpectedVersion = config.ExpectedVersion
-                        }, ct);
+                            return DetectFileAsync(new DetectionConfig
+                            {
+                                Type = config.Type,
+                                Path = fullPath,
+                                ExpectedVersion = config.ExpectedVersion
+                            }, ct);
+                        }
                     }
                 }
             }

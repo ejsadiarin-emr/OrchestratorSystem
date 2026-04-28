@@ -11,6 +11,11 @@
     "expectedExitCodes": [0],
     "timeoutSeconds": 120
   },
+  "detection": {
+    "type": "version_manifest",
+    "path": "7z",
+    "expectedVersion": "26.00"
+  },
   "policyTags": {
     "retryabilityClass": "non-idempotent",
     "idempotencyMode": "none",

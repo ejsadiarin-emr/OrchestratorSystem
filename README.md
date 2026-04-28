@@ -186,6 +186,11 @@ The manifest (`.manifest.json`) is JSON with these fields:
     "expectedExitCodes": [0],
     "timeoutSeconds": 300
   },
+  "detection": {
+    "type": "version_manifest",
+    "path": "git",
+    "expectedVersion": "2.48.1"
+  },
   "policyTags": {
     "retryabilityClass": "non-idempotent",
     "idempotencyMode": "none",
@@ -206,6 +211,9 @@ The manifest (`.manifest.json`) is JSON with these fields:
 | `installAdapter.arguments` | No | Install command-line arguments |
 | `installAdapter.expectedExitCodes` | No | Valid exit codes (default: `[0]`) |
 | `installAdapter.timeoutSeconds` | No | Install timeout (default: `300`) |
+| `detection.type` | No | `version_manifest` (default), `file`, or `registry` |
+| `detection.path` | No | Binary name, full file path, or registry path to check after install |
+| `detection.expectedVersion` | No | Expected version string (e.g., `==2.48.1`, `>=3.13.0`) |
 | `policyTags.riskLevel` | No | `low`, `medium`, `high`, or `critical` |
 | `policyTags.approvalRequired` | No | Whether a human must approve before deployment |
 | `policyTags.retryabilityClass` | No | `idempotent`, `non-idempotent`, or `conditional` |

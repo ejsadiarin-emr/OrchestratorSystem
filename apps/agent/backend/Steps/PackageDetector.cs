@@ -108,74 +108,18 @@ public static class PackageDetector
             return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent, Error = "file_not_found" });
         }
 
-        // It's a command name — search PATH and common Windows install directories.
-        var searchPaths = new List<string>();
-
-        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
-        searchPaths.AddRange(pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries));
-
+        // It's a command name — search PATH and common install directories dynamically.
+        // No package-specific paths or aliases are hardcoded; manifests must specify
+        // the exact binary name in detection.path (e.g. "node" not "nodejs").
+        var namesToSearch = new List<string> { path };
         if (OperatingSystem.IsWindows())
         {
-            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-            var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-
-            // Search Program Files and immediate subdirectories (common for GUI installers)
-            foreach (var baseDir in new[] { programFiles, programFilesX86 })
-            {
-                if (!string.IsNullOrWhiteSpace(baseDir) && Directory.Exists(baseDir))
-                {
-                    searchPaths.Add(baseDir);
-                    try
-                    {
-                        foreach (var subdir in Directory.GetDirectories(baseDir))
-                        {
-                            searchPaths.Add(subdir);
-                        }
-                    }
-                    catch { /* ignore permission errors */ }
-                }
-            }
-
-            // Search LocalAppData\Programs and its subdirectories (user-scoped installs)
-            var localPrograms = Path.Combine(localAppData, "Programs");
-            if (Directory.Exists(localPrograms))
-            {
-                searchPaths.Add(localPrograms);
-                try
-                {
-                    foreach (var subdir in Directory.GetDirectories(localPrograms))
-                    {
-                        searchPaths.Add(subdir);
-                    }
-                }
-                catch { /* ignore permission errors */ }
-            }
-
-            searchPaths.Add(Path.Combine(programFiles, "Git", "cmd"));
-            searchPaths.Add(Path.Combine(programFilesX86, "Git", "cmd"));
-            searchPaths.Add(Path.Combine(programFiles, "nodejs"));
-            searchPaths.Add(Path.Combine(programFilesX86, "nodejs"));
-            searchPaths.Add(Path.Combine(localAppData, "Programs", "Python"));
-            searchPaths.Add(Path.Combine(programFiles, "Python310"));
-            searchPaths.Add(Path.Combine(programFiles, "Python311"));
-            searchPaths.Add(Path.Combine(programFiles, "Python312"));
-            searchPaths.Add(Path.Combine(programFiles, "Python313"));
-            searchPaths.Add(Path.Combine(programFiles, "Python314"));
+            namesToSearch.Add(path + ".exe");
         }
 
-        // Binary name aliases for common packages
-        var namesToSearch = new List<string> { path };
-        if (string.Equals(path, "nodejs", StringComparison.OrdinalIgnoreCase))
-        {
-            namesToSearch.Insert(0, "node");
-        }
-        else if (string.Equals(path, "python", StringComparison.OrdinalIgnoreCase))
-        {
-            namesToSearch.Add("python3");
-        }
-
-        foreach (var dir in searchPaths.Distinct(StringComparer.OrdinalIgnoreCase))
+        // 1. Search PATH
+        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
+        foreach (var dir in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
         {
             foreach (var name in namesToSearch)
             {
@@ -189,18 +133,43 @@ public static class PackageDetector
                         ExpectedVersion = config.ExpectedVersion
                     }, ct);
                 }
+            }
+        }
 
-                if (OperatingSystem.IsWindows())
+        // 2. Search common Windows install roots and their immediate subdirectories.
+        // This covers GUI installers that drop into C:\Program Files\{ProductName}.
+        if (OperatingSystem.IsWindows())
+        {
+            var searchRoots = new[]
+            {
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs")
+            };
+
+            foreach (var root in searchRoots.Where(r => !string.IsNullOrWhiteSpace(r) && Directory.Exists(r)))
+            {
+                var directoriesToSearch = new List<string> { root };
+                try
                 {
-                    var exePath = fullPath + ".exe";
-                    if (File.Exists(exePath))
+                    directoriesToSearch.AddRange(Directory.GetDirectories(root));
+                }
+                catch { /* ignore permission errors */ }
+
+                foreach (var dir in directoriesToSearch)
+                {
+                    foreach (var name in namesToSearch)
                     {
-                        return DetectFileAsync(new DetectionConfig
+                        var fullPath = Path.Combine(dir, name);
+                        if (File.Exists(fullPath))
                         {
-                            Type = config.Type,
-                            Path = exePath,
-                            ExpectedVersion = config.ExpectedVersion
-                        }, ct);
+                            return DetectFileAsync(new DetectionConfig
+                            {
+                                Type = config.Type,
+                                Path = fullPath,
+                                ExpectedVersion = config.ExpectedVersion
+                            }, ct);
+                        }
                     }
                 }
             }

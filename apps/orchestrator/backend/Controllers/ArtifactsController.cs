@@ -32,6 +32,7 @@ public sealed class ArtifactsController : ControllerBase
 
     [HttpPost]
     [RequestSizeLimit(2L * 1024 * 1024 * 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 2L * 1024 * 1024 * 1024)]
     public async Task<IActionResult> Ingest()
     {
         if (!Request.HasFormContentType)
@@ -247,6 +248,7 @@ public sealed class ArtifactsController : ControllerBase
 
     [HttpPost("bulk")]
     [RequestSizeLimit(2L * 1024 * 1024 * 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 2L * 1024 * 1024 * 1024)]
     public async Task<IActionResult> BulkIngest()
     {
         if (!Request.HasFormContentType)
@@ -412,6 +414,7 @@ public sealed class ArtifactsController : ControllerBase
 
     [HttpPost("upload-sessions/{sessionId}/chunks")]
     [RequestSizeLimit(2L * 1024 * 1024 * 1024)]
+    [RequestFormLimits(MultipartBodyLengthLimit = 2L * 1024 * 1024 * 1024)]
     public async Task<IActionResult> UploadChunk(string sessionId)
     {
         if (!Request.HasFormContentType)

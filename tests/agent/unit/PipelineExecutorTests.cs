@@ -3,6 +3,7 @@ using System.Text;
 using DeploymentPoC.Agent.Pipeline;
 using DeploymentPoC.Contracts.Runtime;
 using DeploymentPoC.Contracts.Runtime.RunPayloads;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -22,7 +23,8 @@ public sealed class PipelineExecutorTests
         httpFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
 
         var loggerMock = new Mock<ILogger<PipelineExecutor>>();
-        var executor = new PipelineExecutor(httpFactoryMock.Object, loggerMock.Object);
+        var configMock = new Mock<IConfiguration>();
+        var executor = new PipelineExecutor(httpFactoryMock.Object, loggerMock.Object, configMock.Object);
 
         var runId = Guid.NewGuid();
         var context = new PipelineContext
@@ -96,7 +98,8 @@ public sealed class PipelineExecutorTests
         httpFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
 
         var loggerMock = new Mock<ILogger<PipelineExecutor>>();
-        var executor = new PipelineExecutor(httpFactoryMock.Object, loggerMock.Object);
+        var configMock = new Mock<IConfiguration>();
+        var executor = new PipelineExecutor(httpFactoryMock.Object, loggerMock.Object, configMock.Object);
 
         var runId = Guid.NewGuid();
         var context = new PipelineContext

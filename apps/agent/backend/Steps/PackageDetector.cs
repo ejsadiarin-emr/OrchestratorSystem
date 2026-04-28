@@ -116,16 +116,52 @@ public static class PackageDetector
 
         if (OperatingSystem.IsWindows())
         {
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Git", "cmd"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Git", "cmd"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nodejs"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "nodejs"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Python"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python310"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python311"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python312"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python313"));
-            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Python314"));
+            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+            // Search Program Files and immediate subdirectories (common for GUI installers)
+            foreach (var baseDir in new[] { programFiles, programFilesX86 })
+            {
+                if (!string.IsNullOrWhiteSpace(baseDir) && Directory.Exists(baseDir))
+                {
+                    searchPaths.Add(baseDir);
+                    try
+                    {
+                        foreach (var subdir in Directory.GetDirectories(baseDir))
+                        {
+                            searchPaths.Add(subdir);
+                        }
+                    }
+                    catch { /* ignore permission errors */ }
+                }
+            }
+
+            // Search LocalAppData\Programs and its subdirectories (user-scoped installs)
+            var localPrograms = Path.Combine(localAppData, "Programs");
+            if (Directory.Exists(localPrograms))
+            {
+                searchPaths.Add(localPrograms);
+                try
+                {
+                    foreach (var subdir in Directory.GetDirectories(localPrograms))
+                    {
+                        searchPaths.Add(subdir);
+                    }
+                }
+                catch { /* ignore permission errors */ }
+            }
+
+            searchPaths.Add(Path.Combine(programFiles, "Git", "cmd"));
+            searchPaths.Add(Path.Combine(programFilesX86, "Git", "cmd"));
+            searchPaths.Add(Path.Combine(programFiles, "nodejs"));
+            searchPaths.Add(Path.Combine(programFilesX86, "nodejs"));
+            searchPaths.Add(Path.Combine(localAppData, "Programs", "Python"));
+            searchPaths.Add(Path.Combine(programFiles, "Python310"));
+            searchPaths.Add(Path.Combine(programFiles, "Python311"));
+            searchPaths.Add(Path.Combine(programFiles, "Python312"));
+            searchPaths.Add(Path.Combine(programFiles, "Python313"));
+            searchPaths.Add(Path.Combine(programFiles, "Python314"));
         }
 
         // Binary name aliases for common packages

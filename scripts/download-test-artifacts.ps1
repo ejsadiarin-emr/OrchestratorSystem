@@ -77,6 +77,11 @@ $GitManifest = @{
         expectedExitCodes = @(0)
         timeoutSeconds = 300
     }
+    detection = @{
+        type = "version_manifest"
+        path = "git"
+        expectedVersion = $GitVersion
+    }
     policyTags = @{
         retryabilityClass = "non-idempotent"
         idempotencyMode = "none"
@@ -100,6 +105,11 @@ $NodeManifest = @{
         arguments = "/quiet /norestart"
         expectedExitCodes = @(0, 3010)
         timeoutSeconds = 300
+    }
+    detection = @{
+        type = "version_manifest"
+        path = "node"
+        expectedVersion = $NodeVersion
     }
     policyTags = @{
         retryabilityClass = "non-idempotent"
@@ -125,6 +135,11 @@ $PythonManifest = @{
         expectedExitCodes = @(0)
         timeoutSeconds = 300
     }
+    detection = @{
+        type = "version_manifest"
+        path = "python"
+        expectedVersion = $PythonVersion
+    }
     policyTags = @{
         retryabilityClass = "non-idempotent"
         idempotencyMode = "none"
@@ -145,10 +160,22 @@ $ZipManifest = @{
     installAdapter = @{
         type = "exe"
         command = $ZipExe
-        arguments = '/S /D=C:\\Program Files\\7-Zip'
+        arguments = '/S /D=C:\Program Files\7-Zip'
         expectedExitCodes = @(0)
         timeoutSeconds = 120
     }
+    detection = @{
+        type = "version_manifest"
+        path = "7z"
+        expectedVersion = $ZipVersion
+    }
+    policyTags = @{
+        retryabilityClass = "non-idempotent"
+        idempotencyMode = "none"
+        riskLevel = "low"
+        approvalRequired = $false
+    }
+}
     policyTags = @{
         retryabilityClass = "non-idempotent"
         idempotencyMode = "none"

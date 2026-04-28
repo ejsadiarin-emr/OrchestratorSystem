@@ -78,6 +78,11 @@ cat > "${GIT_BASE}.manifest.json" <<EOF
     "expectedExitCodes": [0],
     "timeoutSeconds": 300
   },
+  "detection": {
+    "type": "version_manifest",
+    "path": "git",
+    "expectedVersion": "${GIT_VERSION}"
+  },
   "policyTags": {
     "retryabilityClass": "non-idempotent",
     "idempotencyMode": "none",
@@ -106,6 +111,11 @@ cat > "${NODE_BASE}.manifest.json" <<EOF
     ],
     "timeoutSeconds": 300
   },
+  "detection": {
+    "type": "version_manifest",
+    "path": "node",
+    "expectedVersion": "${NODE_VERSION}"
+  },
   "policyTags": {
     "retryabilityClass": "non-idempotent",
     "idempotencyMode": "none",
@@ -131,6 +141,11 @@ cat > "${PYTHON_BASE}.manifest.json" <<EOF
     "expectedExitCodes": [0],
     "timeoutSeconds": 300
   },
+  "detection": {
+    "type": "version_manifest",
+    "path": "python",
+    "expectedVersion": "${PYTHON_VERSION}"
+  },
   "policyTags": {
     "retryabilityClass": "non-idempotent",
     "idempotencyMode": "none",
@@ -152,9 +167,14 @@ cat > "${ZIP_BASE}.manifest.json" <<EOF
   "installAdapter": {
     "type": "exe",
     "command": "${ZIP_EXE}",
-    "arguments": "/S /D=C:\\\\Program Files\\\\7-Zip",
+    "arguments": "/S /D=C:\\Program Files\\7-Zip",
     "expectedExitCodes": [0],
     "timeoutSeconds": 120
+  },
+  "detection": {
+    "type": "version_manifest",
+    "path": "7z",
+    "expectedVersion": "${ZIP_VERSION}"
   },
   "policyTags": {
     "retryabilityClass": "non-idempotent",

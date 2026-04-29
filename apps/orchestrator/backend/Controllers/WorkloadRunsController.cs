@@ -691,6 +691,10 @@ public sealed class WorkloadRunsController : ControllerBase
                 runId, wp.PackageId, pkg?.Name ?? "?", pkg?.Version ?? "?");
         }
 
+        var expectedSha256 = (hasArtifact && pkg is not null)
+            ? _artifactStore.ComputeSha256(pkg.Name, pkg.Version)
+            : null;
+
         return new PendingPackageDto
         {
             PackageEntityId = wp.PackageId,
@@ -698,6 +702,7 @@ public sealed class WorkloadRunsController : ControllerBase
             Version = pkg?.Version ?? "",
             Filename = fn ?? string.Empty,
             DownloadUrl = hasArtifact ? $"/api/artifacts/{wp.PackageId}/download" : string.Empty,
+            ExpectedSha256 = expectedSha256,
             InstallAdapter = new InstallAdapterConfig
             {
                 Type = installType,

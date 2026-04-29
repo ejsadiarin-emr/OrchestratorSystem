@@ -10,6 +10,7 @@ public sealed class PackageAssignment
     public string Channel { get; set; } = string.Empty;
     public string? ArtifactFileName { get; set; }
     public string? DownloadUrl { get; set; }
+    public string? ExpectedSha256 { get; set; }
     public InstallAdapterConfig InstallAdapter { get; set; } = new();
     public DetectionConfig Detection { get; set; } = new();
 }

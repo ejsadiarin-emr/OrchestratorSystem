@@ -22,6 +22,8 @@ public sealed class AgentRuntimeService : BackgroundService
     private IHubConnection? _connection;
     private Timer? _heartbeatTimer;
     private Guid? _nodeId;
+    private Task? _runningPipeline;
+    private readonly CancellationTokenSource _pipelineWatchdogCts = new();
 
     public AgentRuntimeService(
         IConfiguration configuration,
@@ -184,6 +186,7 @@ public sealed class AgentRuntimeService : BackgroundService
                 Version = p.Version,
                 ArtifactFileName = p.Filename,
                 DownloadUrl = p.DownloadUrl,
+                ExpectedSha256 = p.ExpectedSha256,
                 InstallAdapter = p.InstallAdapter,
                 Detection = p.Detection
             };
@@ -211,8 +214,13 @@ public sealed class AgentRuntimeService : BackgroundService
                 ForceInstall = false
             };
 
+            var pipelineTimeoutMinutes = _configuration.GetValue<double?>("Agent:PipelineTimeoutMinutes") ?? 30;
+            var pipelineCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            pipelineCts.CancelAfter(TimeSpan.FromMinutes(pipelineTimeoutMinutes));
+            var pipelineCt = pipelineCts.Token;
+
             // Fire and forget — don't await, so poll loop isn't blocked
-            _ = Task.Run(async () =>
+            _runningPipeline = Task.Run(async () =>
             {
                 try
                 {
@@ -220,7 +228,6 @@ public sealed class AgentRuntimeService : BackgroundService
                         context,
                         async (msg, msgCt) =>
                         {
-                            // Send step status via HTTP POST
                             if (msg.Payload is StepStatusPayload stepPayload)
                             {
                                 await http.PostAsJsonAsync(
@@ -232,8 +239,19 @@ public sealed class AgentRuntimeService : BackgroundService
                                         message = stepPayload.Error
                                     }, msgCt);
                             }
+                            else if (msg.Payload is FinalizationPayload finalPayload)
+                            {
+                                await http.PostAsJsonAsync(
+                                    $"/api/workload-runs/{run.RunId}/timeline?agent_id={nodeId}",
+                                    new
+                                    {
+                                        step = "Finalization",
+                                        status = finalPayload.Result,
+                                        message = finalPayload.Error
+                                    }, msgCt);
+                            }
                         },
-                        ct);
+                        pipelineCt);
 
                     // Report final status
                     await http.PatchAsJsonAsync(
@@ -242,7 +260,7 @@ public sealed class AgentRuntimeService : BackgroundService
                         {
                             status = result.Success ? "Completed" : "Failed",
                             error = result.Error
-                        }, ct);
+                        }, CancellationToken.None);
 
                     _logger.LogInformation("Pipeline completed: RunId={RunId}, Success={Success}", run.RunId, result.Success);
                 }
@@ -253,11 +271,18 @@ public sealed class AgentRuntimeService : BackgroundService
                     {
                         await http.PatchAsJsonAsync(
                             $"/api/workload-runs/{run.RunId}",
-                            new { status = "Failed", error = ex.Message }, ct);
+                            new { status = "Failed", error = ex.Message }, CancellationToken.None);
                     }
                     catch { /* best effort */ }
                 }
-            }, ct);
+            });
+
+            _ = Task.Run(async () =>
+            {
+                try { await _runningPipeline; }
+                catch (Exception ex) { _logger.LogError(ex, "Pipeline task faulted"); }
+                finally { _runningPipeline = null; pipelineCts.Dispose(); }
+            });
         }
     }
 
@@ -388,6 +413,13 @@ public sealed class AgentRuntimeService : BackgroundService
         }
 
         throw new InvalidOperationException($"Unexpected payload type: {payload.GetType().Name}");
+    }
+
+    public override void Dispose()
+    {
+        _pipelineWatchdogCts.Cancel();
+        _pipelineWatchdogCts.Dispose();
+        base.Dispose();
     }
 }
 

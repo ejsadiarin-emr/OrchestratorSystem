@@ -1,6 +1,7 @@
 using DeploymentPoC.Agent.Steps;
 using DeploymentPoC.Contracts.Runtime;
 using DeploymentPoC.Contracts.Runtime.RunPayloads;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace DeploymentPoC.Agent.Pipeline;
@@ -9,11 +10,13 @@ public class PipelineExecutor
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<PipelineExecutor> _logger;
+    private readonly IConfiguration _configuration;
 
-    public PipelineExecutor(IHttpClientFactory httpClientFactory, ILogger<PipelineExecutor> logger)
+    public PipelineExecutor(IHttpClientFactory httpClientFactory, ILogger<PipelineExecutor> logger, IConfiguration configuration)
     {
         _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
     }
 
     public virtual async Task<PipelineResult> ExecuteAsync(
@@ -22,7 +25,7 @@ public class PipelineExecutor
         CancellationToken ct = default)
     {
         var http = _httpClientFactory.CreateClient();
-        var acquire = new AcquireArtifact(http);
+        var acquire = new AcquireArtifact(http, logger: _logger);
 
         var targetPackages = context.Payload.Packages
             .OrderBy(p => p.PackageIndex)
@@ -44,7 +47,7 @@ public class PipelineExecutor
 
             foreach (var package in packagesToProbe)
             {
-                var stepCt = CancellationTokenSource.CreateLinkedTokenSource(ct).Token;
+                var stepCt = ct;
 
                 _logger.LogInformation(
                     "Step PreCheckProbe: PackageIndex={PackageIndex}, PackageId={PackageId}",
@@ -54,7 +57,7 @@ public class PipelineExecutor
                 var probeResult = await PreCheckProbe.ExecuteAsync(package.Detection, stepCt);
                 preCheckResults[package.Name] = probeResult;
 
-                await SendStepStatusAsync(sendMessageAsync, context, "PreCheckProbe", package, true, probeResult.Error);
+                await SendStepStatusAsync(sendMessageAsync, context, "PreCheckProbe", package, true, probeResult.Error, stepCt);
                 context.RecordStep("PreCheckProbe", package.PackageIndex, package.PackageId, true, probeResult.Error);
             }
         }
@@ -82,7 +85,7 @@ public class PipelineExecutor
         // Phase 1: Uninstall removed packages in reverse PackageIndex order
         foreach (var package in removed.OrderByDescending(p => p.PackageIndex))
         {
-            var stepCt = CancellationTokenSource.CreateLinkedTokenSource(ct).Token;
+            var stepCt = ct;
 
             if (preCheckResults?.TryGetValue(package.Name, out var preCheck) == true && preCheck.Status == PreCheckStatus.NotPresent)
             {
@@ -91,7 +94,7 @@ public class PipelineExecutor
                     package.PackageIndex,
                     package.PackageId);
 
-                await SendStepStatusAsync(sendMessageAsync, context, "UninstallSkippedAlreadyGone", package, true, null);
+                await SendStepStatusAsync(sendMessageAsync, context, "UninstallSkippedAlreadyGone", package, true, null, stepCt);
                 context.RecordStep("UninstallSkippedAlreadyGone", package.PackageIndex, package.PackageId, true, null);
                 continue;
             }
@@ -102,7 +105,7 @@ public class PipelineExecutor
                 package.PackageId);
 
             var uninstallResult = await UninstallPackage.ExecuteAsync(package.InstallAdapter, stepCt);
-            await SendStepStatusAsync(sendMessageAsync, context, "UninstallPackage", package, uninstallResult.Success, uninstallResult.Error);
+            await SendStepStatusAsync(sendMessageAsync, context, "UninstallPackage", package, uninstallResult.Success, uninstallResult.Error, stepCt);
             context.RecordStep("UninstallPackage", package.PackageIndex, package.PackageId, uninstallResult.Success, uninstallResult.Error);
 
             if (!uninstallResult.Success)
@@ -122,7 +125,7 @@ public class PipelineExecutor
 
         foreach (var package in packagesToInstall)
         {
-            var stepCt = CancellationTokenSource.CreateLinkedTokenSource(ct).Token;
+            var stepCt = ct;
 
             if (preCheckResults?.TryGetValue(package.Name, out var preCheck) == true && preCheck.Status == PreCheckStatus.AlreadySatisfied)
             {
@@ -131,7 +134,7 @@ public class PipelineExecutor
                     package.PackageIndex,
                     package.PackageId);
 
-                await SendStepStatusAsync(sendMessageAsync, context, "PreCheckSkipped", package, true, null);
+                await SendStepStatusAsync(sendMessageAsync, context, "PreCheckSkipped", package, true, null, stepCt);
                 context.RecordStep("PreCheckSkipped", package.PackageIndex, package.PackageId, true, null);
                 continue;
             }
@@ -139,7 +142,7 @@ public class PipelineExecutor
             // Step 1: Acquire artifact
             var artifactUrl = !string.IsNullOrEmpty(package.DownloadUrl)
                 ? $"{context.OrchestratorBaseUrl.TrimEnd('/')}{package.DownloadUrl}"
-                : $"{context.OrchestratorBaseUrl.TrimEnd('/')}/api/artifacts/{package.Name}/{package.Version}";
+                : $"{context.OrchestratorBaseUrl.TrimEnd('/')}/api/artifacts/{package.PackageId}/download";
             var destFileName = !string.IsNullOrEmpty(package.ArtifactFileName)
                 ? $"{package.PackageId}-{package.Version}-{package.ArtifactFileName}"
                 : $"{package.PackageId}-{package.Version}";
@@ -151,14 +154,19 @@ public class PipelineExecutor
                 package.PackageId,
                 artifactUrl);
 
+            var chunkSizeBytes = _configuration.GetValue<int?>("Agent:ChunkSizeBytes") ?? 2 * 1024 * 1024;
+            var useChunkedDownload = _configuration.GetValue<bool?>("Agent:UseChunkedDownload") ?? true;
+
             var acquireResult = await acquire.ExecuteAsync(new AcquireArtifactRequest
             {
                 ArtifactUrl = artifactUrl,
                 DestinationPath = destinationPath,
-                ChunkSizeBytes = 8 * 1024 * 1024
+                ChunkSizeBytes = chunkSizeBytes,
+                UseChunkedDownload = useChunkedDownload,
+                ExpectedSha256 = package.ExpectedSha256
             }, stepCt);
 
-            await SendStepStatusAsync(sendMessageAsync, context, "AcquireArtifact", package, acquireResult.Success, acquireResult.Error);
+            await SendStepStatusAsync(sendMessageAsync, context, "AcquireArtifact", package, acquireResult.Success, acquireResult.Error, stepCt);
             context.RecordStep("AcquireArtifact", package.PackageIndex, package.PackageId, acquireResult.Success, acquireResult.Error);
 
             if (!acquireResult.Success)
@@ -178,7 +186,7 @@ public class PipelineExecutor
                 package.InstallAdapter.Type);
 
             var installResult = await InstallOrUpgrade.ExecuteAsync(package.InstallAdapter, destinationPath, _logger, stepCt);
-            await SendStepStatusAsync(sendMessageAsync, context, "InstallOrUpgrade", package, installResult.Success, installResult.Error);
+            await SendStepStatusAsync(sendMessageAsync, context, "InstallOrUpgrade", package, installResult.Success, installResult.Error, stepCt);
             context.RecordStep("InstallOrUpgrade", package.PackageIndex, package.PackageId, installResult.Success, installResult.Error);
 
             if (!installResult.Success)
@@ -198,7 +206,7 @@ public class PipelineExecutor
                 package.Detection.Type);
 
             var verifyResult = await PostInstallVerify.ExecuteAsync(package.Detection, stepCt);
-            await SendStepStatusAsync(sendMessageAsync, context, "PostInstallVerify", package, verifyResult.Success, verifyResult.Error);
+            await SendStepStatusAsync(sendMessageAsync, context, "PostInstallVerify", package, verifyResult.Success, verifyResult.Error, stepCt);
             context.RecordStep("PostInstallVerify", package.PackageIndex, package.PackageId, verifyResult.Success, verifyResult.Error);
 
             if (!verifyResult.Success)
@@ -220,7 +228,8 @@ public class PipelineExecutor
         string stepName,
         PackageAssignment package,
         bool success,
-        string? error)
+        string? error,
+        CancellationToken ct)
     {
         var envelope = new MessageEnvelope
         {
@@ -240,7 +249,9 @@ public class PipelineExecutor
 
         try
         {
-            await sendMessageAsync(envelope, CancellationToken.None);
+            using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            sendCts.CancelAfter(TimeSpan.FromSeconds(5));
+            await sendMessageAsync(envelope, sendCts.Token);
         }
         catch (Exception)
         {

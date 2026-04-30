@@ -23,8 +23,8 @@ public sealed class PipelineExecutorTests
         httpFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
 
         var loggerMock = new Mock<ILogger<PipelineExecutor>>();
-        var configMock = new Mock<IConfiguration>();
-        var executor = new PipelineExecutor(httpFactoryMock.Object, loggerMock.Object, configMock.Object);
+        var configuration = new ConfigurationBuilder().Build();
+        var executor = new PipelineExecutor(httpFactoryMock.Object, loggerMock.Object, configuration);
 
         var runId = Guid.NewGuid();
         var context = new PipelineContext
@@ -98,8 +98,8 @@ public sealed class PipelineExecutorTests
         httpFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
 
         var loggerMock = new Mock<ILogger<PipelineExecutor>>();
-        var configMock = new Mock<IConfiguration>();
-        var executor = new PipelineExecutor(httpFactoryMock.Object, loggerMock.Object, configMock.Object);
+        var configuration = new ConfigurationBuilder().Build();
+        var executor = new PipelineExecutor(httpFactoryMock.Object, loggerMock.Object, configuration);
 
         var runId = Guid.NewGuid();
         var context = new PipelineContext

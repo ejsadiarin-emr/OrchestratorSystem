@@ -170,6 +170,9 @@ public sealed class InstallerDbContext : DbContext
         {
             entity.HasKey(x => x.RevisionId);
             entity.Property(x => x.Version).HasMaxLength(64);
+            entity.Property(x => x.PreWorkloadStepsJson).HasMaxLength(4096);
+            entity.Property(x => x.PostWorkloadStepsJson).HasMaxLength(4096);
+            entity.Property(x => x.DefaultShell).HasMaxLength(64);
             entity.HasOne(x => x.Workload)
                 .WithMany(x => x.Revisions)
                 .HasForeignKey(x => x.WorkloadId)
@@ -180,6 +183,8 @@ public sealed class InstallerDbContext : DbContext
         modelBuilder.Entity<WorkloadPackageEntity>(entity =>
         {
             entity.HasKey(x => x.WorkloadPackageId);
+            entity.Property(x => x.PreInitStepsJson).HasMaxLength(4096);
+            entity.Property(x => x.PostInitStepsJson).HasMaxLength(4096);
             entity.HasOne(x => x.Revision)
                 .WithMany(x => x.Packages)
                 .HasForeignKey(x => x.RevisionId)
@@ -268,7 +273,10 @@ public sealed class InstallerDbContext : DbContext
             }
 
             var forbiddenPropertiesChanged = entry.Properties
-                .Where(p => p.Metadata.Name is not nameof(WorkloadRevisionEntity.IsPublished))
+                .Where(p => p.Metadata.Name is not nameof(WorkloadRevisionEntity.IsPublished)
+                         and not nameof(WorkloadRevisionEntity.PreWorkloadStepsJson)
+                         and not nameof(WorkloadRevisionEntity.PostWorkloadStepsJson)
+                         and not nameof(WorkloadRevisionEntity.DefaultShell))
                 .Any(p => p.IsModified);
             if (forbiddenPropertiesChanged)
             {
@@ -281,7 +289,21 @@ public sealed class InstallerDbContext : DbContext
             .ToList();
         if (packageEntries.Count > 0)
         {
-            throw new InvalidOperationException("Workload revision packages are immutable after creation.");
+            if (packageEntries.Any(e => e.State == EntityState.Deleted))
+            {
+                throw new InvalidOperationException("Workload revision packages are immutable and cannot be deleted.");
+            }
+            var allowedProperties = new HashSet<string>
+            {
+                nameof(WorkloadPackageEntity.PreInitStepsJson),
+                nameof(WorkloadPackageEntity.PostInitStepsJson)
+            };
+            var hasForbiddenChanges = packageEntries.Any(entry =>
+                entry.Properties.Any(p => p.IsModified && !allowedProperties.Contains(p.Metadata.Name)));
+            if (hasForbiddenChanges)
+            {
+                throw new InvalidOperationException("Workload revision packages are immutable after creation.");
+            }
         }
     }
 }

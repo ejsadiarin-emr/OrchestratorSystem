@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using DeploymentPoC.Orchestrator.Contracts.Api;
 using DeploymentPoC.Orchestrator.Contracts.Api.Workloads;
 using DeploymentPoC.Orchestrator.Data;
@@ -119,13 +120,26 @@ public sealed class WorkloadsController : ControllerBase
             Version = request.Version.Trim(),
             IsPublished = false,
             CreatedAtUtc = DateTime.UtcNow,
+            PreWorkloadStepsJson = request.PreWorkloadSteps is { Count: > 0 }
+                ? System.Text.Json.JsonSerializer.Serialize(request.PreWorkloadSteps)
+                : "[]",
+            PostWorkloadStepsJson = request.PostWorkloadSteps is { Count: > 0 }
+                ? System.Text.Json.JsonSerializer.Serialize(request.PostWorkloadSteps)
+                : "[]",
+            DefaultShell = string.IsNullOrWhiteSpace(request.DefaultShell) ? "powershell" : request.DefaultShell,
             Packages = request.Packages
                 .OrderBy(p => p.PackageIndex)
                 .Select(p => new WorkloadPackageEntity
                 {
                     WorkloadPackageId = Guid.NewGuid(),
                     PackageId = p.PackageId,
-                    PackageIndex = p.PackageIndex
+                    PackageIndex = p.PackageIndex,
+                    PreInitStepsJson = p.PreInitSteps is { Count: > 0 }
+                        ? System.Text.Json.JsonSerializer.Serialize(p.PreInitSteps)
+                        : "[]",
+                    PostInitStepsJson = p.PostInitSteps is { Count: > 0 }
+                        ? System.Text.Json.JsonSerializer.Serialize(p.PostInitSteps)
+                        : "[]"
                 })
                 .ToList()
         };
@@ -139,6 +153,9 @@ public sealed class WorkloadsController : ControllerBase
             Version = revision.Version,
             IsPublished = revision.IsPublished,
             CreatedAtUtc = revision.CreatedAtUtc,
+            PreWorkloadSteps = DeserializeStringList(revision.PreWorkloadStepsJson),
+            PostWorkloadSteps = DeserializeStringList(revision.PostWorkloadStepsJson),
+            DefaultShell = revision.DefaultShell,
             Packages = revision.Packages
                 .OrderBy(p => p.PackageIndex)
                 .Select(p =>
@@ -149,7 +166,9 @@ public sealed class WorkloadsController : ControllerBase
                         PackageId = p.PackageId,
                         PackageIndex = p.PackageIndex,
                         PackageName = pkg?.Name ?? string.Empty,
-                        PackageVersion = pkg?.Version ?? string.Empty
+                        PackageVersion = pkg?.Version ?? string.Empty,
+                        PreInitSteps = DeserializeStringList(p.PreInitStepsJson),
+                        PostInitSteps = DeserializeStringList(p.PostInitStepsJson)
                     };
                 })
                 .ToList()
@@ -336,6 +355,9 @@ public sealed class WorkloadsController : ControllerBase
                     Version = r.Version,
                     IsPublished = r.IsPublished,
                     CreatedAtUtc = r.CreatedAtUtc,
+                    PreWorkloadSteps = DeserializeStringList(r.PreWorkloadStepsJson),
+                    PostWorkloadSteps = DeserializeStringList(r.PostWorkloadStepsJson),
+                    DefaultShell = r.DefaultShell,
                     Packages = r.Packages
                         .OrderBy(p => p.PackageIndex)
                         .Select(p =>
@@ -346,13 +368,31 @@ public sealed class WorkloadsController : ControllerBase
                                 PackageId = p.PackageId,
                                 PackageIndex = p.PackageIndex,
                                 PackageName = pkg?.Name ?? string.Empty,
-                                PackageVersion = pkg?.Version ?? string.Empty
+                                PackageVersion = pkg?.Version ?? string.Empty,
+                                PreInitSteps = DeserializeStringList(p.PreInitStepsJson),
+                                PostInitSteps = DeserializeStringList(p.PostInitStepsJson)
                             };
                         })
                         .ToList()
                 })
                 .ToList()
         };
+    }
+
+    private static List<string> DeserializeStringList(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return new List<string>();
+        }
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return new List<string>();
+        }
     }
 
     private static ValidationErrorResponse ToValidationErrorResponse(ModelStateDictionary modelState)
@@ -495,7 +535,7 @@ public sealed class WorkloadsController : ControllerBase
                     continue;
                 }
 
-                if (w.Packages is null || w.Packages.Count == 0)
+                if (w.RawPackages is null || w.RawPackages.Count == 0)
                 {
                     results.Add(new BulkImportResultItem
                     {
@@ -507,20 +547,115 @@ public sealed class WorkloadsController : ControllerBase
                     continue;
                 }
 
-                var invalidPackage = w.Packages.FirstOrDefault(packageSlug =>
-                {
-                    var lastHyphen = packageSlug.LastIndexOf('-');
-                    return lastHyphen <= 0 || lastHyphen == packageSlug.Length - 1;
-                });
+                var parsedPackages = new List<(string PackageId, string Version, List<string> PreInitSteps, List<string> PostInitSteps)>();
+                var packageValidationFailed = false;
 
-                if (invalidPackage is not null)
+                for (int pi = 0; pi < w.RawPackages.Count; pi++)
+                {
+                    var element = w.RawPackages[pi];
+
+                    if (element.ValueKind == System.Text.Json.JsonValueKind.String)
+                    {
+                        var packageSlug = element.GetString()!;
+                        var lastHyphen = packageSlug.LastIndexOf('-');
+                        if (lastHyphen <= 0 || lastHyphen == packageSlug.Length - 1)
+                        {
+                            results.Add(new BulkImportResultItem
+                            {
+                                Name = w.Name,
+                                Slug = w.Slug,
+                                Status = "failed",
+                                Reason = $"Invalid package format '{packageSlug}': expected {{packageId}}-{{version}}"
+                            });
+                            packageValidationFailed = true;
+                            break;
+                        }
+
+                        var packageId = packageSlug[..lastHyphen];
+                        var version = packageSlug[(lastHyphen + 1)..];
+                        parsedPackages.Add((packageId, version, new List<string>(), new List<string>()));
+                    }
+                    else if (element.ValueKind == System.Text.Json.JsonValueKind.Object)
+                    {
+                        var nameProp = element.TryGetProperty("name", out var n) ? n.GetString() : null;
+                        if (string.IsNullOrWhiteSpace(nameProp))
+                        {
+                            results.Add(new BulkImportResultItem
+                            {
+                                Name = w.Name,
+                                Slug = w.Slug,
+                                Status = "failed",
+                                Reason = $"Package at index {pi} is missing required 'name' property"
+                            });
+                            packageValidationFailed = true;
+                            break;
+                        }
+
+                        var lastHyphen = nameProp.LastIndexOf('-');
+                        if (lastHyphen <= 0 || lastHyphen == nameProp.Length - 1)
+                        {
+                            results.Add(new BulkImportResultItem
+                            {
+                                Name = w.Name,
+                                Slug = w.Slug,
+                                Status = "failed",
+                                Reason = $"Invalid package name format '{nameProp}': expected {{packageId}}-{{version}}"
+                            });
+                            packageValidationFailed = true;
+                            break;
+                        }
+
+                        var packageId = nameProp[..lastHyphen];
+                        var version = nameProp[(lastHyphen + 1)..];
+
+                        var preInitSteps = ParseInitSteps(element, "preInitSteps");
+                        var postInitSteps = ParseInitSteps(element, "postInitSteps");
+
+                        if (preInitSteps is null || postInitSteps is null)
+                        {
+                            results.Add(new BulkImportResultItem
+                            {
+                                Name = w.Name,
+                                Slug = w.Slug,
+                                Status = "failed",
+                                Reason = $"Package at index {pi} has invalid init steps (empty string or command exceeds 4096 characters)"
+                            });
+                            packageValidationFailed = true;
+                            break;
+                        }
+
+                        parsedPackages.Add((packageId, version, preInitSteps, postInitSteps));
+                    }
+                    else
+                    {
+                        results.Add(new BulkImportResultItem
+                        {
+                            Name = w.Name,
+                            Slug = w.Slug,
+                            Status = "failed",
+                            Reason = $"Package at index {pi} must be a string or object"
+                        });
+                        packageValidationFailed = true;
+                        break;
+                    }
+                }
+
+                if (packageValidationFailed)
+                {
+                    continue;
+                }
+
+                var workloadPreWorkloadSteps = ParseInitStepsList(w.PreWorkloadSteps);
+                var workloadPostWorkloadSteps = ParseInitStepsList(w.PostWorkloadSteps);
+
+                if (workloadPreWorkloadSteps is null || workloadPostWorkloadSteps is null)
                 {
                     results.Add(new BulkImportResultItem
                     {
                         Name = w.Name,
                         Slug = w.Slug,
                         Status = "failed",
-                        Reason = $"Invalid package format '{invalidPackage}': expected {{packageId}}-{{version}}"
+                        Reason = "Workload-level init steps contain validation errors (empty string or command exceeds 4096 characters)"
                     });
                     continue;
                 }
@@ -570,17 +705,17 @@ public sealed class WorkloadsController : ControllerBase
                     WorkloadId = workload.WorkloadId,
                     Version = workloadVersion,
                     IsPublished = true,
-                    CreatedAtUtc = now
+                    CreatedAtUtc = now,
+                    PreWorkloadStepsJson = JsonSerializeList(workloadPreWorkloadSteps),
+                    PostWorkloadStepsJson = JsonSerializeList(workloadPostWorkloadSteps),
+                    DefaultShell = string.IsNullOrWhiteSpace(w.DefaultShell) ? "powershell" : w.DefaultShell
                 };
 
                 _db.WorkloadRevisions.Add(revision);
 
-                for (int i = 0; i < w.Packages.Count; i++)
+                for (int i = 0; i < parsedPackages.Count; i++)
                 {
-                    var packageSlug = w.Packages[i];
-                    var lastHyphen = packageSlug.LastIndexOf('-');
-                    var packageId = packageSlug[..lastHyphen];
-                    var version = packageSlug[(lastHyphen + 1)..];
+                    var (packageId, version, preInitSteps, postInitSteps) = parsedPackages[i];
                     var deterministicId = DeterministicGuid($"{packageId}-{version}");
 
                     var existingPackage = await _db.Packages
@@ -611,7 +746,9 @@ public sealed class WorkloadsController : ControllerBase
                             WorkloadPackageId = Guid.NewGuid(),
                             RevisionId = revision.RevisionId,
                             PackageId = packageEntity.PackageId,
-                            PackageIndex = i + 1
+                            PackageIndex = i + 1,
+                            PreInitStepsJson = JsonSerializeList(preInitSteps),
+                            PostInitStepsJson = JsonSerializeList(postInitSteps)
                         });
                     }
                     else
@@ -621,7 +758,9 @@ public sealed class WorkloadsController : ControllerBase
                             WorkloadPackageId = Guid.NewGuid(),
                             RevisionId = revision.RevisionId,
                             PackageId = existingPackage.PackageId,
-                            PackageIndex = i + 1
+                            PackageIndex = i + 1,
+                            PreInitStepsJson = JsonSerializeList(preInitSteps),
+                            PostInitStepsJson = JsonSerializeList(postInitSteps)
                         });
                     }
                 }
@@ -645,6 +784,71 @@ public sealed class WorkloadsController : ControllerBase
             return BadRequest(new { message = $"Invalid JSON format: {ex.Message}" });
         }
     }
+
+    private static List<string>? ParseInitSteps(System.Text.Json.JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var arr) || arr.ValueKind != System.Text.Json.JsonValueKind.Array)
+        {
+            return new List<string>();
+        }
+
+        var result = new List<string>();
+        foreach (var item in arr.EnumerateArray())
+        {
+            if (item.ValueKind != System.Text.Json.JsonValueKind.String)
+            {
+                return null;
+            }
+            var cmd = item.GetString() ?? "";
+            if (string.IsNullOrEmpty(cmd))
+            {
+                return null;
+            }
+            if (cmd.Length > 4096)
+            {
+                return null;
+            }
+            result.Add(cmd);
+        }
+        return result;
+    }
+
+    private static List<string>? ParseInitStepsList(List<System.Text.Json.JsonElement>? elements)
+    {
+        if (elements is null || elements.Count == 0)
+        {
+            return new List<string>();
+        }
+
+        var result = new List<string>();
+        foreach (var item in elements)
+        {
+            if (item.ValueKind != System.Text.Json.JsonValueKind.String)
+            {
+                return null;
+            }
+            var cmd = item.GetString() ?? "";
+            if (string.IsNullOrEmpty(cmd))
+            {
+                return null;
+            }
+            if (cmd.Length > 4096)
+            {
+                return null;
+            }
+            result.Add(cmd);
+        }
+        return result;
+    }
+
+    private static string JsonSerializeList(List<string>? list)
+    {
+        if (list is null || list.Count == 0)
+        {
+            return "[]";
+        }
+        return System.Text.Json.JsonSerializer.Serialize(list);
+    }
 }
 
 public sealed class WorkloadImportModel
@@ -653,8 +857,17 @@ public sealed class WorkloadImportModel
     public string? Description { get; set; }
     public string Version { get; set; } = "1.0.0";
     public string Slug { get; set; } = string.Empty;
-    public List<string> Packages { get; set; } = new();
-    public List<object>? PreUpgradeActions { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("packages")]
+    public List<System.Text.Json.JsonElement>? RawPackages { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("preWorkloadSteps")]
+    public List<System.Text.Json.JsonElement>? PreWorkloadSteps { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("postWorkloadSteps")]
+    public List<System.Text.Json.JsonElement>? PostWorkloadSteps { get; set; }
+
+    public string? DefaultShell { get; set; }
 }
 
 public sealed class BulkImportResponse

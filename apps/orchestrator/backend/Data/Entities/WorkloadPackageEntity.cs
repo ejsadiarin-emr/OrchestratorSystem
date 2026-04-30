@@ -7,4 +7,6 @@ public sealed class WorkloadPackageEntity
     public WorkloadRevisionEntity Revision { get; set; } = null!;
     public Guid PackageId { get; set; }
     public int PackageIndex { get; set; }
+    public string PreInitStepsJson { get; set; } = "[]";
+    public string PostInitStepsJson { get; set; } = "[]";
 }

@@ -41,6 +41,9 @@ public sealed class WorkloadRevisionDto
     public string Version { get; set; } = string.Empty;
     public bool IsPublished { get; set; }
     public DateTime CreatedAtUtc { get; set; }
+    public List<string> PreWorkloadSteps { get; set; } = new();
+    public List<string> PostWorkloadSteps { get; set; } = new();
+    public string DefaultShell { get; set; } = "powershell";
     public List<WorkloadPackageDto> Packages { get; set; } = new();
 }
 
@@ -50,4 +53,6 @@ public sealed class WorkloadPackageDto
     public int PackageIndex { get; set; }
     public string PackageName { get; set; } = string.Empty;
     public string PackageVersion { get; set; } = string.Empty;
+    public List<string> PreInitSteps { get; set; } = new();
+    public List<string> PostInitSteps { get; set; } = new();
 }

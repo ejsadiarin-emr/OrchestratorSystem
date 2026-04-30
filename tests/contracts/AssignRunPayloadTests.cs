@@ -29,7 +29,7 @@ public class AssignRunPayloadTests
         Assert.Equal("install", payload.Mode);
         Assert.Equal(Guid.Parse("d4e5f6a7-b8c9-0123-defa-234567890123"), payload.NodeId);
         Assert.Empty(payload.Packages);
-        Assert.Empty(payload.PreUpgradeActions);
+        Assert.Empty(payload.PreWorkloadSteps);
     }
 
     [Fact]
@@ -121,6 +121,46 @@ public class AssignRunPayloadTests
     }
 
     [Fact]
+    public void AssignRunPayload_PostWorkloadSteps_ShouldDefaultToEmpty()
+    {
+        var payload = new AssignRunPayload();
+        Assert.Empty(payload.PostWorkloadSteps);
+    }
+
+    [Fact]
+    public void AssignRunPayload_DefaultShell_ShouldDefaultToPowershell()
+    {
+        var payload = new AssignRunPayload();
+        Assert.Equal("powershell", payload.DefaultShell);
+    }
+
+    [Fact]
+    public void AssignRunPayload_WithPostWorkloadSteps_ShouldIncludeThem()
+    {
+        var payload = new AssignRunPayload
+        {
+            PostWorkloadSteps = ["cleanup", "restart"]
+        };
+        Assert.Equal(2, payload.PostWorkloadSteps.Count);
+        Assert.Equal("cleanup", payload.PostWorkloadSteps[0]);
+        Assert.Equal("restart", payload.PostWorkloadSteps[1]);
+    }
+
+    [Fact]
+    public void PackageAssignment_PreInitSteps_ShouldDefaultToEmpty()
+    {
+        var pkg = new PackageAssignment();
+        Assert.Empty(pkg.PreInitSteps);
+    }
+
+    [Fact]
+    public void PackageAssignment_PostInitSteps_ShouldDefaultToEmpty()
+    {
+        var pkg = new PackageAssignment();
+        Assert.Empty(pkg.PostInitSteps);
+    }
+
+    [Fact]
     public void DetectionConfig_ShouldHaveEmptyDefaults()
     {
         // Arrange & Act
@@ -133,24 +173,24 @@ public class AssignRunPayloadTests
     }
 
     [Fact]
-    public void AssignRunPayload_WithPreUpgradeActions_ShouldIncludeThem()
+    public void AssignRunPayload_WithPreWorkloadSteps_ShouldIncludeThem()
     {
         // Arrange
         var payload = new AssignRunPayload
         {
             RunId = Guid.NewGuid(),
             WorkloadId = Guid.NewGuid(),
-            WorkloadName = "WithPreActions",
+            WorkloadName = "WithPreSteps",
             RevisionId = Guid.NewGuid(),
             RevisionVersion = "1.0.0",
             Mode = "install",
             NodeId = Guid.NewGuid(),
-            PreUpgradeActions = ["backup", "stop"]
+            PreWorkloadSteps = ["backup", "stop"]
         };
 
         // Assert
-        Assert.Equal(2, payload.PreUpgradeActions.Count);
-        Assert.Equal("backup", payload.PreUpgradeActions[0]);
-        Assert.Equal("stop", payload.PreUpgradeActions[1]);
+        Assert.Equal(2, payload.PreWorkloadSteps.Count);
+        Assert.Equal("backup", payload.PreWorkloadSteps[0]);
+        Assert.Equal("stop", payload.PreWorkloadSteps[1]);
     }
 }

@@ -86,7 +86,9 @@ public sealed class WorkloadRunDispatcher
             Packages = packageAssignments,
             CurrentPackages = currentPackages,
             ForceInstall = run.ForceInstall,
-            PreUpgradeActions = new List<string>()
+            PreWorkloadSteps = DeserializeStringList(revision.PreWorkloadStepsJson),
+            PostWorkloadSteps = DeserializeStringList(revision.PostWorkloadStepsJson),
+            DefaultShell = revision.DefaultShell
         };
 
         var envelope = new MessageEnvelope
@@ -201,7 +203,9 @@ public sealed class WorkloadRunDispatcher
                         ExpectedExitCodes = expectedExitCodes,
                         TimeoutSeconds = timeoutSeconds
                     },
-                    Detection = BuildDetectionConfig(pkg)
+                    Detection = BuildDetectionConfig(pkg),
+                    PreInitSteps = DeserializeStringList(wp.PreInitStepsJson),
+                    PostInitSteps = DeserializeStringList(wp.PostInitStepsJson)
                 };
             })
             .ToList();
@@ -227,5 +231,21 @@ public sealed class WorkloadRunDispatcher
             Path = pkg?.Name ?? "",
             ExpectedVersion = pkg?.Version ?? ""
         };
+    }
+
+    private static List<string> DeserializeStringList(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return new List<string>();
+        }
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(json) ?? new List<string>();
+        }
+        catch (JsonException)
+        {
+            return new List<string>();
+        }
     }
 }

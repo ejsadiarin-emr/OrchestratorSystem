@@ -485,6 +485,16 @@ namespace DeploymentPoC.Orchestrator.Migrations
                     b.Property<int>("PackageIndex")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("PostInitStepsJson")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PreInitStepsJson")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("RevisionId")
                         .HasColumnType("TEXT");
 
@@ -505,8 +515,23 @@ namespace DeploymentPoC.Orchestrator.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("DefaultShell")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("IsPublished")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("PostWorkloadStepsJson")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PreWorkloadStepsJson")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Version")
                         .IsRequired()

@@ -10,6 +10,12 @@ public sealed class CreateWorkloadRevisionRequest
 
     [Required]
     public List<WorkloadPackageInput> Packages { get; set; } = new();
+
+    public List<string>? PreWorkloadSteps { get; set; }
+
+    public List<string>? PostWorkloadSteps { get; set; }
+
+    public string? DefaultShell { get; set; }
 }
 
 public sealed class WorkloadPackageInput
@@ -19,4 +25,8 @@ public sealed class WorkloadPackageInput
 
     [Range(1, int.MaxValue)]
     public int PackageIndex { get; set; }
+
+    public List<string>? PreInitSteps { get; set; }
+
+    public List<string>? PostInitSteps { get; set; }
 }

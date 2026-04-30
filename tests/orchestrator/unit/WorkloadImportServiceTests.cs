@@ -218,4 +218,88 @@ public sealed class WorkloadImportServiceTests : IDisposable
             }
         };
     }
+
+    [Test]
+    public async Task Dispatch_PopulatesInitStepsFromEntityJsonColumns()
+    {
+        var workloadId = Guid.NewGuid();
+        var revisionId = Guid.NewGuid();
+        var nodeId = Guid.NewGuid();
+        var packageEntityId = Guid.NewGuid();
+        var workloadPackageId = Guid.NewGuid();
+
+        _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity
+        {
+            WorkloadId = workloadId,
+            Name = "TestWorkload",
+            CreatedAtUtc = DateTime.UtcNow,
+            UpdatedAtUtc = DateTime.UtcNow
+        });
+
+        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
+        {
+            RevisionId = revisionId,
+            WorkloadId = workloadId,
+            Version = "1.0.0",
+            IsPublished = true,
+            CreatedAtUtc = DateTime.UtcNow,
+            PreWorkloadStepsJson = "[\"echo pre-wl\"]",
+            PostWorkloadStepsJson = "[\"echo post-wl\"]",
+            DefaultShell = "pwsh"
+        });
+
+        _db.Packages.Add(new PackageEntity
+        {
+            PackageId = packageEntityId,
+            Name = "test-pkg",
+            Version = "1.0.0",
+            SourcePath = "test.bin",
+            InstallType = "exe",
+            CreatedAtUtc = DateTime.UtcNow
+        });
+
+        _db.WorkloadPackages.Add(new WorkloadPackageEntity
+        {
+            WorkloadPackageId = workloadPackageId,
+            RevisionId = revisionId,
+            PackageId = packageEntityId,
+            PackageIndex = 1,
+            PreInitStepsJson = "[\"echo pre-init\"]",
+            PostInitStepsJson = "[\"echo post-init\"]"
+        });
+        await _db.SaveChangesAsync();
+
+        var revision = await _db.WorkloadRevisions
+            .Include(r => r.Packages)
+            .FirstAsync(r => r.RevisionId == revisionId);
+
+        Assert.That(revision.PreWorkloadStepsJson, Is.EqualTo("[\"echo pre-wl\"]"));
+        Assert.That(revision.PostWorkloadStepsJson, Is.EqualTo("[\"echo post-wl\"]"));
+        Assert.That(revision.DefaultShell, Is.EqualTo("pwsh"));
+        Assert.That(revision.Packages.First().PreInitStepsJson, Is.EqualTo("[\"echo pre-init\"]"));
+        Assert.That(revision.Packages.First().PostInitStepsJson, Is.EqualTo("[\"echo post-init\"]"));
+    }
+
+    [Test]
+    public void Dispatch_DeserializeInitSteps_HandlesEmptyAndNull()
+    {
+        var dispatcher = new WorkloadRunDispatcher(null!, null!, null!, null!);
+        var method = typeof(WorkloadRunDispatcher).GetMethod("DeserializeStringList",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        Assert.That(method, Is.Not.Null);
+
+        var result1 = method!.Invoke(null, new object?[] { null });
+        Assert.That(result1, Is.TypeOf<List<string>>());
+        Assert.That((List<string>)result1!, Is.Empty);
+
+        var result2 = method.Invoke(null, new object[] { "" });
+        Assert.That((List<string>)result2!, Is.Empty);
+
+        var result3 = method.Invoke(null, new object[] { "[]" });
+        Assert.That((List<string>)result3!, Is.Empty);
+
+        var result4 = method.Invoke(null, new object[] { "[\"cmd1\",\"cmd2\"]" });
+        Assert.That((List<string>)result4!, Is.EqualTo(new List<string> { "cmd1", "cmd2" }));
+    }
 }

@@ -20,6 +20,8 @@ import type {
   MiniLogLine,
   ManifestChannel,
   Node,
+  NodeDetailResponse,
+  NodePreCheckSummary,
   NodeRunState,
   NodeWorkloadState,
   OrchestratorHomeData,
@@ -32,6 +34,8 @@ import type {
   WorkloadRunStatus,
   WorkloadRunTimelineItem,
 } from '../types'
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
 const baseTime = new Date('2026-04-16T12:00:00.000Z').getTime()
 
@@ -830,6 +834,18 @@ export async function deleteNode(nodeId: string): Promise<void> {
   }
 }
 
+export async function getNodeDetails(nodeId: string): Promise<NodeDetailResponse> {
+  const res = await fetch(`${API_BASE}/api/nodes/${nodeId}/details`)
+  if (!res.ok) throw new Error(`Failed to fetch node details: ${res.status}`)
+  return res.json()
+}
+
+export async function runNodePreChecks(nodeId: string): Promise<NodePreCheckSummary> {
+  const res = await fetch(`${API_BASE}/api/nodes/${nodeId}/prechecks`, { method: 'POST' })
+  if (!res.ok) throw new Error(`Failed to run pre-checks: ${res.status}`)
+  return res.json()
+}
+
 export async function listWorkloads(): Promise<WorkloadDefinition[]> {
   const response = await fetch('/api/workloads')
   if (!response.ok) {
@@ -1467,13 +1483,6 @@ export async function getOrchestratorHomeData(): Promise<OrchestratorHomeData> {
 export async function getAgentLocalSummary(): Promise<AgentLocalSummary> {
   return {
     ...agentLocalSummary,
-  }
-}
-
-export async function runAgentPrecheck(): Promise<{ passed: boolean; detail: string }> {
-  return {
-    passed: true,
-    detail: 'Disk, signature chain, and rollback prerequisites validated.',
   }
 }
 

@@ -5,18 +5,11 @@ import { detectArtifactPairs, extractManifestFromZip, extractZipEntries, isZipFi
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
-import { Progress } from '@/components/ui/progress'
-import { Stepper } from '@/components/ui/stepper'
+
 import { cn } from '@/lib/utils'
-import { Trash2, Upload, FileArchive, FileCode, AlertTriangle, CheckCircle2, XCircle, MinusCircle, Package, X, Info } from 'lucide-react'
+import { Trash2, Upload, FileArchive, FileCode, AlertTriangle, CheckCircle2, XCircle, MinusCircle, Package, X, Info, Loader2 } from 'lucide-react'
 import { Modal, ModalContent, ModalHeader, ModalTitle, ModalDescription, ModalFooter } from '@/components/ui/modal'
 
-const ingestSteps = [
-  { id: 'receive', label: 'Receive' },
-  { id: 'analyze', label: 'Analyze' },
-  { id: 'verify', label: 'Verify' },
-  { id: 'store', label: 'Store' },
-]
 
 function formatBytes(bytes?: number): string {
   if (bytes === undefined || bytes === null) return '-'
@@ -51,9 +44,9 @@ export default function ArtifactStore() {
   const [manifest, setManifest] = useState<ArtifactManifest>({})
   const [isDragging, setIsDragging] = useState(false)
 
-  const [uploadProgress, setUploadProgress] = useState(0)
-  const [uploadStep, setUploadStep] = useState(-1)
-  const [uploadStatus, setUploadStatus] = useState('')
+  const [, setUploadProgress] = useState(0)
+  const [, setUploadStep] = useState(-1)
+  const [, setUploadStatus] = useState('')
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState('')
 
@@ -556,12 +549,10 @@ export default function ArtifactStore() {
               </div>
             )}
 
-            {/* Upload progress */}
-            {(isUploading || uploadProgress > 0 || uploadStatus) && (
-              <div className="space-y-3 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-glass)] p-4">
-                <Progress value={uploadProgress} />
-                <Stepper steps={ingestSteps} activeStep={uploadStep} />
-                <p className="text-sm text-[var(--text-soft)]">{uploadStatus}</p>
+            {isUploading && (
+              <div className="flex items-center justify-center gap-3 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-glass)] p-4">
+                <Loader2 className="h-5 w-5 animate-spin text-[var(--accent)]" />
+                <span className="text-sm text-[var(--text-soft)]">Uploading...</span>
               </div>
             )}
 

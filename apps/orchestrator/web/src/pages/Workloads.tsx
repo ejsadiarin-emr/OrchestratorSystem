@@ -13,7 +13,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { ArtifactRecord, WorkloadDefinition, WorkloadRevision, BulkWorkloadImportResultItem } from '../types'
-import { Upload, FileJson, AlertTriangle, CheckCircle2, XCircle, Trash2, Info } from 'lucide-react'
+import { Upload, FileJson, AlertTriangle, CheckCircle2, XCircle, Trash2, Info, Loader2 } from 'lucide-react'
 
 interface RevisionForm {
   workloadId: string
@@ -332,12 +332,71 @@ export default function Workloads() {
         </div>
       )}
 
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-[var(--text-strong)]">Workload Definitions</h2>
+          <span className="rounded-full bg-[var(--surface-subtle)] px-2.5 py-0.5 text-xs font-medium text-[var(--text-soft)]">
+            {workloads.length}
+          </span>
+        </div>
+        {workloads.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-[var(--surface-border)] p-8 text-center">
+            <p className="text-sm text-[var(--text-soft)]">No workload definitions yet</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {workloads.map(item => (
+              <Card key={item.id}>
+                <CardHeader>
+                  <CardTitle>{item.name}</CardTitle>
+                  <CardDescription>{item.description}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="secondary">
+                      {item.latestRevision?.revision ?? 'No revision yet'}
+                    </Badge>
+                    <Badge variant="outline" className={statusBadgeClass(item.latestRevision?.state)}>
+                      {item.latestRevision?.state ?? 'n/a'}
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-[var(--text-soft)] space-y-1">
+                    <p>Created: {new Date(item.createdAt).toLocaleDateString()}</p>
+                    <p>Revisions: {item.revisionCount ?? 0}</p>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex justify-between">
+                  <Button variant="outline" size="sm" onClick={() => openWorkloadDetail(item.id)}>
+                    <Info className="mr-1.5 h-3.5 w-3.5" />
+                    View Details
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => {
+                        setWorkloadToDelete(item)
+                        setIsDeleteModalOpen(true)
+                      }}
+                      className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                      title="Delete workload"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
       <section
         onClick={triggerFileInput}
         onDragOver={e => handleDragOver(e, 'workloadDefinition')}
         onDragLeave={handleDragLeave}
         onDrop={e => handleDrop(e, 'workloadDefinition')}
-        className={`rounded-2xl border-2 border-dashed p-6 shadow-[var(--surface-shadow)] transition-colors cursor-pointer ${
+        className={`rounded-2xl border-2 border-dashed p-4 shadow-[var(--surface-shadow)] transition-colors cursor-pointer ${
           isDragging && dropMode === 'workloadDefinition'
             ? 'border-blue-500 bg-blue-50/50'
             : 'border-[var(--surface-border)] bg-[var(--surface)] hover:border-[var(--text-soft)]'
@@ -355,7 +414,7 @@ export default function Workloads() {
             <Upload className="h-5 w-5 text-[var(--accent)]" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-[var(--text-strong)]">Import Workload Definitions</h2>
+            <h2 className="text-base font-semibold text-[var(--text-strong)]">Import Workload Definitions</h2>
             <p className="mt-1 text-xs text-[var(--text-soft)]">Drag & drop a workloads.json file to bulk import workload definitions with pre-defined packages.</p>
             <p className="mt-1 text-xs text-[var(--text-soft)]">Or click to browse.</p>
           </div>
@@ -410,6 +469,13 @@ export default function Workloads() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {isBulkImporting && (
+            <div className="flex items-center gap-2 text-sm text-[var(--text-soft)]">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Importing workloads...</span>
             </div>
           )}
 
@@ -663,59 +729,7 @@ export default function Workloads() {
         </ModalContent>
       </Modal>
 
-      <div>
-        <h2 className="text-lg font-semibold text-[var(--text-strong)] mb-4">Definitions and Latest Revision</h2>
-        {workloads.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-[var(--surface-border)] p-8 text-center">
-            <p className="text-sm text-[var(--text-soft)]">No workload definitions yet</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {workloads.map(item => (
-              <Card key={item.id}>
-                <CardHeader>
-                  <CardTitle>{item.name}</CardTitle>
-                  <CardDescription>{item.description}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="secondary">
-                      {item.latestRevision?.revision ?? 'No revision yet'}
-                    </Badge>
-                    <Badge variant="outline" className={statusBadgeClass(item.latestRevision?.state)}>
-                      {item.latestRevision?.state ?? 'n/a'}
-                    </Badge>
-                  </div>
-                  <div className="text-xs text-[var(--text-soft)] space-y-1">
-                    <p>Created: {new Date(item.createdAt).toLocaleDateString()}</p>
-                    <p>Revisions: {item.revisionCount ?? 0}</p>
-                  </div>
-                </CardContent>
-                <CardFooter className="flex justify-between">
-                  <Button variant="outline" size="sm" onClick={() => openWorkloadDetail(item.id)}>
-                    <Info className="mr-1.5 h-3.5 w-3.5" />
-                    View Details
-                  </Button>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => {
-                        setWorkloadToDelete(item)
-                        setIsDeleteModalOpen(true)
-                      }}
-                      className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                      title="Delete workload"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
+
     </div>
   )
 }

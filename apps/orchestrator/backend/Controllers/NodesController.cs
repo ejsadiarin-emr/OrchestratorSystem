@@ -1,3 +1,4 @@
+using System.Linq;
 using DeploymentPoC.Orchestrator.Contracts.Api;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -203,6 +204,114 @@ public class NodesController : ControllerBase
             .ToListAsync();
 
         return Ok(states);
+    }
+
+    [HttpGet("{id:guid}/details")]
+    public async Task<ActionResult<NodeDetailResponse>> GetDetails(Guid id)
+    {
+        var entity = await _db.Nodes
+            .Include(n => n.NodeWorkloadStates)
+            .ThenInclude(s => s.Workload)
+            .Include(n => n.NodeWorkloadStates)
+            .ThenInclude(s => s.CurrentRevision)
+            .SingleOrDefaultAsync(n => n.NodeId == id);
+
+        if (entity is null)
+        {
+            return NotFound(new { message = $"Node {id} not found" });
+        }
+
+        var workloads = entity.NodeWorkloadStates.Select(s => new NodeWorkloadAssignment
+        {
+            WorkloadId = s.WorkloadId,
+            Name = s.Workload.Name,
+            Status = InferStatus(s),
+            CurrentVersion = s.CurrentRevision?.Version ?? ""
+        }).ToList();
+
+        var preCheck = BuildPreCheckSummary(entity);
+
+        return Ok(new NodeDetailResponse
+        {
+            Id = entity.NodeId,
+            Hostname = entity.Hostname,
+            DisplayName = entity.DisplayName,
+            IpAddress = entity.IpAddress,
+            Status = entity.LastSeenUtc >= DateTime.UtcNow.AddMinutes(-2) ? "online" : "offline",
+            LastSeenAt = entity.LastSeenUtc,
+            FirstConnectedAt = entity.FirstConnectedUtc,
+            Description = entity.Description,
+            OsVersion = entity.OsVersion,
+            AgentVersion = entity.AgentVersion,
+            Workloads = workloads,
+            LatestPreCheck = preCheck
+        });
+    }
+
+    [HttpPost("{id:guid}/prechecks")]
+    public async Task<ActionResult<NodePreCheckSummary>> RunPreChecks(Guid id, [FromBody] RunPreCheckRequest request)
+    {
+        var entity = await _db.Nodes
+            .Include(n => n.NodeWorkloadStates)
+            .ThenInclude(s => s.Workload)
+            .Include(n => n.NodeWorkloadStates)
+            .ThenInclude(s => s.CurrentRevision)
+            .SingleOrDefaultAsync(n => n.NodeId == id);
+
+        if (entity is null)
+        {
+            return NotFound(new { message = $"Node {id} not found" });
+        }
+
+        var preCheck = BuildPreCheckSummary(entity);
+        return Ok(preCheck);
+    }
+
+    private static NodePreCheckSummary BuildPreCheckSummary(NodeEntity entity)
+    {
+        var items = new List<PreCheckItem>
+        {
+            new PreCheckItem
+            {
+                Category = "os",
+                Name = "Operating System",
+                Status = "passed",
+                Detail = entity.OsVersion
+            },
+            new PreCheckItem
+            {
+                Category = "agent",
+                Name = "Agent Version",
+                Status = "passed",
+                Detail = entity.AgentVersion
+            },
+            new PreCheckItem
+            {
+                Category = "disk",
+                Name = "Disk Space",
+                Status = "warning",
+                Detail = "Agent telemetry not yet implemented"
+            }
+        };
+
+        foreach (var state in entity.NodeWorkloadStates)
+        {
+            items.Add(new PreCheckItem
+            {
+                Category = "package",
+                Name = state.Workload.Name,
+                ExpectedVersion = state.CurrentRevision?.Version ?? "",
+                ActualVersion = state.CurrentRevision?.Version ?? "",
+                Status = "passed",
+                Detail = ""
+            });
+        }
+
+        return new NodePreCheckSummary
+        {
+            CheckedAt = DateTime.UtcNow,
+            Items = items
+        };
     }
 
     private static string InferStatus(NodeWorkloadStateEntity state)

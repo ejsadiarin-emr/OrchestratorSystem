@@ -274,7 +274,17 @@ export default function Dashboard() {
                           <span className="block text-xs text-[var(--text-soft)]">{node.hostname}</span>
                         </RowTrigger>
                       </td>
-                      <td className="px-3 py-2 text-[var(--text-soft)]">{node.health}</td>
+                      <td className="px-3 py-2">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          node.health === 'online'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : node.health === 'warning'
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {node.health}
+                        </span>
+                      </td>
                       <td className="px-3 py-2 text-[var(--text-soft)]">{node.assignedWorkload ? 1 : 0}</td>
                       <td className="px-3 py-2 text-[var(--text-soft)]">
                         <p className="truncate">
@@ -296,8 +306,20 @@ export default function Dashboard() {
                         </div>
                       </td>
                       <td className="px-3 py-2 text-[var(--text-soft)]">{node.lastCheckInAge}</td>
-                      <td className="px-3 py-2 text-[var(--text-soft)]">{node.riskLevel}</td>
-                      <td className="px-3 py-2 font-mono text-xs text-[var(--text-soft)]">{node.reasonCode || '-'}</td>
+                      <td className="px-3 py-2">
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          node.riskLevel === 'low'
+                            ? 'bg-blue-100 text-blue-800'
+                            : node.riskLevel === 'med'
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {node.riskLevel}
+                        </span>
+                      </td>
+                      <td className={`px-3 py-2 font-mono text-xs ${node.reasonCode && node.health !== 'online' ? 'text-red-600 font-medium' : 'text-[var(--text-soft)]'}`}>
+                        {node.reasonCode || '-'}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

@@ -359,3 +359,30 @@ export interface WorkloadJsonEntry {
   packages: string[]
   preUpgradeActions?: unknown[]
 }
+
+export interface NodeWorkloadAssignment {
+  workloadId: string
+  workloadName: string
+  revision: string
+  status: string
+}
+
+export interface PreCheckItem {
+  category: string
+  name: string
+  status: 'passed' | 'failed' | 'warning'
+  detail?: string
+  expectedVersion?: string
+  actualVersion?: string
+}
+
+export interface NodePreCheckSummary {
+  runAt: string
+  overallStatus: 'passed' | 'failed' | 'warning'
+  items: PreCheckItem[]
+}
+
+export interface NodeDetailResponse extends Node {
+  workloads: NodeWorkloadAssignment[]
+  latestPreCheck?: NodePreCheckSummary
+}

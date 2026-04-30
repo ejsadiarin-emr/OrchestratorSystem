@@ -52,3 +52,47 @@ public class UpdateNodeDisplayNameRequest
     [StringLength(255)]
     public string DisplayName { get; set; } = string.Empty;
 }
+
+public class NodeDetailResponse
+{
+    public Guid Id { get; set; }
+    public string Hostname { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string IpAddress { get; set; } = string.Empty;
+    public string Status { get; set; } = "Offline";
+    public DateTime LastSeenAt { get; set; }
+    public DateTime? FirstConnectedAt { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public string OsVersion { get; set; } = string.Empty;
+    public string AgentVersion { get; set; } = string.Empty;
+    public List<NodeWorkloadAssignment> Workloads { get; set; } = new();
+    public NodePreCheckSummary LatestPreCheck { get; set; } = new();
+}
+
+public class NodeWorkloadAssignment
+{
+    public Guid WorkloadId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string CurrentVersion { get; set; } = string.Empty;
+}
+
+public class NodePreCheckSummary
+{
+    public DateTime CheckedAt { get; set; } = DateTime.UtcNow;
+    public List<PreCheckItem> Items { get; set; } = new();
+}
+
+public class PreCheckItem
+{
+    public string Category { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string Detail { get; set; } = string.Empty;
+    public string? ExpectedVersion { get; set; }
+    public string? ActualVersion { get; set; }
+}
+
+public class RunPreCheckRequest
+{
+}

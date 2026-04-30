@@ -7,6 +7,7 @@ import {
   updateNodeDisplayName,
 } from '../services/api'
 import type { EnrollmentToken, Node } from '../types'
+import NodeDetailsModal from '../components/NodeDetailsModal'
 
 export default function Nodes() {
   const [nodes, setNodes] = useState<Node[]>([])
@@ -30,6 +31,7 @@ export default function Nodes() {
 
   const [deletingNode, setDeletingNode] = useState<Node | null>(null)
   const [showConsumedTokens, setShowConsumedTokens] = useState(false)
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
 
   const refresh = async () => {
     const [nodeData, tokenData] = await Promise.all([listNodes(), listEnrollmentTokens()])
@@ -208,7 +210,15 @@ export default function Nodes() {
               </thead>
               <tbody className="divide-y divide-[var(--surface-border)]">
                 {nodes.map(node => (
-                  <tr key={node.id}>
+                  <tr
+                    key={node.id}
+                    className="cursor-pointer hover:bg-[var(--surface-subtle)]"
+                    onClick={(e) => {
+                      const target = e.target as HTMLElement
+                      if (target.closest('button') || target.closest('input')) return
+                      setSelectedNodeId(node.id)
+                    }}
+                  >
                     <td className="px-6 py-4">
                       {editingNodeId === node.id ? (
                         <input
@@ -444,6 +454,12 @@ export default function Nodes() {
           </div>
         </div>
       )}
+
+      <NodeDetailsModal
+        nodeId={selectedNodeId}
+        open={!!selectedNodeId}
+        onClose={() => setSelectedNodeId(null)}
+      />
 
       {/* Delete Confirmation Modal */}
       {deletingNode && (

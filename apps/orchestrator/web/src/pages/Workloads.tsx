@@ -332,166 +332,174 @@ export default function Workloads() {
         </div>
       )}
 
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-[var(--text-strong)]">Workload Definitions</h2>
-          <span className="rounded-full bg-[var(--surface-subtle)] px-2.5 py-0.5 text-xs font-medium text-[var(--text-soft)]">
-            {workloads.length}
-          </span>
-        </div>
-        {workloads.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-[var(--surface-border)] p-8 text-center">
-            <p className="text-sm text-[var(--text-soft)]">No workload definitions yet</p>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
+        {/* Left: Workload Definitions */}
+        <div className="lg:col-span-3">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-[var(--text-strong)]">Workload Definitions</h2>
+            <span className="rounded-full bg-[var(--surface-subtle)] px-2.5 py-0.5 text-xs font-medium text-[var(--text-soft)]">
+              {workloads.length}
+            </span>
           </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {workloads.map(item => (
-              <Card key={item.id}>
-                <CardHeader>
-                  <CardTitle>{item.name}</CardTitle>
-                  <CardDescription>{item.description}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="secondary">
-                      {item.latestRevision?.revision ?? 'No revision yet'}
-                    </Badge>
-                    <Badge variant="outline" className={statusBadgeClass(item.latestRevision?.state)}>
-                      {item.latestRevision?.state ?? 'n/a'}
-                    </Badge>
-                  </div>
-                  <div className="text-xs text-[var(--text-soft)] space-y-1">
-                    <p>Created: {new Date(item.createdAt).toLocaleDateString()}</p>
-                    <p>Revisions: {item.revisionCount ?? 0}</p>
-                  </div>
-                </CardContent>
-                <CardFooter className="flex justify-between">
-                  <Button variant="outline" size="sm" onClick={() => openWorkloadDetail(item.id)}>
-                    <Info className="mr-1.5 h-3.5 w-3.5" />
-                    View Details
-                  </Button>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => {
-                        setWorkloadToDelete(item)
-                        setIsDeleteModalOpen(true)
-                      }}
-                      className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                      title="Delete workload"
-                    >
-                      <Trash2 className="h-4 w-4" />
+          {workloads.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-[var(--surface-border)] p-8 text-center">
+              <p className="text-sm text-[var(--text-soft)]">No workload definitions yet</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {workloads.map(item => (
+                <Card key={item.id}>
+                  <CardHeader>
+                    <CardTitle>{item.name}</CardTitle>
+                    <CardDescription>{item.description}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="secondary">
+                        {item.latestRevision?.revision ?? 'No revision yet'}
+                      </Badge>
+                      <Badge variant="outline" className={statusBadgeClass(item.latestRevision?.state)}>
+                        {item.latestRevision?.state ?? 'n/a'}
+                      </Badge>
+                    </div>
+                    <div className="text-xs text-[var(--text-soft)] space-y-1">
+                      <p>Created: {new Date(item.createdAt).toLocaleDateString()}</p>
+                      <p>Revisions: {item.revisionCount ?? 0}</p>
+                    </div>
+                  </CardContent>
+                  <CardFooter className="flex justify-between">
+                    <Button variant="outline" size="sm" onClick={() => openWorkloadDetail(item.id)}>
+                      <Info className="mr-1.5 h-3.5 w-3.5" />
+                      View Details
                     </Button>
-                  </div>
-                </CardFooter>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <section
-        onClick={triggerFileInput}
-        onDragOver={e => handleDragOver(e, 'workloadDefinition')}
-        onDragLeave={handleDragLeave}
-        onDrop={e => handleDrop(e, 'workloadDefinition')}
-        className={`rounded-2xl border-2 border-dashed p-4 shadow-[var(--surface-shadow)] transition-colors cursor-pointer ${
-          isDragging && dropMode === 'workloadDefinition'
-            ? 'border-blue-500 bg-blue-50/50'
-            : 'border-[var(--surface-border)] bg-[var(--surface)] hover:border-[var(--text-soft)]'
-        }`}
-      >
-        <input
-          type="file"
-          accept=".json,.jsonc"
-          onChange={handleFileInputChange}
-          className="hidden"
-          ref={fileInputRef}
-        />
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent)]/10">
-            <Upload className="h-5 w-5 text-[var(--accent)]" />
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-[var(--text-strong)]">Import Workload Definitions</h2>
-            <p className="mt-1 text-xs text-[var(--text-soft)]">Drag & drop a workloads.json file to bulk import workload definitions with pre-defined packages.</p>
-            <p className="mt-1 text-xs text-[var(--text-soft)]">Or click to browse.</p>
-          </div>
-        </div>
-      </section>
-
-      {bulkFile && (
-        <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-glass)] p-4 space-y-3">
-          <div className="flex items-center gap-3">
-            <FileJson className="h-5 w-5 text-[var(--text-soft)]" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-[var(--text-strong)] truncate">{bulkFileName}</p>
-              <p className="text-xs text-[var(--text-soft)]">{formatBytes(bulkFile.size)}</p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => {
+                          setWorkloadToDelete(item)
+                          setIsDeleteModalOpen(true)
+                        }}
+                        className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                        title="Delete workload"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardFooter>
+                </Card>
+              ))}
             </div>
-            <button
-              onClick={resetBulkImport}
-              className="text-xs text-[var(--text-soft)] hover:text-[var(--text-strong)]"
+          )}
+        </div>
+
+        {/* Right: Import Sidebar */}
+        <div className="lg:col-span-1">
+          <div className="space-y-4">
+            <section
+              onClick={triggerFileInput}
+              onDragOver={e => handleDragOver(e, 'workloadDefinition')}
+              onDragLeave={handleDragLeave}
+              onDrop={e => handleDrop(e, 'workloadDefinition')}
+              className={`rounded-xl border-2 border-dashed p-4 text-center transition-colors cursor-pointer ${
+                isDragging && dropMode === 'workloadDefinition'
+                  ? 'border-blue-500 bg-blue-50/50'
+                  : 'border-[var(--surface-border)] bg-[var(--surface)] hover:border-[var(--text-soft)]'
+              }`}
             >
-              Remove
-            </button>
-          </div>
-
-          {bulkError && (
-            <div className="flex items-start gap-2 rounded-lg bg-red-50 p-3 text-sm text-red-700">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{bulkError}</span>
-            </div>
-          )}
-
-          {bulkResults.length > 0 && (
-            <div className="rounded-md border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3 space-y-2">
-              <p className="text-sm font-medium text-[var(--text-strong)]">Import Results</p>
-              <div className="space-y-1">
-                {bulkResults.map((result, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex items-center justify-between rounded-md px-3 py-2 text-sm ${
-                      result.status === 'success'
-                        ? 'bg-green-50 text-green-800'
-                        : 'bg-red-50 text-red-800'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2 font-medium">
-                      {result.status === 'success' ? (
-                        <CheckCircle2 className="h-4 w-4" />
-                      ) : (
-                        <XCircle className="h-4 w-4" />
-                      )}
-                      {result.name} ({result.slug})
-                    </span>
-                    <span>{result.status === 'success' ? 'Success' : `Failed: ${result.reason ?? ''}`}</span>
-                  </div>
-                ))}
+              <input
+                type="file"
+                accept=".json,.jsonc"
+                onChange={handleFileInputChange}
+                className="hidden"
+                ref={fileInputRef}
+              />
+              <div className="flex flex-col items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--accent)]/10">
+                  <Upload className="h-4 w-4 text-[var(--accent)]" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--text-strong)]">Import</h3>
+                  <p className="mt-1 text-[11px] text-[var(--text-soft)] leading-tight">
+                    Drop a workloads.json here or click to browse.
+                  </p>
+                </div>
               </div>
-            </div>
-          )}
+            </section>
 
-          {isBulkImporting && (
-            <div className="flex items-center gap-2 text-sm text-[var(--text-soft)]">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Importing workloads...</span>
-            </div>
-          )}
+            {bulkFile && (
+              <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-glass)] p-3 space-y-3">
+                <div className="flex items-center gap-2">
+                  <FileJson className="h-4 w-4 text-[var(--text-soft)] shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-[var(--text-strong)] truncate">{bulkFileName}</p>
+                    <p className="text-[10px] text-[var(--text-soft)]">{formatBytes(bulkFile.size)}</p>
+                  </div>
+                  <button
+                    onClick={resetBulkImport}
+                    className="text-[10px] text-[var(--text-soft)] hover:text-[var(--text-strong)]"
+                  >
+                    Remove
+                  </button>
+                </div>
 
-          <button
-            onClick={handleBulkImport}
-            disabled={isBulkImporting || !bulkFile}
-            className="inline-flex items-center justify-center rounded-lg px-6 py-3 text-sm font-semibold text-white shadow-lg transition-all duration-200 ease-out hover:scale-[1.02] hover:shadow-xl active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 disabled:hover:shadow-lg"
-            style={{
-              background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%)',
-            }}
-          >
-            <Upload className="mr-2 h-4 w-4" />
-            {isBulkImporting ? 'Importing...' : 'Import Workloads'}
-          </button>
+                {bulkError && (
+                  <div className="flex items-start gap-1.5 rounded-lg bg-red-50 p-2 text-xs text-red-700">
+                    <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+                    <span>{bulkError}</span>
+                  </div>
+                )}
+
+                {bulkResults.length > 0 && (
+                  <div className="rounded-md border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-2 space-y-1.5">
+                    <p className="text-xs font-medium text-[var(--text-strong)]">Results</p>
+                    <div className="space-y-1">
+                      {bulkResults.map((result, idx) => (
+                        <div
+                          key={idx}
+                          className={`flex items-center justify-between rounded-md px-2 py-1.5 text-xs ${
+                            result.status === 'success'
+                              ? 'bg-green-50 text-green-800'
+                              : 'bg-red-50 text-red-800'
+                          }`}
+                        >
+                          <span className="flex items-center gap-1.5 font-medium truncate">
+                            {result.status === 'success' ? (
+                              <CheckCircle2 className="h-3 w-3 shrink-0" />
+                            ) : (
+                              <XCircle className="h-3 w-3 shrink-0" />
+                            )}
+                            <span className="truncate">{result.name}</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {isBulkImporting && (
+                  <div className="flex items-center gap-2 text-xs text-[var(--text-soft)]">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    <span>Importing...</span>
+                  </div>
+                )}
+
+                <button
+                  onClick={handleBulkImport}
+                  disabled={isBulkImporting || !bulkFile}
+                  className="inline-flex w-full items-center justify-center rounded-lg px-4 py-2 text-xs font-semibold text-white shadow transition-all duration-200 ease-out hover:scale-[1.02] hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 disabled:hover:shadow"
+                  style={{
+                    background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%)',
+                  }}
+                >
+                  <Upload className="mr-1.5 h-3 w-3" />
+                  {isBulkImporting ? 'Importing...' : 'Import'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-      )}
+      </div>
 
       <Modal open={isRevisionModalOpen} onOpenChange={setIsRevisionModalOpen}>
         <ModalContent className="w-[min(92vw,40rem)]">

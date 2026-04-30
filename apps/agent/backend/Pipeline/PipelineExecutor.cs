@@ -82,6 +82,29 @@ public class PipelineExecutor
             context.Payload.Mode,
             targetPackages.Count);
 
+        // Phase 0.5: Pre-workload init steps
+        var isRollback = string.Equals(context.Payload.Mode, "rollback", StringComparison.OrdinalIgnoreCase);
+        var defaultShell = string.IsNullOrWhiteSpace(context.Payload.DefaultShell) ? "powershell" : context.Payload.DefaultShell;
+        var initStepExecutor = new InitStepExecutor();
+        var initStepCb = CreateInitStepStatusCallback(sendMessageAsync, context, ct);
+
+        if (!isRollback)
+        {
+            var preWorkloadSteps = context.Payload.PreWorkloadSteps ?? new List<string>();
+            for (int i = 0; i < preWorkloadSteps.Count; i++)
+            {
+                var stepName = $"PreWorkload_{i}";
+                var envVars = InitStepEnvVars.Build(context, null, null);
+                var result = await initStepExecutor.ExecuteAsync(preWorkloadSteps[i], defaultShell, stepName, envVars, 60, -1, initStepCb, ct);
+                context.RecordStep(stepName, -1, "", result.Success, result.ErrorOutput);
+                if (!result.Success)
+                {
+                    _logger.LogError("PreWorkload step {StepName} failed: {Error}", stepName, result.ErrorOutput);
+                    return await FinalizeAsync(sendMessageAsync, context, ct);
+                }
+            }
+        }
+
         // Phase 1: Uninstall removed packages in reverse PackageIndex order
         foreach (var package in removed.OrderByDescending(p => p.PackageIndex))
         {
@@ -137,6 +160,31 @@ public class PipelineExecutor
                 await SendStepStatusAsync(sendMessageAsync, context, "PreCheckSkipped", package, true, null, stepCt);
                 context.RecordStep("PreCheckSkipped", package.PackageIndex, package.PackageId, true, null);
                 continue;
+            }
+
+            // Step 0.1: Pre-init steps (per package)
+            if (!isRollback)
+            {
+                var preInitSteps = package.PreInitSteps ?? new List<string>();
+                var preInitFailed = false;
+                for (int si = 0; si < preInitSteps.Count; si++)
+                {
+                    var stepName = $"PreInit_{package.PackageIndex}_{si}";
+                    var envVars = InitStepEnvVars.Build(context, package, null);
+                    var result = await initStepExecutor.ExecuteAsync(preInitSteps[si], defaultShell, stepName, envVars, 60, package.PackageIndex, initStepCb, ct);
+                    context.RecordStep(stepName, package.PackageIndex, package.PackageId, result.Success, result.ErrorOutput);
+                    if (!result.Success)
+                    {
+                        _logger.LogWarning("PreInit step {StepName} failed for package {PackageName}: {Error} — skipping install", stepName, package.Name, result.ErrorOutput);
+                        preInitFailed = true;
+                        break;
+                    }
+                }
+
+                if (preInitFailed)
+                {
+                    continue;
+                }
             }
 
             // Step 1: Acquire artifact
@@ -217,6 +265,50 @@ public class PipelineExecutor
                     verifyResult.Error);
                 return await FinalizeAsync(sendMessageAsync, context, ct);
             }
+
+            // Step 3.1: Post-init steps (per package)
+            if (!isRollback)
+            {
+                var postInitSteps = package.PostInitSteps ?? new List<string>();
+                for (int si = 0; si < postInitSteps.Count; si++)
+                {
+                    var stepName = $"PostInit_{package.PackageIndex}_{si}";
+                    var envVars = InitStepEnvVars.Build(context, package, destinationPath);
+                    var result = await initStepExecutor.ExecuteAsync(postInitSteps[si], defaultShell, stepName, envVars, 120, package.PackageIndex, initStepCb, ct);
+                    context.RecordStep(stepName, package.PackageIndex, package.PackageId, result.Success, result.ErrorOutput);
+                    if (!result.Success)
+                    {
+                        _logger.LogWarning("PostInit step {StepName} failed for package {PackageName}: {Error}", stepName, package.Name, result.ErrorOutput);
+                    }
+                }
+            }
+        }
+
+        // Phase 3: Post-workload init steps
+        if (!isRollback)
+        {
+            var postWorkloadSteps = context.Payload.PostWorkloadSteps ?? new List<string>();
+            string? lastArtifactPath = null;
+            if (packagesToInstall.Count > 0)
+            {
+                var lastPkg = packagesToInstall[^1];
+                var lastDestFileName = !string.IsNullOrEmpty(lastPkg.ArtifactFileName)
+                    ? $"{lastPkg.PackageId}-{lastPkg.Version}-{lastPkg.ArtifactFileName}"
+                    : $"{lastPkg.PackageId}-{lastPkg.Version}";
+                lastArtifactPath = Path.Combine(Path.GetTempPath(), "agent-artifacts", context.RunId, lastDestFileName);
+            }
+
+            for (int i = 0; i < postWorkloadSteps.Count; i++)
+            {
+                var stepName = $"PostWorkload_{i}";
+                var envVars = InitStepEnvVars.Build(context, null, lastArtifactPath);
+                var result = await initStepExecutor.ExecuteAsync(postWorkloadSteps[i], defaultShell, stepName, envVars, 180, -1, initStepCb, ct);
+                context.RecordStep(stepName, -1, "", result.Success, result.ErrorOutput);
+                if (!result.Success)
+                {
+                    _logger.LogError("PostWorkload step {StepName} failed: {Error}", stepName, result.ErrorOutput);
+                }
+            }
         }
 
         return await FinalizeAsync(sendMessageAsync, context, ct);
@@ -257,6 +349,30 @@ public class PipelineExecutor
         {
             // Best-effort: don't let send failures break the pipeline
         }
+    }
+
+    private static Func<StepStatusPayload, Task> CreateInitStepStatusCallback(
+        Func<MessageEnvelope, CancellationToken, Task> sendMessageAsync,
+        PipelineContext context, CancellationToken ct)
+    {
+        return async (payload) =>
+        {
+            var envelope = new MessageEnvelope
+            {
+                MessageType = MessageTypes.StepStatus,
+                RunId = context.RunId,
+                AgentId = context.AgentId,
+                Sequence = context.Sequence,
+                Payload = payload
+            };
+            try
+            {
+                using var sendCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                sendCts.CancelAfter(TimeSpan.FromSeconds(5));
+                await sendMessageAsync(envelope, sendCts.Token);
+            }
+            catch { /* best-effort */ }
+        };
     }
 
     private static async Task<PipelineResult> FinalizeAsync(

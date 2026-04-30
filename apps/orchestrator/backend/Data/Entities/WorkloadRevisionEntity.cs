@@ -8,5 +8,8 @@ public sealed class WorkloadRevisionEntity
     public string Version { get; set; } = string.Empty;
     public bool IsPublished { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public string PreWorkloadStepsJson { get; set; } = "[]";
+    public string PostWorkloadStepsJson { get; set; } = "[]";
+    public string DefaultShell { get; set; } = "powershell";
     public List<WorkloadPackageEntity> Packages { get; set; } = new();
 }

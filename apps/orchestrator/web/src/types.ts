@@ -110,6 +110,8 @@ export interface WorkloadPackageStep {
   packageVersion: string
   packageIndex: number
   stepId: string
+  preInitSteps?: string[]
+  postInitSteps?: string[]
 }
 
 export interface WorkloadRevision {
@@ -120,6 +122,9 @@ export interface WorkloadRevision {
   createdAt?: string
   publishedAt?: string
   packageSteps?: WorkloadPackageStep[]
+  preWorkloadSteps?: string[]
+  postWorkloadSteps?: string[]
+  defaultShell?: string
 }
 
 export interface WorkloadDefinition {
@@ -278,6 +283,9 @@ export interface CreateWorkloadRevisionRequest {
   workloadId: string
   revision: string
   packageSteps: WorkloadPackageStep[]
+  preWorkloadSteps?: string[]
+  postWorkloadSteps?: string[]
+  defaultShell?: string
 }
 
 export interface CreateWorkloadRunRequest {

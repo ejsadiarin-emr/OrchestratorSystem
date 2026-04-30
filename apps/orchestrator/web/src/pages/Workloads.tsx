@@ -56,6 +56,20 @@ export default function Workloads() {
   const [dropMode, setDropMode] = useState<DropMode>(null)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [workloadToDelete, setWorkloadToDelete] = useState<WorkloadDefinition | null>(null)
+  const [expandedInitSteps, setExpandedInitSteps] = useState<Set<string>>(new Set())
+
+  const toggleInitSteps = (stepId: string) => {
+    setExpandedInitSteps(prev => {
+      const next = new Set(prev)
+      if (next.has(stepId)) next.delete(stepId)
+      else next.add(stepId)
+      return next
+    })
+  }
+
+  const hasInitSteps = (step: { preInitSteps?: string[]; postInitSteps?: string[] }) =>
+    (step.preInitSteps && step.preInitSteps.length > 0) ||
+    (step.postInitSteps && step.postInitSteps.length > 0)
 
   // Drag-drop state for bulk workloads
   const [bulkFile, setBulkFile] = useState<File | null>(null)
@@ -549,12 +563,65 @@ export default function Workloads() {
                             )}
                           </div>
                         </div>
-                        <div className="mt-2 space-y-1">
-                          {revision.packageSteps?.map(step => (
-                            <p key={step.stepId} className="text-xs text-[var(--text-soft)]">
-                              {step.packageIndex}. {step.packageName} {step.packageVersion}
+                        <div className="mt-2 space-y-2">
+                          {revision.defaultShell && (
+                            <p className="text-[11px] text-[var(--text-soft)]">
+                              Shell: <span className="font-mono text-[var(--text-strong)]">{revision.defaultShell}</span>
                             </p>
+                          )}
+                          {revision.packageSteps?.map(step => (
+                            <div key={step.stepId} className="rounded-md border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs text-[var(--text-soft)]">
+                                  {step.packageIndex}. {step.packageName} {step.packageVersion}
+                                </p>
+                                {hasInitSteps(step) && (
+                                  <button
+                                    onClick={() => toggleInitSteps(step.stepId)}
+                                    className="text-[11px] text-[var(--accent)] hover:text-[var(--accent-strong)] focus:outline-none"
+                                  >
+                                    {expandedInitSteps.has(step.stepId) ? 'Collapse' : 'Init Steps'}
+                                  </button>
+                                )}
+                              </div>
+                              {hasInitSteps(step) && expandedInitSteps.has(step.stepId) && (
+                                <div className="mt-2 space-y-1.5 border-t border-[var(--surface-border)] pt-2">
+                                  {step.preInitSteps && step.preInitSteps.length > 0 && (
+                                    <div>
+                                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-soft)]">Pre-init</p>
+                                      {step.preInitSteps.map((cmd, ci) => (
+                                        <pre key={`pre-${ci}`} className="mt-0.5 rounded bg-slate-900 px-2 py-1 text-[11px] font-mono text-slate-200 overflow-x-auto">{cmd}</pre>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {step.postInitSteps && step.postInitSteps.length > 0 && (
+                                    <div>
+                                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-soft)]">Post-init</p>
+                                      {step.postInitSteps.map((cmd, ci) => (
+                                        <pre key={`post-${ci}`} className="mt-0.5 rounded bg-slate-900 px-2 py-1 text-[11px] font-mono text-slate-200 overflow-x-auto">{cmd}</pre>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                           ))}
+                          {revision.postWorkloadSteps && revision.postWorkloadSteps.length > 0 && (
+                            <div className="mt-3 rounded-lg border-2 border-dashed border-[var(--surface-border)] bg-[var(--surface-subtle)] p-3">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--text-soft)] mb-2">Post-workload Steps</p>
+                              {revision.postWorkloadSteps.map((cmd, ci) => (
+                                <pre key={`pws-${ci}`} className="mt-1 rounded bg-slate-900 px-2 py-1 text-[11px] font-mono text-slate-200 overflow-x-auto">{cmd}</pre>
+                              ))}
+                            </div>
+                          )}
+                          {revision.preWorkloadSteps && revision.preWorkloadSteps.length > 0 && (
+                            <div className="rounded-md border border-[var(--surface-border)] bg-[var(--surface-subtle)] p-2">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-soft)]">Pre-workload Steps</p>
+                              {revision.preWorkloadSteps.map((cmd, ci) => (
+                                <pre key={`prws-${ci}`} className="mt-1 rounded bg-slate-900 px-2 py-1 text-[11px] font-mono text-slate-200 overflow-x-auto">{cmd}</pre>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}

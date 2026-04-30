@@ -868,7 +868,10 @@ export async function getWorkload(workloadId: string): Promise<WorkloadDefinitio
       version: string
       isPublished: boolean
       createdAtUtc: string
-      packages: Array<{ packageId: string; packageIndex: number; packageName: string; packageVersion: string }>
+      preWorkloadSteps?: string[] | null
+      postWorkloadSteps?: string[] | null
+      defaultShell?: string | null
+      packages: Array<{ packageId: string; packageIndex: number; packageName: string; packageVersion: string; preInitSteps?: string[] | null; postInitSteps?: string[] | null }>
     }>
   }
   const revisions = data.revisions.map(r => ({
@@ -878,12 +881,17 @@ export async function getWorkload(workloadId: string): Promise<WorkloadDefinitio
     state: r.isPublished ? ('published' as const) : ('draft' as const),
     createdAt: r.createdAtUtc,
     publishedAt: r.isPublished ? r.createdAtUtc : undefined,
+    preWorkloadSteps: r.preWorkloadSteps ?? [],
+    postWorkloadSteps: r.postWorkloadSteps ?? [],
+    defaultShell: r.defaultShell ?? 'powershell',
     packageSteps: r.packages.map(p => ({
       packageId: p.packageId,
       packageName: p.packageName,
       packageVersion: p.packageVersion,
       packageIndex: p.packageIndex,
       stepId: `step-${p.packageIndex}`,
+      preInitSteps: p.preInitSteps ?? [],
+      postInitSteps: p.postInitSteps ?? [],
     })),
   }))
   return {

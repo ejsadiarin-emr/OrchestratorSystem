@@ -687,15 +687,31 @@ export default function WorkloadRuns() {
                   {selectedRun.timeline.map(item => (
                     <div
                       key={`${selectedRun.id}-${item.sequence}`}
-                      className="rounded-md border border-slate-800 bg-slate-900/80 px-2 py-1.5"
+                      className={`rounded-md border px-2 py-1.5 ${
+                        item.stepId.startsWith('PreInit_') || item.stepId.startsWith('PostInit_') || item.stepId.startsWith('PreWorkload_') || item.stepId.startsWith('PostWorkload_')
+                          ? item.status === 'failed'
+                            ? 'border-red-800 bg-red-950/60'
+                            : item.status === 'running'
+                              ? 'border-blue-800 bg-blue-950/60'
+                              : 'border-slate-800 bg-slate-900/80'
+                          : 'border-slate-800 bg-slate-900/80'
+                      }`}
                     >
                       <p className="text-slate-300">
                         [{String(item.sequence).padStart(2, '0')}] {item.messageType} #{item.packageIndex}{' '}
-                        {item.stepId}
+                        <span className={item.stepId.startsWith('PreInit_') || item.stepId.startsWith('PostInit_') || item.stepId.startsWith('PreWorkload_') || item.stepId.startsWith('PostWorkload_')
+                            ? 'text-cyan-300'
+                            : ''
+                        }>{item.stepId}</span>
                       </p>
                       <p className="mt-1 text-[11px] text-slate-400">
                         {item.status} &bull; {formatTimestamp(item.at)} &bull; {item.detail}
                       </p>
+                      {item.status === 'failed' && item.detail && (item.stepId.startsWith('PreInit_') || item.stepId.startsWith('PostInit_') || item.stepId.startsWith('PreWorkload_') || item.stepId.startsWith('PostWorkload_')) && (
+                        <div className="mt-1.5 rounded bg-slate-950 px-2 py-1 font-mono text-[10px] text-slate-400 whitespace-pre-wrap max-h-24 overflow-y-auto">
+                          {item.detail}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -297,7 +297,7 @@ cat -la apps/orchestrator/backend/bin/Release/net10.0/win-x64/artifacts/{package
 
 ### Step 5: Run a workload
 
-The system supports three run modes: **install**, **update**, and **rollback**.
+The system supports three run modes: **install**, **update**, and **uninstall**.
 
 #### 5a. Fresh install (baseline)
 
@@ -341,28 +341,25 @@ Create a new revision with changed packages, then run in **update** mode. The ag
 - Phase 1: Uninstall removed packages (reverse order)
 - Phase 2: Install added and changed packages (normal order)
 
-#### 5c. Rollback
+#### 5c. Uninstall
 
-Rollback reverts a node to a previous revision by treating it as a differential run in reverse.
+Uninstall removes all packages in a revision from the target nodes.
 
 1. Navigate to **Workload Runs** → **Create Run**
 2. Select:
    - Workload
-   - The **older** revision you want to roll back to (e.g., `1.0.0`)
-   - Target node
-   - Mode: **rollback**
+   - Revision (published revision whose packages should be removed)
+   - Target nodes
+   - Mode: **uninstall**
 3. Click **Create Run**
-4. The agent computes the diff between the node's current state and the target revision:
-   - Packages present in the current revision but not in the target are **uninstalled**
-   - Packages present in the target but not in the current are **installed**
-   - Packages with different versions are **replaced**
+4. The agent uninstalls every package in the revision from the node in reverse order
 
 ### Step 6: Observe execution (agent-side)
 
 On the target node, the agent:
 1. Receives the workload assignment via SignalR
 2. For **install** mode: downloads and installs every package in the revision
-3. For **update** and **rollback** modes:
+3. For **update** and **uninstall** modes:
    - Compares the target revision against the node's `CurrentPackages` (from the last completed run)
    - Computes diff: added, removed, changed, unchanged
    - Skips unchanged packages entirely
@@ -389,7 +386,7 @@ curl -X POST http://localhost:5124/api/workloads/bulk \
   -d @test-workloads/workloads-newer.json
 ```
 
-After import, publish each workload's revision, then create runs in `install`, `update`, and `rollback` modes to observe differential behavior.
+After import, publish each workload's revision, then create runs in `install`, `update`, and `uninstall` modes to observe differential behavior.
 
 ## API Reference
 

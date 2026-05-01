@@ -1,0 +1,298 @@
+using System.Net;
+using System.Text;
+using System.Text.Json;
+using DeploymentPoC.Agent.Steps;
+using DeploymentPoC.Contracts.Runtime.Probes;
+using DeploymentPoC.Contracts.Runtime.RunPayloads;
+using Microsoft.AspNetCore.Http;
+using Xunit;
+using ProbesPreCheckStatus = DeploymentPoC.Contracts.Runtime.Probes.PreCheckStatus;
+
+namespace DeploymentPoC.Agent.Tests;
+
+public sealed class DetectEndpointTests
+{
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    private static DefaultHttpContext CreateContext(DetectRequest request)
+    {
+        var context = new DefaultHttpContext();
+        var json = JsonSerializer.Serialize(request, JsonOptions);
+        var bytes = Encoding.UTF8.GetBytes(json);
+        context.Request.Body = new MemoryStream(bytes);
+        context.Request.ContentType = "application/json";
+        context.Response.Body = new MemoryStream();
+        return context;
+    }
+
+    private static async Task<DetectResponse> ReadResponseAsync(HttpContext context)
+    {
+        context.Response.Body.Seek(0, SeekOrigin.Begin);
+        var json = await new StreamReader(context.Response.Body).ReadToEndAsync();
+        return JsonSerializer.Deserialize<DetectResponse>(json, JsonOptions)!;
+    }
+
+    [Fact]
+    public async Task ValidRequest_WithMultiplePackages_ReturnsPerPackageResults()
+    {
+        var request = new DetectRequest
+        {
+            Packages = new List<PackageDetectionRequest>
+            {
+                new() { PackageId = Guid.NewGuid(), Name = "pkg-a", Version = "1.0.0", Detection = new DetectionConfig { Type = "file", Path = "cmd.exe" } },
+                new() { PackageId = Guid.NewGuid(), Name = "pkg-b", Version = "1.0.0", Detection = new DetectionConfig { Type = "file", Path = "nonexistent-file-xyz.abc" } }
+            }
+        };
+
+        var context = CreateContext(request);
+        await DetectEndpointHandler.HandleAsync(context);
+
+        Assert.Equal(200, context.Response.StatusCode);
+
+        var response = await ReadResponseAsync(context);
+        Assert.NotNull(response);
+        Assert.Equal(2, response.Results.Count);
+
+        Assert.Equal("pkg-a", response.Results[0].Name);
+        Assert.Equal("pkg-b", response.Results[1].Name);
+
+        Assert.NotNull(response.DiskInfo);
+        Assert.NotNull(response.DiskInfo.Drive);
+    }
+
+    [Fact]
+    public async Task EmptyPackagesArray_Returns200WithEmptyResults()
+    {
+        var request = new DetectRequest { Packages = new List<PackageDetectionRequest>() };
+        var context = CreateContext(request);
+
+        await DetectEndpointHandler.HandleAsync(context);
+
+        Assert.Equal(200, context.Response.StatusCode);
+
+        var response = await ReadResponseAsync(context);
+        Assert.NotNull(response);
+        Assert.Empty(response.Results);
+        Assert.NotNull(response.DiskInfo);
+    }
+
+    [Fact]
+    public async Task PackageWithFileDetectionType_ReturnsCorrectStatusAndVersion()
+    {
+        var cmdPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+        var request = new DetectRequest
+        {
+            Packages = new List<PackageDetectionRequest>
+            {
+                new()
+                {
+                    PackageId = Guid.NewGuid(),
+                    Name = "cmd",
+                    Version = "1.0.0",
+                    Detection = new DetectionConfig
+                    {
+                        Type = "file",
+                        Path = cmdPath,
+                        ExpectedVersion = null
+                    }
+                }
+            }
+        };
+
+        var context = CreateContext(request);
+        await DetectEndpointHandler.HandleAsync(context);
+
+        Assert.Equal(200, context.Response.StatusCode);
+
+        var response = await ReadResponseAsync(context);
+        Assert.Single(response.Results);
+        Assert.Equal(ProbesPreCheckStatus.AlreadySatisfied, response.Results[0].Status);
+    }
+
+    [Fact]
+    public async Task PackageWithVersionManifestDetectionType_ReturnsCorrectStatus()
+    {
+        var cmdPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+
+        var request = new DetectRequest
+        {
+            Packages = new List<PackageDetectionRequest>
+            {
+                new()
+                {
+                    PackageId = Guid.NewGuid(),
+                    Name = "cmd-manifest",
+                    Version = "1.0.0",
+                    Detection = new DetectionConfig
+                    {
+                        Type = "version_manifest",
+                        Path = cmdPath,
+                        ExpectedVersion = null
+                    }
+                }
+            }
+        };
+
+        var context = CreateContext(request);
+        await DetectEndpointHandler.HandleAsync(context);
+
+        Assert.Equal(200, context.Response.StatusCode);
+
+        var response = await ReadResponseAsync(context);
+        Assert.Single(response.Results);
+        Assert.Equal(ProbesPreCheckStatus.AlreadySatisfied, response.Results[0].Status);
+    }
+
+    [Fact]
+    public async Task PackageWithVersionManifest_WithMatchingVersion_ReturnsAlreadySatisfied()
+    {
+        var cmdPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+        var actualVersion = System.Diagnostics.FileVersionInfo.GetVersionInfo(cmdPath).FileVersion ?? "10.0";
+
+        var request = new DetectRequest
+        {
+            Packages = new List<PackageDetectionRequest>
+            {
+                new()
+                {
+                    PackageId = Guid.NewGuid(),
+                    Name = "cmd-match",
+                    Version = actualVersion,
+                    Detection = new DetectionConfig
+                    {
+                        Type = "version_manifest",
+                        Path = cmdPath,
+                        ExpectedVersion = actualVersion
+                    }
+                }
+            }
+        };
+
+        var context = CreateContext(request);
+        await DetectEndpointHandler.HandleAsync(context);
+
+        Assert.Equal(200, context.Response.StatusCode);
+
+        var response = await ReadResponseAsync(context);
+        Assert.Single(response.Results);
+        Assert.Equal(ProbesPreCheckStatus.AlreadySatisfied, response.Results[0].Status);
+    }
+
+    [Fact]
+    public async Task PackageWithRegistryDetectionType_ReturnsNotPresent()
+    {
+        var request = new DetectRequest
+        {
+            Packages = new List<PackageDetectionRequest>
+            {
+                new()
+                {
+                    PackageId = Guid.NewGuid(),
+                    Name = "registry-pkg",
+                    Version = "1.0.0",
+                    Detection = new DetectionConfig
+                    {
+                        Type = "registry",
+                        Path = @"HKLM\Software\Test",
+                        ExpectedVersion = "1.0.0"
+                    }
+                }
+            }
+        };
+
+        var context = CreateContext(request);
+        await DetectEndpointHandler.HandleAsync(context);
+
+        Assert.Equal(200, context.Response.StatusCode);
+
+        var response = await ReadResponseAsync(context);
+        Assert.Single(response.Results);
+        Assert.Equal(ProbesPreCheckStatus.NotPresent, response.Results[0].Status);
+    }
+
+    [Fact]
+    public async Task NullBody_Returns400()
+    {
+        var context = new DefaultHttpContext();
+        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes("invalid json"));
+        context.Request.ContentType = "application/json";
+        context.Response.Body = new MemoryStream();
+
+        await DetectEndpointHandler.HandleAsync(context);
+
+        Assert.Equal(400, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task NonExistentFile_WithVersionManifest_ReturnsNotPresent()
+    {
+        var request = new DetectRequest
+        {
+            Packages = new List<PackageDetectionRequest>
+            {
+                new()
+                {
+                    PackageId = Guid.NewGuid(),
+                    Name = "missing",
+                    Version = "1.0.0",
+                    Detection = new DetectionConfig
+                    {
+                        Type = "version_manifest",
+                        Path = "nonexistent-command-xyz123",
+                        ExpectedVersion = "1.0.0"
+                    }
+                }
+            }
+        };
+
+        var context = CreateContext(request);
+        await DetectEndpointHandler.HandleAsync(context);
+
+        Assert.Equal(200, context.Response.StatusCode);
+
+        var response = await ReadResponseAsync(context);
+        Assert.Single(response.Results);
+        Assert.Equal(ProbesPreCheckStatus.NotPresent, response.Results[0].Status);
+    }
+
+    [Fact]
+    public async Task UnsupportedDetectionType_ReturnsNotPresent()
+    {
+        var request = new DetectRequest
+        {
+            Packages = new List<PackageDetectionRequest>
+            {
+                new()
+                {
+                    PackageId = Guid.NewGuid(),
+                    Name = "unsupported",
+                    Version = "1.0.0",
+                    Detection = new DetectionConfig
+                    {
+                        Type = "unknown_type",
+                        Path = "test",
+                        ExpectedVersion = "1.0.0"
+                    }
+                }
+            }
+        };
+
+        var context = CreateContext(request);
+        await DetectEndpointHandler.HandleAsync(context);
+
+        Assert.Equal(200, context.Response.StatusCode);
+
+        var response = await ReadResponseAsync(context);
+        Assert.Single(response.Results);
+        Assert.Equal(ProbesPreCheckStatus.NotPresent, response.Results[0].Status);
+    }
+
+    private sealed class DetectResponse
+    {
+        public List<PackageDetectionResult> Results { get; set; } = new();
+        public DiskInfo DiskInfo { get; set; } = new();
+    }
+}

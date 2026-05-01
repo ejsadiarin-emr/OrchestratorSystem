@@ -1,5 +1,7 @@
 # Workload Differential Update & Rollback — Grill Me Decisions Log
 
+> **See also:** [update-mode-deep-dive.md](update-mode-deep-dive.md) — detailed explanations, walkthrough examples, configuration reference, and industry analogies for the upgrade behavior model.
+
 ## Context
 The agent's workload-runs pipeline currently treats `install`, `update`, and `rollback` identically — it runs the full `AcquireArtifact → InstallOrUpgrade → PostInstallVerify` sequence for every package in the target revision, regardless of mode. This grilling session resolved how to make `update` and `rollback` actually work as differential operations for the PoC.
 
@@ -14,7 +16,7 @@ The agent's workload-runs pipeline currently treats `install`, `update`, and `ro
 | 3 | Revision state accuracy | `CurrentRevisionId` updates only on `Complete` |
 | 4 | Diff computation | Agent computes diff from raw package lists |
 | 5 | Diff identity | Diff by `Name` (not `PackageId`) |
-| 6 | Changed packages | Install target version directly (no uninstall-first) |
+| 6 | Changed packages | ~~Install target version directly (no uninstall-first)~~ Superseded by Decision 18 |
 | 7 | Uninstall step | Add `UninstallPackage` step with `UninstallArgs` |
 | 8 | Uninstall artifact acquisition | Conditional — only if `UninstallArgs` contains `{artifactPath}` |
 | 9 | Post-uninstall verification | Skipped for PoC |
@@ -26,6 +28,7 @@ The agent's workload-runs pipeline currently treats `install`, `update`, and `ro
 | 15 | `CurrentPackages` shape | Full `PackageAssignment` with all config |
 | 16 | `UninstallArgs` source | Manifest (primary) + pattern registry (fallback) |
 | 17 | Test data | `workloads-newer.json` removes `test-agent` |
+| 18 | Upgrade behavior for changed packages | Per-package `UpgradeBehavior` enum on `InstallAdapterConfig`: `InPlace` (default), `UninstallFirst`, `SideBySide` |
 
 ---
 
@@ -116,16 +119,14 @@ unchanged = intersection where Version equals
 
 ---
 
-## Decision 6: Changed Packages = Install Target Version (No Uninstall-First)
+## Decision 6: Changed Packages = Install Target Version (No Uninstall-First) — SUPERSEDED by Decision 18
 **Question:** When a package like `git` changes from `2.47.1` → `2.48.1`, should the agent uninstall the old version first, then install the new one?
 
-**Decision:** No. Run the **target version's installer** directly. It does **not** uninstall the old version first.
+**Original Decision:** No. Run the **target version's installer** directly. It does **not** uninstall the old version first.
 
-**Pipeline for changed packages:** `AcquireArtifact → InstallOrUpgrade → PostInstallVerify` (same as added).
+**Original Rationale:** Most well-behaved installers (MSI, Inno Setup, NSIS, WiX Burn) detect existing installations and perform in-place upgrades/downgrades automatically. Running the new installer is the standard deployment tool behavior (e.g., SCCM, Intune, Chocolatey). This avoids needing to locate and run the old version's uninstaller.
 
-**Rationale:** Most well-behaved installers (MSI, Inno Setup, NSIS, WiX Burn) detect existing installations and perform in-place upgrades/downgrades automatically. Running the new installer is the standard deployment tool behavior (e.g., SCCM, Intune, Chocolatey). This avoids needing to locate and run the old version's uninstaller.
-
-If a future use case truly needs "uninstall old then install new" (clean reinstall), a dedicated `reinstall` action can be added later.
+**Superseded by Decision 18:** The original assumption that "most installers handle in-place upgrades" was too broad. Python's installer (WiX-based) installs side-by-side rather than upgrading — the old version remains alongside the new one, causing `PostInstallVerify` to detect the wrong version. The correct approach is per-package `UpgradeBehavior` (Decision 18), which lets workload authors declare whether a package needs uninstall-first, in-place upgrade, or side-by-side handling.
 
 ---
 
@@ -279,6 +280,64 @@ The other packages (git, nodejs, python, 7zip) are changed in both directions.
 
 ---
 
-## Open Decisions
+## Decision 18: Per-Package `UpgradeBehavior` for Changed Packages
+**Question:** Decision 6 assumed all installers handle in-place upgrades ("just run the new installer"). Python 3.13→3.14 proved this wrong: the WiX installer installs side-by-side, leaving the old version present, causing PostInstallVerify to detect the wrong version. How should the system handle packages whose installers don't perform in-place upgrades?
 
-- *None.*
+**Decision:** Add a per-package `UpgradeBehavior` enum to `InstallAdapterConfig` with three values:
+
+**Category 1 — Self-upgrading installers (`InPlace`):**
+The installer itself handles removing the old version safely while preserving data. Running an uninstall first would be destructive — you'd lose databases, configs, user data. The correct behavior is to just run the new installer and let it handle everything.
+
+Examples: DBeaver (NSIS replaces existing install), SQL Server (setup.exe performs in-place upgrade preserving databases), Visual Studio (installer upgrades in-place preserving settings), Git (Inno Setup detects and replaces), 7-Zip (NSIS overwrites existing), Notepad++ (NSIS overwrites existing).
+
+**Category 2 — Side-by-side installers (`UninstallFirst`):**
+The installer doesn't remove the old version — it installs alongside it. If you just run the new installer, the old version remains on disk and in the registry/PATH, causing PostInstallVerify to detect the wrong version. The correct behavior is to explicitly uninstall the old version first, then install the new version.
+
+Examples: Python (WiX Burn bundle installs side-by-side — 3.13 persists alongside 3.14), .NET Runtime (side-by-side installs, old version persists), Node.js major versions (side-by-side in different directories), any WiX bundle without UpgradeTable.
+
+**Category 3 — Custom migration required (`SideBySide`):**
+Neither simple approach works. The app has state that needs transformation — export config from old version, install new version alongside, migrate/transform data, then clean up old version. This is handled by `postInitSteps` running custom migration scripts while both versions coexist.
+
+Examples: SQL Server named instance migration (both instances must run during cutover), web server role swaps (old serves traffic while new warms up), apps requiring registry/file transformation between versions.
+
+| Value | Behavior | Use Case |
+|---|---|---|
+| `InPlace` (**default**) | Run new installer only; trust it to upgrade in-place | Self-upgrading installers: DBeaver, SQL Server, Visual Studio, Git, 7-Zip |
+| `UninstallFirst` | Uninstall old version → install new version | Side-by-side installers: Python, .NET Runtime, Node.js LTS → new major |
+| `SideBySide` | Install new alongside old; cleanup via `postInitSteps` | Custom migration: SQL Server named instance swaps, config transformation between versions |
+
+**Contract changes:**
+
+1. **`InstallAdapterConfig`** (shared contract, agent + orchestrator):
+```csharp
+public string UpgradeBehavior { get; set; } = "InPlace";  // "InPlace" | "UninstallFirst" | "SideBySide"
+```
+
+2. **`PackageEntity`** (orchestrator database):
+```csharp
+public string UpgradeBehavior { get; set; } = "InPlace";
+```
+
+3. **PipelineExecutor** (agent): When `DiffResult.Changed` contains a package with `UpgradeBehavior == "UninstallFirst"`, the executor adds an `UninstallPackage` step for the **old** package before running `AcquireArtifact → InstallOrUpgrade → PostInstallVerify` for the new one. The uninstall uses `CurrentPackages`'s `InstallAdapter` config for that package — the old version's command and `UninstallArgs`.
+
+**Execution order for changed packages:**
+
+| UpgradeBehavior | Phase 1 (Uninstall) | Phase 2 (Install) |
+|---|---|---|
+| `InPlace` | — | Acquire → InstallOrUpgrade → PostInstallVerify |
+| `UninstallFirst` | UninstallPackage (old config) | Acquire → PostInstallVerify (skip detection of removal) → InstallOrUpgrade → PostInstallVerify |
+| `SideBySide` | — | Acquire → InstallOrUpgrade → PostInitSteps (cleanup) → PostInstallVerify |
+
+**Rationale:** This mirrors the Intune Supersedence model where administrators explicitly choose per-relationship whether an upgrade is "in-place update" or "uninstall-then-replace." The `UpgradeBehavior` is a **package-level** property — intrinsic to how the package's installer works, not workload-level. Python always needs `UninstallFirst` regardless of which workload references it. SQL Server always needs `InPlace` because uninstalling first would destroy databases. This avoids repeating the same setting across workload definitions.
+
+The default `InPlace` preserves backward compatibility: existing packages continue to work as before (just run the new installer). Workload authors only need to explicitly set `UninstallFirst` or `SideBySide` for packages whose installers don't clean up old versions. Setting `InPlace` on a package like SQL Server is critical — running `UninstallFirst` on a stateful app would destroy data (databases, connection strings, configs) that the in-place upgrade is designed to preserve.
+
+**Industry precedent:**
+- **MSI Major Upgrades**: The new package's UpgradeTable declares how to find/remove old versions — the package itself defines upgrade behavior
+- **Intune Supersedence**: Admin explicitly chooses "App Update" (in-place) vs "App Replacement" (uninstall-first) per supersedence relationship
+- **Chocolatey**: Always uninstalls-then-installs using the OLD package's uninstall script — package-authored upgrade logic
+
+**Failure mode for `UninstallFirst`:** If uninstall fails, the pipeline halts (consistent with Decision 11: fail-fast on uninstall errors). The node remains in a partially-migrated state: old version uninstalled but new version not yet installed. This is recoverable — the operator can retry the update, and since the old version is now gone, the next run will treat it as a fresh `added` package rather than a `changed` one.
+
+- **Decision 19:** For `SideBySide` packages, should PostInstallVerify target the new version's detection path even when old version remains temporarily? Or should `SideBySide` packages skip PostInstallVerify and rely on postInitSteps for validation?
+- **Decision 20:** Should `UpgradeBehavior` be versioned (per `PackageEntity` version) or truly intrinsic to the package name? Current assumption: intrinsic to package name — Python always side-by-side regardless of version.

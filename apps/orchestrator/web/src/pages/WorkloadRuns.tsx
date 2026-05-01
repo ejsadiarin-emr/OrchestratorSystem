@@ -5,11 +5,12 @@ import {
   getWorkload,
   getWorkloadRunSteps,
   listNodes,
+  listNodeWorkloadStates,
   listWorkloadRuns,
   listWorkloads,
 } from '../services/api'
 import { subscribeToRunProgress } from '../services/realtime'
-import type { Node, WorkloadDefinition, WorkloadRevision, WorkloadRun, WorkloadRunStatus } from '../types'
+import type { Node, NodeWorkloadState, WorkloadDefinition, WorkloadRevision, WorkloadRun, WorkloadRunStatus } from '../types'
 import { Modal, ModalContent, ModalDescription, ModalFooter, ModalHeader, ModalTitle } from '../components/ui/modal'
 
 const filterValues: Array<WorkloadRunStatus | 'all'> = [
@@ -20,8 +21,6 @@ const filterValues: Array<WorkloadRunStatus | 'all'> = [
   'failed',
   'cancelled',
 ]
-
-const runModes: Array<WorkloadRun['mode']> = ['install', 'update', 'rollback']
 
 export default function WorkloadRuns() {
   const [runs, setRuns] = useState<WorkloadRun[]>([])
@@ -39,13 +38,15 @@ export default function WorkloadRuns() {
     revisionId: '',
     mode: 'install' as WorkloadRun['mode'],
     targetNodeIds: [] as string[],
-    forceInstall: false,
+    reinstall: false,
   })
   const [workloadDetails, setWorkloadDetails] = useState<(WorkloadDefinition & { revisions: WorkloadRevision[] }) | null>(null)
   const [nodeFilter, setNodeFilter] = useState('')
   const [formErrors, setFormErrors] = useState<Record<string, string>>({})
   const [showSummary, setShowSummary] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [nodeWorkloadStates, setNodeWorkloadStates] = useState<NodeWorkloadState[]>([])
+  const [uninstallConfirmed, setUninstallConfirmed] = useState(false)
 
   const unsubscribers = useRef<Map<string, () => void>>(new Map())
 
@@ -109,7 +110,7 @@ export default function WorkloadRuns() {
       revisionId: '',
       mode: 'install',
       targetNodeIds: [],
-      forceInstall: false,
+      reinstall: false,
     })
     setWorkloadDetails(null)
     setNodeFilter('')
@@ -118,11 +119,17 @@ export default function WorkloadRuns() {
     setSubmitting(false)
     setIsCreateModalOpen(true)
     setSuccess(null)
+    setNodeWorkloadStates([])
+    setUninstallConfirmed(false)
 
     if (defaultWorkload) {
-      getWorkload(defaultWorkload.id)
-        .then(w => {
+      Promise.all([
+        getWorkload(defaultWorkload.id),
+        listNodeWorkloadStates(),
+      ])
+        .then(([w, states]) => {
           setWorkloadDetails(w)
+          setNodeWorkloadStates(states)
           const published = w.revisions
             .filter(r => r.state === 'published')
             .sort((a, b) => {
@@ -144,12 +151,17 @@ export default function WorkloadRuns() {
     setForm(current => ({ ...current, workloadId, revisionId: '' }))
     setFormErrors(current => ({ ...current, workloadId: '' }))
     setWorkloadDetails(null)
+    setNodeWorkloadStates([])
 
     if (!workloadId) return
 
     try {
-      const w = await getWorkload(workloadId)
+      const [w, states] = await Promise.all([
+        getWorkload(workloadId),
+        listNodeWorkloadStates(),
+      ])
       setWorkloadDetails(w)
+      setNodeWorkloadStates(states)
       const published = w.revisions
         .filter(r => r.state === 'published')
         .sort((a, b) => {
@@ -176,9 +188,40 @@ export default function WorkloadRuns() {
       })
   }, [workloadDetails])
 
+  const onlineNodeIds = useMemo(
+    () => new Set(nodes.filter(n => n.status === 'online').map(n => n.id)),
+    [nodes],
+  )
+
+  const selectedOnlineNodeIds = useMemo(
+    () => form.targetNodeIds.filter(id => onlineNodeIds.has(id)),
+    [form.targetNodeIds, onlineNodeIds],
+  )
+
+  const nodeWorkloadStateByNodeId = useMemo(() => {
+    const map = new Map<string, NodeWorkloadState>()
+    for (const s of nodeWorkloadStates) {
+      if (s.workloadId === form.workloadId) {
+        map.set(s.nodeId, s)
+      }
+    }
+    return map
+  }, [nodeWorkloadStates, form.workloadId])
+
+  const uninstallNodes = useMemo(
+    () => nodes.filter(n => n.status === 'online' && nodeWorkloadStateByNodeId.has(n.id)),
+    [nodes, nodeWorkloadStateByNodeId],
+  )
+
   const filteredNodes = useMemo(() => {
     const filterText = nodeFilter.toLowerCase()
-    return nodes
+    let result = nodes
+
+    if (form.mode === 'uninstall') {
+      result = result.filter(node => nodeWorkloadStateByNodeId.has(node.id))
+    }
+
+    return result
       .filter(
         node =>
           node.hostname.toLowerCase().includes(filterText) ||
@@ -190,26 +233,38 @@ export default function WorkloadRuns() {
         if (aOnline !== bOnline) return bOnline - aOnline
         return a.hostname.localeCompare(b.hostname)
       })
-  }, [nodes, nodeFilter])
+  }, [nodes, nodeFilter, form.mode, nodeWorkloadStateByNodeId])
 
-  const onlineNodeIds = useMemo(
-    () => new Set(nodes.filter(n => n.status === 'online').map(n => n.id)),
-    [nodes],
-  )
+  const selectedRevision = useMemo(() => {
+    return publishedRevisions.find(r => r.id === form.revisionId)
+  }, [publishedRevisions, form.revisionId])
 
-  const selectedOnlineNodeIds = useMemo(
-    () => form.targetNodeIds.filter(id => onlineNodeIds.has(id)),
-    [form.targetNodeIds, onlineNodeIds],
-  )
+  const revisionVersionById = useMemo(() => {
+    const map = new Map<string, string>()
+    if (workloadDetails) {
+      for (const r of workloadDetails.revisions) {
+        map.set(r.id, r.revision)
+      }
+    }
+    return map
+  }, [workloadDetails])
+
+  const anySelectedNodeHasRevision = useMemo(() => {
+    if (!selectedRevision) return false
+    return form.targetNodeIds.some(nodeId => {
+      const state = nodeWorkloadStateByNodeId.get(nodeId)
+      return state && state.workloadRevision === selectedRevision.id
+    })
+  }, [form.targetNodeIds, selectedRevision, nodeWorkloadStateByNodeId])
 
   const validateForm = useCallback((): boolean => {
     const errors: Record<string, string> = {}
     if (!form.workloadId) errors.workloadId = 'Select a workload'
-    if (!form.revisionId) errors.revisionId = 'Select a published revision'
+    if (form.mode === 'install' && !form.revisionId) errors.revisionId = 'Select a published revision'
     if (selectedOnlineNodeIds.length === 0) errors.targetNodeIds = 'Select at least one online node'
     setFormErrors(errors)
     return Object.keys(errors).length === 0
-  }, [form.workloadId, form.revisionId, selectedOnlineNodeIds.length])
+  }, [form.workloadId, form.mode, form.revisionId, selectedOnlineNodeIds.length])
 
   const handleCreateRun = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -321,12 +376,14 @@ export default function WorkloadRuns() {
                       {workloads.find(w => w.id === form.workloadId)?.name ?? form.workloadId}
                     </p>
                   </div>
-                  <div>
-                    <span className="text-[var(--text-soft)]">Revision:</span>
-                    <p className="font-medium text-[var(--text-strong)]">
-                      {publishedRevisions.find(r => r.id === form.revisionId)?.revision ?? form.revisionId}
-                    </p>
-                  </div>
+                  {form.mode === 'install' && (
+                    <div>
+                      <span className="text-[var(--text-soft)]">Revision:</span>
+                      <p className="font-medium text-[var(--text-strong)]">
+                        {publishedRevisions.find(r => r.id === form.revisionId)?.revision ?? form.revisionId}
+                      </p>
+                    </div>
+                  )}
                   <div>
                     <span className="text-[var(--text-soft)]">Mode:</span>
                     <p className="font-medium text-[var(--text-strong)] uppercase">{form.mode}</p>
@@ -343,190 +400,322 @@ export default function WorkloadRuns() {
                     .map(n => n.hostname)
                     .join(', ')}
                 </div>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-4">
-                  <label className="block text-sm text-[var(--text-soft)]">
-                    Workload
-                    <select
-                      value={form.workloadId}
-                      onChange={event => handleWorkloadChange(event.target.value)}
-                      className={`mt-1 w-full rounded-lg border px-3 py-2 ${
-                        formErrors.workloadId ? 'border-rose-300' : 'border-[var(--surface-border)]'
-                      }`}
-                    >
-                      <option value="">Select workload...</option>
-                      {workloads.map(workload => (
-                        <option key={workload.id} value={workload.id}>
-                          {workload.name}
-                        </option>
-                      ))}
-                    </select>
-                    {formErrors.workloadId && (
-                      <span className="mt-1 block text-xs text-rose-600">{formErrors.workloadId}</span>
-                    )}
-                  </label>
-
-                  <label className="block text-sm text-[var(--text-soft)]">
-                    Revision
-                    <select
-                      value={form.revisionId}
-                      onChange={event => {
-                        setForm(current => ({ ...current, revisionId: event.target.value }))
-                        setFormErrors(current => ({ ...current, revisionId: '' }))
-                      }}
-                      disabled={publishedRevisions.length === 0}
-                      className={`mt-1 w-full rounded-lg border px-3 py-2 ${
-                        formErrors.revisionId ? 'border-rose-300' : 'border-[var(--surface-border)]'
-                      } disabled:opacity-50`}
-                    >
-                      {publishedRevisions.length === 0 ? (
-                        <option value="">No published revisions</option>
-                      ) : (
-                        publishedRevisions.map(revision => (
-                          <option key={revision.id} value={revision.id}>
-                            {revision.revision}
-                          </option>
-                        ))
-                      )}
-                    </select>
-                    {formErrors.revisionId && (
-                      <span className="mt-1 block text-xs text-rose-600">{formErrors.revisionId}</span>
-                    )}
-                  </label>
-
-                  <label className="block text-sm text-[var(--text-soft)]">
-                    Mode
-                    <select
-                      value={form.mode}
-                      onChange={event =>
-                        setForm(current => ({ ...current, mode: event.target.value as WorkloadRun['mode'] }))
-                      }
-                      className="mt-1 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2"
-                    >
-                      {runModes.map(mode => (
-                        <option key={mode} value={mode}>
-                          {mode}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="flex items-center gap-2 text-sm text-[var(--text-soft)]">
-                    <input
-                      type="checkbox"
-                      checked={form.forceInstall}
-                      onChange={event =>
-                        setForm(current => ({ ...current, forceInstall: event.target.checked }))
-                      }
-                      className="h-4 w-4 rounded border-[var(--surface-border)]"
-                    />
-                    <span>Force reinstall</span>
-                  </label>
-                </div>
-
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm text-[var(--text-soft)]">Target nodes</label>
-                    <div className="flex gap-2 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const onlineIds = filteredNodes.filter(n => n.status === 'online').map(n => n.id)
-                          setForm(current => ({ ...current, targetNodeIds: onlineIds }))
-                          setFormErrors(current => ({ ...current, targetNodeIds: '' }))
-                        }}
-                        className="text-[var(--accent)] hover:underline"
-                      >
-                        Select all online
-                      </button>
-                      <span className="text-[var(--text-soft)]">|</span>
-                      <button
-                        type="button"
-                        onClick={() => setForm(current => ({ ...current, targetNodeIds: [] }))}
-                        className="text-[var(--accent)] hover:underline"
-                      >
-                        Clear all
-                      </button>
-                    </div>
-                  </div>
-
-                  <input
-                    type="text"
-                    placeholder="Filter nodes..."
-                    value={nodeFilter}
-                    onChange={event => setNodeFilter(event.target.value)}
-                    className="w-full rounded-lg border border-[var(--surface-border)] px-3 py-2 text-sm"
-                  />
-
-                  <div
-                    className={`max-h-48 overflow-y-auto rounded-lg border p-2 space-y-1 ${
-                      formErrors.targetNodeIds ? 'border-rose-300' : 'border-[var(--surface-border)]'
-                    }`}
-                  >
-                    {filteredNodes.length === 0 ? (
-                      <p className="px-2 py-4 text-center text-sm text-[var(--text-soft)]">
-                        No nodes match filter
+                {form.mode === 'uninstall' && selectedRevision ? (
+                  <>
+                    <div className="rounded-lg border border-red-300 bg-red-50 p-4 space-y-3">
+                      <h4 className="text-sm font-bold text-red-800">
+                        Warning: This will permanently remove packages from nodes.
+                      </h4>
+                      <p className="text-sm text-red-700">
+                        The following packages will be uninstalled from {selectedOnlineNodeIds.length} node(s):
                       </p>
-                    ) : (
-                      filteredNodes.map(node => {
-                        const isOnline = node.status === 'online'
-                        const isSelected = form.targetNodeIds.includes(node.id)
+                      <ul className="list-disc list-inside text-sm text-red-700 space-y-0.5">
+                        {(selectedRevision.packageSteps ?? []).map(pkg => (
+                          <li key={pkg.packageId}>{pkg.packageName} {pkg.packageVersion}</li>
+                        ))}
+                      </ul>
+                      <div className="space-y-1 text-xs text-red-600">
+                        {nodes
+                          .filter(n => form.targetNodeIds.includes(n.id))
+                          .map(n => {
+                            const state = nodeWorkloadStateByNodeId.get(n.id)
+                            const installedVersion = state
+                              ? revisionVersionById.get(state.workloadRevision)
+                              : undefined
+                            const pkgs = (selectedRevision.packageSteps ?? [])
+                              .map(p => `${p.packageName} ${p.packageVersion}`)
+                              .join(', ')
+                            return (
+                              <div key={n.id}>
+                                {n.hostname} ({installedVersion ? `v${installedVersion}` : 'unknown'}): {pkgs}
+                              </div>
+                            )
+                          })}
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 text-sm text-red-800 font-medium">
+                      <input
+                        type="checkbox"
+                        checked={uninstallConfirmed}
+                        onChange={event => setUninstallConfirmed(event.target.checked)}
+                        className="h-4 w-4 rounded border-red-300"
+                      />
+                      I understand that this action cannot be undone.
+                    </label>
+                  </>
+                ) : (
+                  <div className="space-y-1 mt-2">
+                    {nodes
+                      .filter(n => form.targetNodeIds.includes(n.id))
+                      .map(n => {
+                        const state = nodeWorkloadStateByNodeId.get(n.id)
+                        const installedVersion = state
+                          ? revisionVersionById.get(state.workloadRevision)
+                          : undefined
+                        const targetVersion = selectedRevision?.revision
                         return (
-                          <label
-                            key={node.id}
-                            className={`flex items-center gap-3 rounded-md px-2 py-2 text-sm ${
-                              isOnline
-                                ? 'cursor-pointer hover:bg-[var(--surface-subtle)]'
-                                : 'opacity-50 cursor-not-allowed'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              disabled={!isOnline}
-                              aria-label={node.displayName || node.hostname}
-                              onChange={event => {
-                                if (!isOnline) return
-                                const newIds = event.target.checked
-                                  ? [...form.targetNodeIds, node.id]
-                                  : form.targetNodeIds.filter(id => id !== node.id)
-                                setForm(current => ({ ...current, targetNodeIds: newIds }))
-                                setFormErrors(current => ({ ...current, targetNodeIds: '' }))
-                              }}
-                              className="h-4 w-4 rounded border-[var(--surface-border)]"
-                            />
-                            <span
-                              className={`inline-block h-2 w-2 rounded-full ${
-                                isOnline ? 'bg-emerald-500' : 'bg-slate-400'
-                              }`}
-                            />
-                            <span className="flex-1 font-medium text-[var(--text-strong)]">
-                              {node.displayName || node.hostname}
-                            </span>
-                            {node.osVersion && (
-                              <span className="rounded-full border border-[var(--surface-border)] bg-[var(--surface)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--text-soft)]">
-                                {node.osVersion.split(' ')[0]}
+                          <div key={n.id} className="flex items-center gap-2 text-xs">
+                            <span className="font-medium text-[var(--text-strong)]">{n.hostname}</span>
+                            {!installedVersion && (
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                                Fresh install
                               </span>
                             )}
-                          </label>
+                            {installedVersion && targetVersion && installedVersion !== targetVersion && (
+                              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                                Update: v{installedVersion} → v{targetVersion}
+                              </span>
+                            )}
+                            {installedVersion && targetVersion && installedVersion === targetVersion && (
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                                Reinstall: v{targetVersion}
+                              </span>
+                            )}
+                          </div>
                         )
+                      })}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="flex gap-3 mb-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUninstallConfirmed(false)
+                      setForm(current => ({ ...current, mode: 'install' }))
+                    }}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium border-2 transition ${
+                      form.mode === 'install'
+                        ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
+                        : 'border-[var(--surface-border)] bg-[var(--surface)] text-[var(--text-soft)] hover:border-[var(--accent)] hover:text-[var(--accent)]'
+                    }`}
+                  >
+                    Install
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUninstallConfirmed(false)
+                      setForm(current => {
+                        const qualifyingIds = new Set(uninstallNodes.map(n => n.id))
+                        return {
+                          ...current,
+                          mode: 'uninstall',
+                          targetNodeIds: current.targetNodeIds.filter(id => qualifyingIds.has(id)),
+                        }
                       })
+                    }}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium border-2 transition ${
+                      form.mode === 'uninstall'
+                        ? 'border-[var(--status-danger-border)] bg-[var(--status-danger-border)] text-white'
+                        : 'border-[var(--surface-border)] bg-[var(--surface)] text-[var(--text-soft)] hover:border-[var(--status-danger-border)] hover:text-[var(--status-danger-text)]'
+                    }`}
+                  >
+                    Uninstall
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="space-y-4">
+                    <label className="block text-sm text-[var(--text-soft)]">
+                      Workload
+                      <select
+                        value={form.workloadId}
+                        onChange={event => handleWorkloadChange(event.target.value)}
+                        className={`mt-1 w-full rounded-lg border px-3 py-2 ${
+                          formErrors.workloadId ? 'border-rose-300' : 'border-[var(--surface-border)]'
+                        }`}
+                      >
+                        <option value="">Select workload...</option>
+                        {workloads.map(workload => (
+                          <option key={workload.id} value={workload.id}>
+                            {workload.name}
+                          </option>
+                        ))}
+                      </select>
+                      {formErrors.workloadId && (
+                        <span className="mt-1 block text-xs text-rose-600">{formErrors.workloadId}</span>
+                      )}
+                    </label>
+
+                    {form.mode === 'install' && (
+                      <label className="block text-sm text-[var(--text-soft)]">
+                        Revision
+                        <select
+                          value={form.revisionId}
+                          onChange={event => {
+                            setForm(current => ({ ...current, revisionId: event.target.value }))
+                            setFormErrors(current => ({ ...current, revisionId: '' }))
+                          }}
+                          disabled={publishedRevisions.length === 0}
+                          className={`mt-1 w-full rounded-lg border px-3 py-2 ${
+                            formErrors.revisionId ? 'border-rose-300' : 'border-[var(--surface-border)]'
+                          } disabled:opacity-50`}
+                        >
+                          {publishedRevisions.length === 0 ? (
+                            <option value="">No published revisions</option>
+                          ) : (
+                            publishedRevisions.map(revision => (
+                              <option key={revision.id} value={revision.id}>
+                                {revision.revision}
+                              </option>
+                            ))
+                          )}
+                        </select>
+                        {formErrors.revisionId && (
+                          <span className="mt-1 block text-xs text-rose-600">{formErrors.revisionId}</span>
+                        )}
+                      </label>
+                    )}
+
+                    {form.mode === 'install' && anySelectedNodeHasRevision && (
+                      <label className="flex items-center gap-2 text-sm text-[var(--text-soft)]">
+                        <input
+                          type="checkbox"
+                          checked={form.reinstall}
+                          onChange={event =>
+                            setForm(current => ({ ...current, reinstall: event.target.checked }))
+                          }
+                          className="h-4 w-4 rounded border-[var(--surface-border)]"
+                        />
+                        <span>Reinstall — force re-install even if already present</span>
+                      </label>
                     )}
                   </div>
-                  {formErrors.targetNodeIds && (
-                    <span className="block text-xs text-rose-600">{formErrors.targetNodeIds}</span>
-                  )}
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm text-[var(--text-soft)]">Target nodes</label>
+                      <div className="flex gap-2 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const onlineIds = filteredNodes.filter(n => n.status === 'online').map(n => n.id)
+                            setForm(current => ({ ...current, targetNodeIds: onlineIds }))
+                            setFormErrors(current => ({ ...current, targetNodeIds: '' }))
+                          }}
+                          className="text-[var(--accent)] hover:underline"
+                        >
+                          Select all online
+                        </button>
+                        <span className="text-[var(--text-soft)]">|</span>
+                        <button
+                          type="button"
+                          onClick={() => setForm(current => ({ ...current, targetNodeIds: [] }))}
+                          className="text-[var(--accent)] hover:underline"
+                        >
+                          Clear all
+                        </button>
+                      </div>
+                    </div>
+
+                    <input
+                      type="text"
+                      placeholder="Filter nodes..."
+                      value={nodeFilter}
+                      onChange={event => setNodeFilter(event.target.value)}
+                      className="w-full rounded-lg border border-[var(--surface-border)] px-3 py-2 text-sm"
+                    />
+
+                    <div
+                      className={`max-h-48 overflow-y-auto rounded-lg border p-2 space-y-1 ${
+                        formErrors.targetNodeIds ? 'border-rose-300' : 'border-[var(--surface-border)]'
+                      }`}
+                    >
+                      {filteredNodes.length === 0 ? (
+                        <p className="px-2 py-4 text-center text-sm text-[var(--text-soft)]">
+                          No nodes match filter
+                        </p>
+                      ) : (
+                        filteredNodes.map(node => {
+                          const isOnline = node.status === 'online'
+                          const isSelected = form.targetNodeIds.includes(node.id)
+                          const nodeState = nodeWorkloadStateByNodeId.get(node.id)
+                          const installedVersion = nodeState
+                            ? revisionVersionById.get(nodeState.workloadRevision)
+                            : undefined
+                          const hasDrift = nodeState && nodeState.packageStatesJson
+                            ? true
+                            : false
+                          const isExactRevision = nodeState?.workloadRevision === form.revisionId
+
+                          return (
+                            <label
+                              key={node.id}
+                              className={`flex items-center gap-3 rounded-md px-2 py-2 text-sm ${
+                                isOnline
+                                  ? 'cursor-pointer hover:bg-[var(--surface-subtle)]'
+                                  : 'opacity-50 cursor-not-allowed'
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                disabled={!isOnline}
+                                aria-label={node.displayName || node.hostname}
+                                onChange={event => {
+                                  if (!isOnline) return
+                                  const newIds = event.target.checked
+                                    ? [...form.targetNodeIds, node.id]
+                                    : form.targetNodeIds.filter(id => id !== node.id)
+                                  setForm(current => ({ ...current, targetNodeIds: newIds }))
+                                  setFormErrors(current => ({ ...current, targetNodeIds: '' }))
+                                }}
+                                className="h-4 w-4 rounded border-[var(--surface-border)]"
+                              />
+                              <span
+                                className={`inline-block h-2 w-2 rounded-full ${
+                                  isOnline ? 'bg-emerald-500' : 'bg-slate-400'
+                                }`}
+                              />
+                              <span className="flex-1 font-medium text-[var(--text-strong)]">
+                                {node.displayName || node.hostname}
+                              </span>
+                              {node.osVersion && (
+                                <span className="rounded-full border border-[var(--surface-border)] bg-[var(--surface)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--text-soft)]">
+                                  {node.osVersion.split(' ')[0]}
+                                </span>
+                              )}
+                              {form.workloadId && installedVersion && isExactRevision && !hasDrift && (
+                                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                                  v{installedVersion}
+                                </span>
+                              )}
+                              {form.workloadId && installedVersion && isExactRevision && hasDrift && (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                                  v{installedVersion}
+                                </span>
+                              )}
+                              {form.workloadId && installedVersion && !isExactRevision && (
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                                  v{installedVersion}
+                                </span>
+                              )}
+                              {form.workloadId && !installedVersion && (
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                                  not installed
+                                </span>
+                              )}
+                            </label>
+                          )
+                        })
+                      )}
+                    </div>
+                    {formErrors.targetNodeIds && (
+                      <span className="block text-xs text-rose-600">{formErrors.targetNodeIds}</span>
+                    )}
+                  </div>
                 </div>
-              </div>
+              </>
             )}
 
             <ModalFooter className="px-0 pb-0 pt-2 sm:flex-row sm:justify-end gap-2">
               {showSummary && (
                 <button
                   type="button"
-                  onClick={() => setShowSummary(false)}
+                  onClick={() => { setShowSummary(false); setUninstallConfirmed(false) }}
                   className="rounded-lg border border-[var(--surface-border)] px-4 py-2 text-sm text-[var(--text-soft)] hover:bg-[var(--surface-subtle)]"
                 >
                   Back
@@ -541,7 +730,8 @@ export default function WorkloadRuns() {
               </button>
               <button
                 type="submit"
-                disabled={submitting || publishedRevisions.length === 0 || (!showSummary && selectedOnlineNodeIds.length === 0)}
+                disabled={submitting || (form.mode === 'install' && publishedRevisions.length === 0) || (!showSummary && selectedOnlineNodeIds.length === 0) || (showSummary && form.mode === 'uninstall' && !uninstallConfirmed)}
+                title={form.mode === 'uninstall' && uninstallNodes.length === 0 && form.workloadId ? "No nodes have this workload installed" : undefined}
                 className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {submitting ? 'Creating...' : showSummary ? 'Confirm Create Run' : 'Create Run'}

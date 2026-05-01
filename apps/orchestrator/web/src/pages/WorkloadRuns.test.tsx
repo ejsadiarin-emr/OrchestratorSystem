@@ -70,7 +70,22 @@ vi.mock('../services/api', async (importOriginal) => {
           state: 'published',
           createdAt: new Date(Date.now() - 60000).toISOString(),
           publishedAt: new Date(Date.now() - 60000).toISOString(),
-          packageSteps: [],
+          packageSteps: [
+            {
+              packageId: 'pkg-001',
+              packageName: 'Runtime Core',
+              packageVersion: '2.7.0',
+              packageIndex: 1,
+              stepId: 'step-1',
+            },
+            {
+              packageId: 'pkg-002',
+              packageName: 'Node Agent',
+              packageVersion: '1.5.2',
+              packageIndex: 2,
+              stepId: 'step-2',
+            },
+          ],
         },
         {
           id: 'wrv-002',
@@ -79,7 +94,22 @@ vi.mock('../services/api', async (importOriginal) => {
           state: 'published',
           createdAt: new Date().toISOString(),
           publishedAt: new Date().toISOString(),
-          packageSteps: [],
+          packageSteps: [
+            {
+              packageId: 'pkg-001',
+              packageName: 'Runtime Core',
+              packageVersion: '2.8.0',
+              packageIndex: 1,
+              stepId: 'step-1',
+            },
+            {
+              packageId: 'pkg-003',
+              packageName: 'Policy Bundle',
+              packageVersion: '3.0.0',
+              packageIndex: 2,
+              stepId: 'step-2',
+            },
+          ],
         },
       ],
     }),
@@ -98,6 +128,10 @@ vi.mock('../services/api', async (importOriginal) => {
       timeline: [],
     }),
     advanceWorkloadRun: vi.fn(),
+    listNodeWorkloadStates: vi.fn().mockResolvedValue([
+      { nodeId: 'node-001', workloadId: 'workload-001', workloadRevision: 'wrv-001', runId: '', status: 'completed', updatedAt: new Date().toISOString(), packageStatesJson: null },
+      { nodeId: 'node-002', workloadId: 'workload-001', workloadRevision: 'wrv-002', runId: '', status: 'completed', updatedAt: new Date().toISOString(), packageStatesJson: null },
+    ]),
   }
 })
 
@@ -118,10 +152,8 @@ describe('Workload Runs page', () => {
     const dialog = await screen.findByRole('dialog')
 
     expect(within(dialog).getByText('Create Workload Run')).toBeInTheDocument()
-    expect(within(dialog).getAllByText('install').length).toBeGreaterThan(0)
-    expect(within(dialog).getAllByText('update').length).toBeGreaterThan(0)
-    expect(within(dialog).getAllByText('rollback').length).toBeGreaterThan(0)
-    expect(within(dialog).queryByText('cancel')).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Install' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Uninstall' })).toBeInTheDocument()
 
     // wait for workload details to load and revision dropdown to populate
     await waitFor(() => {
@@ -219,5 +251,60 @@ describe('Workload Runs page', () => {
 
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Confirm Create Run' })).not.toBeDisabled()
+  })
+
+  it('in uninstall mode, only shows nodes with the workload installed', async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Open Run Creator' }))
+    const dialog = await screen.findByRole('dialog')
+
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText('Revision')).toBeInTheDocument()
+    })
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Uninstall' }))
+
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText('Plant Line A')).toBeInTheDocument()
+    })
+
+    expect(within(dialog).getByLabelText('Plant Line B')).toBeInTheDocument()
+    expect(within(dialog).queryByLabelText('Plant Line C')).not.toBeInTheDocument()
+  })
+
+  it('uninstall confirmation shows warning banner, package list, and requires checkbox', async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Open Run Creator' }))
+    const dialog = await screen.findByRole('dialog')
+
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText('Revision')).toBeInTheDocument()
+    })
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Uninstall' }))
+
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText('Plant Line A')).toBeInTheDocument()
+    })
+
+    const nodeCheckbox = within(dialog).getByLabelText('Plant Line A')
+    fireEvent.click(nodeCheckbox)
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create Run' }))
+
+    await waitFor(() => {
+      expect(within(dialog).getByText('Warning: This will permanently remove packages from nodes.')).toBeInTheDocument()
+    })
+
+    expect(within(dialog).getByText('Runtime Core 2.8.0')).toBeInTheDocument()
+    expect(within(dialog).getByText('Policy Bundle 3.0.0')).toBeInTheDocument()
+
+    const confirmCheckbox = within(dialog).getByRole('checkbox', { name: 'I understand that this action cannot be undone.' })
+    expect(confirmCheckbox).not.toBeChecked()
+
+    const confirmButton = within(dialog).getByRole('button', { name: 'Confirm Create Run' })
+    expect(confirmButton).toBeDisabled()
+
+    fireEvent.click(confirmCheckbox)
+    expect(confirmCheckbox).toBeChecked()
+    expect(confirmButton).not.toBeDisabled()
   })
 })

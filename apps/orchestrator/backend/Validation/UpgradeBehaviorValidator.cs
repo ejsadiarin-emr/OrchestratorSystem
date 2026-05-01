@@ -13,8 +13,7 @@ public static class UpgradeBehaviorValidator
     public static readonly IReadOnlySet<string> AllowedValues = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "InPlace",
-        "UninstallFirst",
-        "SideBySide"
+        "UninstallFirst"
     };
 
     /// <summary>
@@ -33,13 +32,13 @@ public static class UpgradeBehaviorValidator
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            return ValidationResult.Failure("UpgradeBehavior is required. Allowed values: InPlace, UninstallFirst, SideBySide.");
+            return ValidationResult.Failure("UpgradeBehavior is required. Allowed values: InPlace, UninstallFirst.");
         }
 
         if (!AllowedValues.Contains(value))
         {
             return ValidationResult.Failure(
-                $"UpgradeBehavior '{value}' is not valid. Allowed values: InPlace, UninstallFirst, SideBySide.");
+                $"UpgradeBehavior '{value}' is not valid. Allowed values: InPlace, UninstallFirst.");
         }
 
         return ValidationResult.Success();

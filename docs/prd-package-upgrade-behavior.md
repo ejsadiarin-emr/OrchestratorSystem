@@ -2,7 +2,7 @@
 
 ## Problem Statement
 
-When a workload updates from one revision to another, packages that change version are currently handled naively: the agent runs the new installer without considering whether the old version needs removal first. This fails for installers that perform side-by-side installations (e.g., Python WiX Burn bundles), where the old version remains on disk and in PATH. Post-install verification then detects the wrong version, causing the pipeline to fail.
+When a workload updates from one revision to another, packages that change version are currently handled naively: the agent runs the new installer without considering whether the old version needs removal first. This fails for installers that leave the old version behind (e.g., Python WiX Burn bundles), where the old version remains on disk and in PATH. Post-install verification then detects the wrong version, causing the pipeline to fail.
 
 The immediate symptom: updating Python 3.13.3 to 3.14.4 results in both versions coexisting, `python --version` returns 3.13.3, and `PostInstallVerify` reports a version mismatch. The same issue affects any package whose installer does not perform in-place upgrades.
 
@@ -10,13 +10,12 @@ The root cause is that the pipeline has no concept of per-package upgrade semant
 
 ## Solution
 
-Introduce a per-package `UpgradeBehavior` setting with three values:
+Introduce a per-package `UpgradeBehavior` setting with two values:
 
 - **`InPlace`** (default): Run the new installer only. The installer handles replacing the old version. Used for self-upgrading installers like DBeaver, Git, 7-Zip, and MSI packages with UpgradeTable.
-- **`UninstallFirst`**: Uninstall the old version before installing the new one. Used for side-by-side installers like Python and .NET Runtime where running the new installer leaves the old version on disk.
-- **`SideBySide`**: Install the new version alongside the old one. Cleanup and migration are handled by `postInitSteps`. Used for complex migrations where both versions must coexist temporarily.
+- **`UninstallFirst`**: Uninstall the old version before installing the new one. Used for installers that don't remove the old version, such as Python and .NET Runtime, where running the new installer leaves the previous version on disk.
 
-The pipeline executor branches on this value during differential updates. For `UninstallFirst` changed packages, the executor looks up the old package's configuration from `CurrentPackages` and runs `UninstallPackage` in Phase 1 before the new version is installed in Phase 2. For `InPlace` and `SideBySide` changed packages, Phase 1 is skipped.
+The pipeline executor branches on this value during differential updates. For `UninstallFirst` changed packages, the executor looks up the old package's configuration from `CurrentPackages` and runs `UninstallPackage` in Phase 1 before the new version is installed in Phase 2. For `InPlace` changed packages, Phase 1 is skipped.
 
 Pre-check overrides are extended to handle interrupted updates: if a changed package's pre-check shows the old version is already gone (`NotPresent`), the diff is overridden to `added` (fresh install). If the new version is already present (`AlreadySatisfied`), the diff is overridden to `unchanged` (skip).
 
@@ -30,8 +29,8 @@ Pre-check overrides are extended to handle interrupted updates: if a changed pac
 6. As an operator, I want the pipeline to skip installing a package that is already at the target version, so that retries and redundant runs are fast and idempotent.
 7. As a developer adding a new package type, I want explicit upgrade behavior documentation and validation, so that I don't accidentally deploy a package with the wrong transition semantics.
 8. As an auditor, I want the upgrade behavior of every package to be visible in the manifest and database, so that I can verify correctness without reading the installer binary's internals.
-9. As an operator managing SQL Server workloads, I want to mark packages as `SideBySide` and provide custom `postInitSteps` for migration, so that databases remain online during the cutover window.
-10. As a test engineer, I want the test workload manifests to include `upgradeBehavior` and `uninstallArgs` fields, so that end-to-end tests exercise all three code paths.
+9. ~~As an operator managing SQL Server workloads, I want to mark packages as `SideBySide` and provide custom `postInitSteps` for migration, so that databases remain online during the cutover window.~~ *(Removed — `SideBySide` was removed from the system. Use `InPlace` for stateful apps or compose `UninstallFirst` with workload-level `postInitSteps` for staged migrations.)*
+10. As a test engineer, I want the test workload manifests to include `upgradeBehavior` and `uninstallArgs` fields, so that end-to-end tests exercise both code paths (`InPlace` and `UninstallFirst`).
 11. As a build engineer, I want the artifact download script to generate complete manifests including upgrade behavior, so that test artifacts are representative of production manifests.
 12. As an agent developer, I want the diff engine to override `changed` packages based on pre-check ground truth, so that the pipeline executor sees a diff that reflects actual machine state.
 13. As an orchestrator developer, I want the package creation API to validate `UpgradeBehavior` is present, so that the database never contains packages with undefined transition semantics.
@@ -39,7 +38,7 @@ Pre-check overrides are extended to handle interrupted updates: if a changed pac
 15. As an operator debugging a failed update, I want clear log messages indicating why a package was categorized as `added` vs `changed` vs `unchanged`, so that I can understand pre-check override decisions.
 16. As a database administrator, I want existing packages in the database to default to `InPlace` after migration, so that backward compatibility is preserved while new packages must explicitly declare behavior.
 17. As a security reviewer, I want the system to reject pattern registry defaults, so that no hidden inference logic can silently misclassify a package's upgrade behavior.
-18. As a package author, I want `SideBySide` packages to warn me if detection uses a bare command (e.g., `python --version`) instead of a fully qualified path, so that verification ambiguity is caught at execution time.
+18. ~~As a package author, I want `SideBySide` packages to warn me if detection uses a bare command (e.g., `python --version`) instead of a fully qualified path, so that verification ambiguity is caught at execution time.~~ *(Removed — `SideBySide` was removed from the system.)*
 19. As an operator running a rollback, I want the same upgrade behavior logic to apply in reverse, so that rolling back a `UninstallFirst` package reinstalls the old version cleanly.
 20. As a test engineer, I want unit tests for the diff engine that cover all pre-check override combinations, so that regressions in diff categorization are caught before integration.
 
@@ -61,7 +60,7 @@ Pre-check overrides are extended to handle interrupted updates: if a changed pac
   - `changed` + `AlreadySatisfied` → `unchanged`
   These are applied after the existing override rules and before the pipeline executor consumes the diff.
 - `PipelineExecutor` (agent pipeline): In Phase 1 (uninstall), iterate over `removed` packages AND `changed` packages whose `UpgradeBehavior == "UninstallFirst"`. For each `UninstallFirst` changed package, resolve the old configuration from `CurrentPackages` by matching `Name`, then call `UninstallPackage.ExecuteAsync(oldConfig, ...)`. Descending `PackageIndex` order is preserved for all uninstall operations.
-- `PostInstallVerify` (agent step): For `SideBySide` packages, log a warning if `DetectionConfig.Command` is a bare command (not a fully qualified path) since ambiguous PATH resolution may detect the old version.
+
 
 **Test Artifacts and Scripts**
 - Test workload manifests (`workloads-older.json`, `workloads-newer.json`): Add `upgradeBehavior` and `uninstallArgs` fields to package definitions.
@@ -70,7 +69,7 @@ Pre-check overrides are extended to handle interrupted updates: if a changed pac
 ### Interfaces
 
 **`InstallAdapterConfig`** gains one property:
-- `UpgradeBehavior: string` — `"InPlace"` | `"UninstallFirst"` | `"SideBySide"`
+- `UpgradeBehavior: string` — `"InPlace"` | `"UninstallFirst"`
 
 **`PackageEntity`** gains one property:
 - `UpgradeBehavior: string` — same domain
@@ -101,10 +100,6 @@ Pre-check overrides are extended to handle interrupted updates: if a changed pac
 6. If uninstall fails, pipeline halts (fail-fast).
 7. Phase 2 installs the new package normally (acquire → install → verify).
 
-**Detection for `SideBySide` packages:**
-- `PostInstallVerify` checks if `UpgradeBehavior == "SideBySide"` and `DetectionConfig.Command` does not contain a path separator.
-- If ambiguous, logs a warning but continues. The verification may fail if PATH resolution picks the old version.
-
 ## Testing Decisions
 
 ### What Makes a Good Test
@@ -115,7 +110,7 @@ Tests should verify **external behavior** (diff categorization, pipeline step se
 
 **High Priority — Unit Tests**
 - `DiffEngine` with pre-check overrides: Test all combinations of base diff + pre-check status → expected final categories. Cover the two new override rules (`changed`→`added`, `changed`→`unchanged`) plus all existing rules.
-- `PipelineExecutor` Phase 1 branching: Mock `UninstallPackage.ExecuteAsync` and verify it is called with the correct old config for `UninstallFirst` changed packages, and NOT called for `InPlace` or `SideBySide` changed packages.
+- `PipelineExecutor` Phase 1 branching: Mock `UninstallPackage.ExecuteAsync` and verify it is called with the correct old config for `UninstallFirst` changed packages, and NOT called for `InPlace` changed packages.
 - Orchestrator package creation validation: Test that missing/invalid `UpgradeBehavior` returns 400, and valid values succeed.
 
 **Medium Priority — Integration Tests**
@@ -135,7 +130,7 @@ Tests should verify **external behavior** (diff categorization, pipeline step se
 
 - **Pattern registry / auto-inference**: No automatic detection of upgrade behavior from filename, installer type, or heuristics. Admins must explicitly declare.
 - **Frontend UI changes**: The orchestrator web frontend is not modified. `UpgradeBehavior` is visible in API responses but no new UI fields are added.
-- **`SideBySide` enforcement beyond warning**: `PostInstallVerify` warns about ambiguous detection paths but does not fail the pipeline. Full enforcement (requiring fully qualified paths) is deferred.
+
 - **Post-uninstall verification**: After Phase 1 uninstall, no verification step checks that the old version is actually gone. Exit code is trusted.
 - **Rollback-specific logic**: Rollback reuses the same diff and upgrade behavior logic as update, just with reversed current/target. No separate rollback branching.
 - **Workload-level upgrade behavior**: The setting is per-package only. Workloads cannot override a package's intrinsic behavior.

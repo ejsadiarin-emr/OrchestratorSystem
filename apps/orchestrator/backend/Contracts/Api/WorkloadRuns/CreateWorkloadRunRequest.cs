@@ -23,4 +23,6 @@ public sealed class CreateWorkloadRunRequest
     public List<Guid> NodeIds { get; set; } = new();
 
     public bool ForceInstall { get; set; }
+
+    public bool Reinstall { get; set; }
 }

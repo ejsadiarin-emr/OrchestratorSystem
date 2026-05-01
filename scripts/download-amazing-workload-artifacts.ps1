@@ -173,17 +173,21 @@ $V2ZipName = "amazing-workload-artifacts-v2.zip"
 $V1ZipPath = Join-Path $OutputDir $V1ZipName
 $V2ZipPath = Join-Path $OutputDir $V2ZipName
 
-# Create v1 zip (older versions)
+# Create v1 zip (older versions + installers)
 Compress-Archive -Path (
     Join-Path $TempDir "${DbeaverBaseOlder}.manifest.json"),
-                    (Join-Path $TempDir "${PythonBaseOlder}.manifest.json") `
+                    (Join-Path $TempDir "${PythonBaseOlder}.manifest.json"),
+                    (Join-Path $TempDir $DbeaverExeOlder),
+                    (Join-Path $TempDir $PythonExeOlder) `
     -DestinationPath $V1ZipPath -Force
 Write-Host "Created $V1ZipName"
 
-# Create v2 zip (newer versions)
+# Create v2 zip (newer versions + installers)
 Compress-Archive -Path (
     Join-Path $TempDir "${DbeaverBaseNewer}.manifest.json"),
-                    (Join-Path $TempDir "${PythonBaseNewer}.manifest.json") `
+                    (Join-Path $TempDir "${PythonBaseNewer}.manifest.json"),
+                    (Join-Path $TempDir $DbeaverExeNewer),
+                    (Join-Path $TempDir $PythonExeNewer) `
     -DestinationPath $V2ZipPath -Force
 Write-Host "Created $V2ZipName"
 

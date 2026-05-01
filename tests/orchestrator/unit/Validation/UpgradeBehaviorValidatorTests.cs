@@ -6,7 +6,6 @@ public class UpgradeBehaviorValidatorTests
 {
     [TestCase("InPlace")]
     [TestCase("UninstallFirst")]
-    [TestCase("SideBySide")]
     public void Validate_AllowedValues_ReturnsSuccess(string value)
     {
         var result = UpgradeBehaviorValidator.Validate(value);
@@ -16,7 +15,6 @@ public class UpgradeBehaviorValidatorTests
 
     [TestCase("inplace")]
     [TestCase("UNINSTALLFIRST")]
-    [TestCase("sidebyside")]
     public void Validate_CaseInsensitive_ReturnsSuccess(string value)
     {
         var result = UpgradeBehaviorValidator.Validate(value);
@@ -57,8 +55,6 @@ public class UpgradeBehaviorValidatorTests
     [TestCase("inplace", "InPlace")]
     [TestCase("UninstallFirst", "UninstallFirst")]
     [TestCase("UNINSTALLFIRST", "UninstallFirst")]
-    [TestCase("SideBySide", "SideBySide")]
-    [TestCase("sidebyside", "SideBySide")]
     [TestCase("Unknown", "Unknown")]
     public void Normalize_ReturnsExpected(string? input, string expected)
     {
@@ -66,12 +62,11 @@ public class UpgradeBehaviorValidatorTests
     }
 
     [Test]
-    public void AllowedValues_ContainsExactlyThreeValues()
+    public void AllowedValues_ContainsExactlyTwoValues()
     {
-        Assert.That(UpgradeBehaviorValidator.AllowedValues.Count, Is.EqualTo(3));
+        Assert.That(UpgradeBehaviorValidator.AllowedValues.Count, Is.EqualTo(2));
         Assert.That(UpgradeBehaviorValidator.AllowedValues, Does.Contain("InPlace"));
         Assert.That(UpgradeBehaviorValidator.AllowedValues, Does.Contain("UninstallFirst"));
-        Assert.That(UpgradeBehaviorValidator.AllowedValues, Does.Contain("SideBySide"));
     }
 
     [Test]

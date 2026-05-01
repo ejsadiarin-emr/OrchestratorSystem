@@ -11,11 +11,11 @@ This document explains the update pipeline in detail — how it works, why it wo
 When a workload updates from one revision to another, some packages change version (e.g., Python 3.13.3 → 3.14.4). The naïve approach — "just run the new installer" — fails for packages whose installers don't remove the old version:
 
 1. **Python** (WiX-based EXE): Installs 3.14.4 *alongside* 3.13.3. After "upgrade," both exist. `PostInstallVerify` detects 3.13.3 (wrong version → **failure**).
-2. **.NET Runtime** (WiX Burn bundle): Same side-by-side behavior. Old version persists.
+2. **.NET Runtime** (WiX Burn bundle): Same behavior as Python — installs the new version without removing the old one.
 3. **Git** (Inno Setup): The 2.48.1 installer detects and replaces 2.47.1 in-place. No problem.
 4. **DBeaver** (NSIS/Oomph): The 26.0.3 installer replaces 24.3.0. No problem.
 
-The key insight: **whether an installer upgrades in-place or installs side-by-side is an intrinsic property of the package, not the workload**. Python always side-by-side installs. Git always in-place upgrades. This is about how the installer binary works, not about how the workload is composed.
+The key insight: **whether an installer upgrades in-place or leaves the old version behind is an intrinsic property of the package, not the workload**. Python always leaves the old version. Git always upgrades in-place. This is about how the installer binary works, not about how the workload is composed.
 
 ---
 
@@ -26,8 +26,7 @@ Each package declares how its installer behaves on upgrade via `UpgradeBehavior`
 | Value | What happens | When to use |
 |---|---|---|
 | `InPlace` | Run new installer only. The installer handles replacing the old version. | **Default.** Use for self-upgrading installers that safely remove the old version while preserving data (DBeaver, SQL Server, Visual Studio, Git, 7-Zip, Notepad++). |
-| `UninstallFirst` | Uninstall old version → install new version. Old version's `UninstallArgs` are used. | Side-by-side installers that don't remove the old version (Python, .NET Runtime, Node.js LTS → new major). Running the new installer alone leaves the old version on disk. |
-| `SideBySide` | Install new version alongside old. Connection strings, config files, or data migration happen in `postInitSteps`. Old version is cleaned up by `postInitSteps` (or left in place intentionally). | Custom migration required — apps with state that needs transformation (SQL Server named instance swaps, web server role swaps, config transformation between versions). |
+| `UninstallFirst` | Uninstall old version → install new version. Old version's `UninstallArgs` are used. | Installers that don't remove the old version (Python, .NET Runtime, Node.js LTS → new major). Running the new installer alone leaves the old version on disk. |
 
 ### Why package-level, not workload-level?
 
@@ -44,7 +43,7 @@ Each package declares how its installer behaves on upgrade via `UpgradeBehavior`
 
 Most well-behaved Windows installers (Inno Setup, NSIS, WiX with UpgradeTable, InstallShield) handle in-place upgrades. The default preserves backward compatibility: existing packages work without any configuration change.
 
-Only packages with known side-by-side behavior need explicit `UpgradeBehavior = "UninstallFirst"` or `"SideBySide"`.
+Only packages that leave the old version behind need explicit `UpgradeBehavior = "UninstallFirst"`.
 
 ---
 
@@ -67,7 +66,6 @@ The update pipeline has five phases. Here's what happens for each diff category:
 │   Removed (all):            UninstallPackage (old config + UninstallArgs)│
 │   Changed (UninstallFirst): UninstallPackage (old config + UninstallArgs)│
 │   Changed (InPlace):        — nothing —                                │
-│   Changed (SideBySide):     — nothing —                                │
 │   Order: descending PackageIndex                                      │
 ├─────────────────────────────────────────────────────────────────────────┤
 │ Phase 2: Install — added + changed packages, ascending PackageIndex   │
@@ -75,7 +73,6 @@ The update pipeline has five phases. Here's what happens for each diff category:
 │            PostInstallVerify → PostInitSteps                           │
 │   Changed (InPlace):        same as Added                              │
 │   Changed (UninstallFirst): same as Added (old already uninstalled)    │
-│   Changed (SideBySide):     same as Added, then PostInitSteps cleanup  │
 ├─────────────────────────────────────────────────────────────────────────┤
 │ Phase 3: PostWorkload — run workload-level postInitSteps              │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -150,32 +147,6 @@ Phase 2   dotnet-runtime-10.0.7: AcquireArtifact → InstallOrUpgrade → PostIn
 Phase 3   PostWorkload steps run
 ```
 
-### Example 4: Hypothetical SideBySide — SQL Server migration
-
-**Scenario**: SQL Server 2019 → 2022, where DBAs need both instances running during a cutover window.
-
-```json
-{
-  "name": "sqlserver-2022",
-  "installAdapter": {
-    "type": "exe",
-    "command": "artifact.bin",
-    "arguments": "/Quiet /InstanceName=MSSQLSERVER2022 /Action=Install",
-    "upgradeBehavior": "SideBySide",
-    "postInitSteps": [
-      "Write-Host 'Migrating databases from 2019 to 2022...'",
-      "$dbs = sqlcmd -S localhost -d master -Q 'SELECT name FROM sys.databases WHERE name NOT IN (\"master\",\"tempdb\",\"model\",\"msdb\")' -h -1 -W",
-      "foreach ($db in $dbs) { sqlcmd -S localhost\\MSSQLSERVER2022 -Q \"RESTORE DATABASE [$db] FROM DISK='C:\\backup\\$db.bak' WITH MOVE...\" }",
-      "Write-Host 'Migration complete. Decommissioning SQL Server 2019...'",
-      "Stop-Service 'MSSQLSERVER' -Force",
-      "& 'C:\\Program Files\\Microsoft SQL Server\\150\\Setup\\sqlserver.exe' /Q /Action=Uninstall /InstanceName=MSSQLSERVER"
-    ]
-  }
-}
-```
-
-Both versions run during cutover. `postInitSteps` handles migration and old-version cleanup.
-
 ---
 
 ## How `UninstallFirst` Gets the Old Package's Config
@@ -216,7 +187,7 @@ public sealed class InstallAdapterConfig
     public string Command { get; set; } = string.Empty;        // executable or "msiexec.exe"
     public string Arguments { get; set; } = string.Empty;       // install arguments
     public string UninstallArgs { get; set; } = string.Empty;   // uninstall arguments
-    public string UpgradeBehavior { get; set; } = "InPlace";    // "InPlace" | "UninstallFirst" | "SideBySide"
+    public string UpgradeBehavior { get; set; } = "InPlace";    // "InPlace" | "UninstallFirst"
     public List<int> ExpectedExitCodes { get; set; } = [0];
     public int TimeoutSeconds { get; set; } = 300;
 }
@@ -258,7 +229,7 @@ MSI packages use `msiexec.exe` for both install and uninstall. The product code 
 
 **Why `InPlace`**: MSI has built-in upgrade logic via the `UpgradeTable`. If the new MSI's `UpgradeCode` matches the old version, the installer handles removing the old version automatically during major upgrades.
 
-**When `UninstallFirst`**: Only if the MSI lacks an `UpgradeTable` (rare for well-authored MSIs) or installs to a side-by-side location (e.g., per-user vs per-machine conflicts).
+**When `UninstallFirst`**: Only if the MSI lacks an `UpgradeTable` (rare for well-authored MSIs) or installs to a parallel location (e.g., per-user vs per-machine conflicts).
 
 ### WiX Burn Bundle (EXE)
 
@@ -315,7 +286,7 @@ NSIS installers are similar to Inno but use `/S` for silent mode and `/D` for in
 For custom or unknown installers, there's no universal pattern. The admin must provide:
 
 - `UninstallArgs`: the flags that trigger silent uninstall
-- `UpgradeBehavior`: determined by testing whether the installer replaces the old version or installs side-by-side
+- `UpgradeBehavior`: determined by testing whether the installer replaces the old version or leaves it behind
 
 **How to test**: Install version 1, then install version 2 without uninstalling 1. Check if version 1 is still present (filesystem, registry, PATH). If yes → `UninstallFirst`. If no → `InPlace`.
 
@@ -339,15 +310,9 @@ For custom or unknown installers, there's no universal pattern. The admin must p
 
 **State**: New installer ran, but `DetectionConfig` still finds the old version number. This is the exact bug that triggered Decision 18.
 
-**Root cause**: The installer installed side-by-side (the package should have been `UninstallFirst`).
+**Root cause**: The installer left the old version behind (the package should have been `UninstallFirst`).
 
 **Fix**: Change the package's `UpgradeBehavior` from `InPlace` to `UninstallFirst` and retry.
-
-### `SideBySide` — PostInstallVerify Must Use Explicit Detection Path
-
-**Decision [ADR-0006](../adr/0006-side-by-side-verification.md)**: When `SideBySide` is used, the old version remains on disk after install. `PostInstallVerify` runs against the new package's `DetectionConfig`. If the detection command is ambiguous (e.g., bare `python --version` resolves via PATH and may return the old version), verification fails.
-
-**Resolution**: `SideBySide` packages MUST configure `DetectionConfig.Command` as a fully-qualified path (e.g., `C:\Python314\python.exe --version`) so verification unambiguously targets the new installation. The agent logs a warning if a `SideBySide` package uses a bare command for detection.
 
 ---
 
@@ -389,23 +354,13 @@ Package changes version in an update.
 │  │         → Phase 2 only: run new installer
 │  │         → Examples: Git, 7-Zip, DBeaver, Notepad++
 │  │
-│  └─ NO (installs side-by-side, old version persists)
+│  └─ NO (old version persists after running new installer)
 │     │
-│     ├─ Can the old version be safely removed before install?
-│     │  │
-│     │  ├─ YES → UpgradeBehavior = "UninstallFirst"
-│     │  │         → Phase 1: uninstall old → Phase 2: install new
-│     │  │         → Examples: Python, .NET Runtime
-│     │  │
-│     │  └─ NO (old version must stay running during migration)
-│     │            │
-│     │            └─ UpgradeBehavior = "SideBySide"
-│     │               → Phase 2: install new alongside old
-│     │               → postInitSteps handle migration + cleanup
-│     │               → Examples: SQL Server, database role swaps
-│     │
+│     └─ UpgradeBehavior = "UninstallFirst"
+│        → Phase 1: uninstall old → Phase 2: install new
+│        → Examples: Python, .NET Runtime
+│
 │     How to determine: Install v1, then install v2 without removing v1.
 │     Check if v1 is still present (filesystem, registry, PATH).
-│     If yes → not InPlace. Then check if v1 can be removed safely.
-│     If yes → UninstallFirst. If no → SideBySide.
+│     If yes → UninstallFirst.
 ```

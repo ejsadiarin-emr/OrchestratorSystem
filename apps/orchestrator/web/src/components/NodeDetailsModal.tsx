@@ -153,8 +153,8 @@ export default function NodeDetailsModal({ nodeId, open, onClose }: NodeDetailsM
                       <tbody className="divide-y divide-[var(--surface-border)]">
                         {data.workloads.map(w => (
                           <tr key={w.workloadId}>
-                            <td className="px-4 py-2 text-sm text-[var(--text-strong)]">{w.workloadName}</td>
-                            <td className="px-4 py-2 text-sm font-mono text-[var(--text-soft)]">{w.revision}</td>
+                            <td className="px-4 py-2 text-sm text-[var(--text-strong)]">{w.name}</td>
+                            <td className="px-4 py-2 text-sm font-mono text-[var(--text-soft)]">{w.currentVersion}</td>
                             <td className="px-4 py-2 text-sm text-[var(--text-soft)]">{w.status}</td>
                           </tr>
                         ))}
@@ -181,7 +181,7 @@ export default function NodeDetailsModal({ nodeId, open, onClose }: NodeDetailsM
                       }`}>
                         {data.latestPreCheck.overallStatus}
                       </span>
-                      <span>Run at: {new Date(data.latestPreCheck.runAt).toLocaleString()}</span>
+                      <span>Run at: {new Date(data.latestPreCheck.checkedAt).toLocaleString()}</span>
                     </div>
                     <div className="overflow-x-auto rounded-lg border border-[var(--surface-border)]">
                       <table className="min-w-full divide-y divide-[var(--surface-border)]">

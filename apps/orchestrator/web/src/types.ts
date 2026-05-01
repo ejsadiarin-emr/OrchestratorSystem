@@ -365,8 +365,8 @@ export interface WorkloadJsonEntry {
 
 export interface NodeWorkloadAssignment {
   workloadId: string
-  workloadName: string
-  revision: string
+  name: string
+  currentVersion: string
   status: string
 }
 
@@ -381,7 +381,7 @@ export interface PreCheckItem {
 }
 
 export interface NodePreCheckSummary {
-  runAt: string
+  checkedAt: string
   overallStatus: 'passed' | 'failed' | 'warning'
   items: PreCheckItem[]
 }

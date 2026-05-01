@@ -58,7 +58,7 @@ var builder = WebApplication.CreateBuilder(new WebApplicationOptions
     ContentRootPath = AppContext.BaseDirectory
 });
 
-builder.WebHost.UseUrls("http://localhost:5001");
+builder.WebHost.UseUrls("http://0.0.0.0:5001");
 
 builder.Configuration["Agent:NodeId"] = config.NodeId.ToString();
 builder.Configuration["Orchestrator:BaseUrl"] = config.OrchestratorUrl;

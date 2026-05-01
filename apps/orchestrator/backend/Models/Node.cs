@@ -81,6 +81,9 @@ public class NodePreCheckSummary
 {
     public DateTime CheckedAt { get; set; } = DateTime.UtcNow;
     public List<PreCheckItem> Items { get; set; } = new();
+    public string OverallStatus => Items.Count == 0 ? "passed" :
+        Items.Any(i => i.Status == "failed") ? "failed" :
+        Items.Any(i => i.Status == "warning") ? "warning" : "passed";
 }
 
 public class PreCheckItem

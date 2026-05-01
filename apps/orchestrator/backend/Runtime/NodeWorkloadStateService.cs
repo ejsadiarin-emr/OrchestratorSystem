@@ -171,7 +171,7 @@ public sealed class NodeWorkloadStateService
         }
     }
 
-    private static async Task UpsertNodeWorkloadStateAsync(InstallerDbContext db, Guid nodeId, WorkloadRunEntity? run)
+    internal static async Task UpsertNodeWorkloadStateAsync(InstallerDbContext db, Guid nodeId, WorkloadRunEntity? run)
     {
         if (run is null)
         {
@@ -226,7 +226,7 @@ public sealed class NodeWorkloadStateService
         state.UpdatedAtUtc = DateTime.UtcNow;
     }
 
-    private static async Task UpdateNodeWorkloadStateStatusAsync(InstallerDbContext db, Guid nodeId, Guid runId, string status, bool setCurrentRevision = false)
+    internal static async Task UpdateNodeWorkloadStateStatusAsync(InstallerDbContext db, Guid nodeId, Guid runId, string status, bool setCurrentRevision = false)
     {
         var run = await db.WorkloadRuns.FirstOrDefaultAsync(r => r.RunId == runId && r.NodeId == nodeId);
         if (run is null)

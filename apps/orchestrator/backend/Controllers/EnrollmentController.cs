@@ -94,7 +94,7 @@ public class EnrollmentController : ControllerBase
 
         var ipAddress = !string.IsNullOrWhiteSpace(request?.IpAddress)
             ? request.IpAddress
-            : "0.0.0.0";
+            : (HttpContext.Connection.RemoteIpAddress?.ToString() ?? "0.0.0.0");
 
         var nodeEntity = new NodeEntity
         {

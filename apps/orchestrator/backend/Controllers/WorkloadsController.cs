@@ -667,6 +667,7 @@ public sealed class WorkloadsController : ControllerBase
         public string SourcePath { get; set; } = "{artifactPath}";
         public string InstallArgs { get; set; } = "";
         public string UninstallArgs { get; set; } = "";
+        public string UpgradeBehavior { get; set; } = "InPlace";
         public string ExpectedExitCodesJson { get; set; } = "[0]";
         public int TimeoutSeconds { get; set; } = 300;
         public string? DetectionConfigJson { get; set; }
@@ -704,7 +705,8 @@ public sealed class WorkloadsController : ControllerBase
                         InstallType = string.IsNullOrWhiteSpace(adapter.Type) ? "exe" : adapter.Type,
                         SourcePath = string.IsNullOrWhiteSpace(adapter.Command) ? "{artifactPath}" : adapter.Command,
                         InstallArgs = adapter.Arguments ?? "",
-                        UninstallArgs = "",
+                        UninstallArgs = adapter.UninstallArgs ?? "",
+                        UpgradeBehavior = string.IsNullOrWhiteSpace(adapter.UpgradeBehavior) ? "InPlace" : adapter.UpgradeBehavior,
                         ExpectedExitCodesJson = adapter.ExpectedExitCodes is { Count: > 0 }
                             ? System.Text.Json.JsonSerializer.Serialize(adapter.ExpectedExitCodes)
                             : "[0]",
@@ -987,6 +989,7 @@ public sealed class WorkloadsController : ControllerBase
                             ExpectedExitCodesJson = adapter.ExpectedExitCodesJson,
                             TimeoutSeconds = adapter.TimeoutSeconds,
                             DetectionConfigJson = adapter.DetectionConfigJson ?? "",
+                            UpgradeBehavior = adapter.UpgradeBehavior,
                             CreatedAtUtc = now
                         };
                         _db.Packages.Add(packageEntity);

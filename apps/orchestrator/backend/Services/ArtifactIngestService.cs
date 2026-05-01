@@ -151,6 +151,8 @@ public sealed class ArtifactIngestService
                     : adapter.Type.Trim().ToLowerInvariant(),
                 Command = command,
                 Arguments = adapter.Arguments ?? string.Empty,
+                UninstallArgs = adapter.UninstallArgs ?? string.Empty,
+                UpgradeBehavior = string.IsNullOrWhiteSpace(adapter.UpgradeBehavior) ? "InPlace" : adapter.UpgradeBehavior.Trim(),
                 ExpectedExitCodes = adapter.ExpectedExitCodes?.Count > 0 ? adapter.ExpectedExitCodes : new List<int> { 0 },
                 TimeoutSeconds = adapter.TimeoutSeconds > 0 ? adapter.TimeoutSeconds.Value : 1800
             };
@@ -160,6 +162,8 @@ public sealed class ArtifactIngestService
                 : "admin";
             sources.Command = string.IsNullOrWhiteSpace(adapter.Command) ? "default" : "admin";
             sources.Arguments = adapter.Arguments is null ? "default" : "admin";
+            sources.UninstallArgs = adapter.UninstallArgs is null ? "default" : "admin";
+            sources.UpgradeBehavior = string.IsNullOrWhiteSpace(adapter.UpgradeBehavior) ? "default" : "admin";
             sources.ExpectedExitCodes = adapter.ExpectedExitCodes?.Count > 0 ? "admin" : "default";
             sources.TimeoutSeconds = adapter.TimeoutSeconds > 0 ? "admin" : "default";
             return (result, sources);
@@ -173,6 +177,8 @@ public sealed class ArtifactIngestService
                 Type = "default",
                 Command = "default",
                 Arguments = "default",
+                UninstallArgs = "default",
+                UpgradeBehavior = "default",
                 ExpectedExitCodes = "default",
                 TimeoutSeconds = "default"
             };
@@ -181,6 +187,8 @@ public sealed class ArtifactIngestService
                 Type = string.Empty,
                 Command = string.Empty,
                 Arguments = string.Empty,
+                UninstallArgs = string.Empty,
+                UpgradeBehavior = "InPlace",
                 ExpectedExitCodes = new List<int>(),
                 TimeoutSeconds = 0
             }, emptySources);
@@ -191,6 +199,8 @@ public sealed class ArtifactIngestService
             Type = "default",
             Command = "default",
             Arguments = "default",
+            UninstallArgs = "default",
+            UpgradeBehavior = "default",
             ExpectedExitCodes = "default",
             TimeoutSeconds = "default"
         };
@@ -199,6 +209,8 @@ public sealed class ArtifactIngestService
             Type = type,
             Command = "{artifactPath}",
             Arguments = string.Empty,
+            UninstallArgs = string.Empty,
+            UpgradeBehavior = "InPlace",
             ExpectedExitCodes = new List<int> { 0 },
             TimeoutSeconds = 1800
         }, defaultSources);
@@ -488,6 +500,8 @@ public sealed class InstallAdapterInput
     public string? Type { get; set; }
     public string? Command { get; set; }
     public string? Arguments { get; set; }
+    public string? UninstallArgs { get; set; }
+    public string? UpgradeBehavior { get; set; }
     public List<int>? ExpectedExitCodes { get; set; }
     public int? TimeoutSeconds { get; set; }
 }
@@ -551,6 +565,8 @@ public sealed class InstallAdapter
     public string Type { get; set; } = string.Empty;
     public string Command { get; set; } = string.Empty;
     public string Arguments { get; set; } = string.Empty;
+    public string UninstallArgs { get; set; } = string.Empty;
+    public string UpgradeBehavior { get; set; } = "InPlace";
     public List<int> ExpectedExitCodes { get; set; } = new() { 0 };
     public int TimeoutSeconds { get; set; } = 300;
 }
@@ -595,6 +611,8 @@ public sealed class InstallAdapterSourceBreakdown
     public string Type { get; set; } = "default";
     public string Command { get; set; } = "default";
     public string Arguments { get; set; } = "default";
+    public string UninstallArgs { get; set; } = "default";
+    public string UpgradeBehavior { get; set; } = "default";
     public string ExpectedExitCodes { get; set; } = "default";
     public string TimeoutSeconds { get; set; } = "default";
 }

@@ -57,12 +57,27 @@ public sealed class WorkloadRunDispatcher
             .AsNoTracking()
             .FirstOrDefaultAsync(s => s.NodeId == run.NodeId && s.WorkloadId == run.WorkloadId, ct);
 
+        Guid? currentRevisionId = nodeState?.CurrentRevisionId;
+
+        if (currentRevisionId is null || currentRevisionId == Guid.Empty)
+        {
+            var lastRun = await _db.WorkloadRuns
+                .AsNoTracking()
+                .Where(r => r.NodeId == run.NodeId
+                    && r.WorkloadId == run.WorkloadId
+                    && r.State == "Completed"
+                    && r.Mode != "uninstall")
+                .OrderByDescending(r => r.CompletedAtUtc)
+                .FirstOrDefaultAsync(ct);
+            currentRevisionId = lastRun?.RevisionId;
+        }
+
         List<PackageAssignment> currentPackages = new();
-        if (nodeState?.CurrentRevisionId is not null && nodeState.CurrentRevisionId != Guid.Empty)
+        if (currentRevisionId is not null && currentRevisionId != Guid.Empty)
         {
             var currentRevisionPackages = await _db.WorkloadPackages
                 .AsNoTracking()
-                .Where(wp => wp.RevisionId == nodeState.CurrentRevisionId)
+                .Where(wp => wp.RevisionId == currentRevisionId)
                 .OrderBy(wp => wp.PackageIndex)
                 .ToListAsync(ct);
 

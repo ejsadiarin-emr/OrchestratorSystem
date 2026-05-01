@@ -846,6 +846,18 @@ export async function runNodePreChecks(nodeId: string): Promise<NodePreCheckSumm
   return res.json()
 }
 
+export async function runNodesPreChecks(nodeIds: string[], workloadId?: string): Promise<Array<{ nodeId: string; hostname: string; error?: string; summary: NodePreCheckSummary }>> {
+  const body: Record<string, unknown> = { nodeIds }
+  if (workloadId) body.workloadId = workloadId
+  const res = await fetch(`${API_BASE}/api/nodes/prechecks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`Failed to run pre-checks: ${res.status}`)
+  return res.json()
+}
+
 export async function listWorkloads(): Promise<WorkloadDefinition[]> {
   const response = await fetch('/api/workloads')
   if (!response.ok) {

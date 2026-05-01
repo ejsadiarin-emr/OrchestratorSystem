@@ -7,6 +7,7 @@ using DeploymentPoC.Orchestrator.Contracts.Api.WorkloadRuns;
 using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Data.Entities;
 using DeploymentPoC.Orchestrator.Services;
+using DeploymentPoC.Orchestrator.Runtime;
 using DeploymentPoC.Orchestrator.Validation;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -140,6 +141,29 @@ public sealed class WorkloadRunsController : ControllerBase
             .Where(s => s.WorkloadId == request.WorkloadId && distinctNodeIds.Contains(s.NodeId))
             .ToDictionaryAsync(s => s.NodeId);
 
+        if (mode == "install" && !request.Reinstall)
+        {
+            var driftNodes = await _db.NodeWorkloadStates
+                .AsNoTracking()
+                .Where(s => s.WorkloadId == request.WorkloadId
+                    && distinctNodeIds.Contains(s.NodeId)
+                    && s.CurrentRevisionId != null
+                    && s.CurrentRevisionId != request.RevisionId)
+                .ToListAsync();
+
+            foreach (var state in driftNodes)
+            {
+                if (HasPackageDrift(state.PackageStatesJson))
+                {
+                    return Conflict(new
+                    {
+                        message = $"Node has package drift (packages missing or wrong version). " +
+                                  "Run pre-check to verify state, then use Install mode with 'Reinstall' checked to force reconcile."
+                    });
+                }
+            }
+        }
+
         var now = DateTime.UtcNow;
         var runId = Guid.NewGuid();
         var snapshotJson = JsonSerializer.Serialize(revision.Packages
@@ -149,6 +173,17 @@ public sealed class WorkloadRunsController : ControllerBase
             .AsNoTracking()
             .Where(n => distinctNodeIds.Contains(n.NodeId))
             .ToDictionaryAsync(n => n.NodeId);
+
+        var lastRunByNode = await _db.WorkloadRuns
+            .AsNoTracking()
+            .Where(r => r.WorkloadId == request.WorkloadId
+                && r.NodeId.HasValue
+                && distinctNodeIds.Contains(r.NodeId.Value)
+                && r.State == "Completed"
+                && r.Mode != "uninstall")
+            .GroupBy(r => r.NodeId!.Value)
+            .Select(g => g.OrderByDescending(r => r.CompletedAtUtc).First())
+            .ToDictionaryAsync(r => r.NodeId!.Value);
 
         var created = new List<WorkloadRunEntity>();
         foreach (var nodeId in distinctNodeIds)
@@ -161,12 +196,19 @@ public sealed class WorkloadRunsController : ControllerBase
             if (mode == "install")
             {
                 var hasState = nodeWorkloadStates.TryGetValue(nodeId, out var state);
-                if (!hasState || state.CurrentRevisionId == null)
+                Guid? currentRevisionId = state?.CurrentRevisionId;
+
+                if ((!hasState || currentRevisionId == null) && lastRunByNode.TryGetValue(nodeId, out var lastRun))
+                {
+                    currentRevisionId = lastRun.RevisionId;
+                }
+
+                if (currentRevisionId == null)
                 {
                     effectiveMode = "install";
                     effectiveForceInstall = false;
                 }
-                else if (state.CurrentRevisionId == request.RevisionId)
+                else if (currentRevisionId == request.RevisionId)
                 {
                     effectiveMode = "install";
                     effectiveForceInstall = request.Reinstall;
@@ -531,7 +573,7 @@ public sealed class WorkloadRunsController : ControllerBase
     }
 
     [HttpPatch("{runId:guid}")]
-    public async Task<IActionResult> UpdateStatus(Guid runId, [FromBody] RunStatusUpdateRequest request)
+    public async Task<IActionResult> UpdateStatus(Guid runId, [FromBody] RunStatusUpdateRequest request, [FromQuery(Name = "agent_id")] Guid? agentId)
     {
         var now = DateTime.UtcNow;
         var isFinal = request.Status is "Completed" or "Failed" or "Cancelled";
@@ -539,23 +581,44 @@ public sealed class WorkloadRunsController : ControllerBase
         // Atomic claim: only allow Queued -> Running transition when still Queued
         if (request.Status == "Running")
         {
-            var updated = await _db.WorkloadRuns
-                .Where(r => r.RunId == runId && r.State == "Queued")
-                .ExecuteUpdateAsync(s => s
-                    .SetProperty(r => r.State, request.Status)
-                    .SetProperty(r => r.UpdatedAtUtc, now)
-                    .SetProperty(r => r.CompletedAtUtc, r => r.CompletedAtUtc));
+            var query = _db.WorkloadRuns.Where(r => r.RunId == runId && r.State == "Queued");
+            if (agentId.HasValue)
+            {
+                query = query.Where(r => r.NodeId == agentId.Value);
+            }
+
+            var updated = await query.ExecuteUpdateAsync(s => s
+                .SetProperty(r => r.State, request.Status)
+                .SetProperty(r => r.UpdatedAtUtc, now)
+                .SetProperty(r => r.CompletedAtUtc, r => r.CompletedAtUtc));
 
             if (updated == 0)
             {
                 return Conflict(new { message = "Run already claimed or not found" });
             }
 
+            if (agentId.HasValue)
+            {
+                var claimedRun = await _db.WorkloadRuns
+                    .FirstOrDefaultAsync(r => r.RunId == runId && r.NodeId == agentId.Value);
+                if (claimedRun is not null)
+                {
+                    await NodeWorkloadStateService.UpsertNodeWorkloadStateAsync(_db, agentId.Value, claimedRun);
+                    await _db.SaveChangesAsync();
+                }
+            }
+
             return NoContent();
         }
 
         // Final status update: allow from Running or Queued -> Completed/Failed/Cancelled
-        var run = await _db.WorkloadRuns.FirstOrDefaultAsync(r => r.RunId == runId);
+        var runQuery = _db.WorkloadRuns.Where(r => r.RunId == runId);
+        if (agentId.HasValue)
+        {
+            runQuery = runQuery.Where(r => r.NodeId == agentId.Value);
+        }
+
+        var run = await runQuery.FirstOrDefaultAsync();
         if (run == null)
         {
             return NotFound();
@@ -569,6 +632,14 @@ public sealed class WorkloadRunsController : ControllerBase
         }
 
         await _db.SaveChangesAsync();
+
+        if (request.Status == "Completed" && agentId.HasValue)
+        {
+            await NodeWorkloadStateService.UpdateNodeWorkloadStateStatusAsync(
+                _db, agentId.Value, runId, "completed", setCurrentRevision: true);
+            await _db.SaveChangesAsync();
+        }
+
         return NoContent();
     }
 
@@ -757,6 +828,32 @@ public sealed class WorkloadRunsController : ControllerBase
     {
         public Guid PackageId { get; set; }
         public int PackageIndex { get; set; }
+    }
+
+    private static bool HasPackageDrift(string? packageStatesJson)
+    {
+        if (string.IsNullOrWhiteSpace(packageStatesJson) || packageStatesJson == "{}")
+            return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(packageStatesJson);
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                if (prop.Value.TryGetProperty("status", out var statusEl))
+                {
+                    var status = statusEl.GetString();
+                    if (status == "NotPresent" || status == "WrongVersion" || status == "Unknown")
+                        return true;
+                }
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        return false;
     }
 
     private static ValidationErrorResponse ToValidationErrorResponse(ModelStateDictionary modelState)

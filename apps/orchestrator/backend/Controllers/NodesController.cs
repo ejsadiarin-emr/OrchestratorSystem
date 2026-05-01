@@ -374,6 +374,122 @@ public class NodesController : ControllerBase
         return Ok(results);
     }
 
+    [HttpPost("{id:guid}/prechecks")]
+    public async Task<ActionResult<NodePreCheckSummary>> RunSinglePreCheck(Guid id, [FromQuery] Guid? workloadId)
+    {
+        var node = await _db.Nodes
+            .Include(n => n.NodeWorkloadStates)
+            .ThenInclude(s => s.CurrentRevision)
+            .SingleOrDefaultAsync(n => n.NodeId == id);
+
+        if (node is null)
+        {
+            return NotFound(new { message = $"Node {id} not found" });
+        }
+
+        var workloadDetectionConfigs = await LoadDetectionConfigsByWorkloadAsync(workloadId);
+
+        var timeoutSeconds = _configuration.GetValue<int>("AgentProbeTimeoutSeconds", 30);
+        var client = _httpClientFactory.CreateClient();
+        client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
+
+        NodeDetectResponse? agentResponse = null;
+        bool probeSuccessful = false;
+        string? error = null;
+
+        try
+        {
+            var allPackageRequests = workloadDetectionConfigs
+                .SelectMany(kvp => kvp.Value)
+                .Select(c => new PackageDetectionRequest
+                {
+                    PackageId = c.PackageId,
+                    Name = c.Name,
+                    Version = c.Version,
+                    Detection = c.Detection
+                })
+                .ToList();
+
+            var requestBody = new DetectRequest { Packages = allPackageRequests };
+
+            var json = JsonSerializer.Serialize(requestBody);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            _logger.LogInformation("Probing agent on node {NodeId} ({Hostname}) at {IpAddress}",
+                node.NodeId, node.Hostname, node.IpAddress);
+
+            var response = await client.PostAsync(
+                $"http://{node.IpAddress}:5001/api/detect", content);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Agent probe returned non-200 for node {NodeId} ({Hostname}): {StatusCode}",
+                    node.NodeId, node.Hostname, (int)response.StatusCode);
+                error = $"Agent returned status {(int)response.StatusCode}";
+            }
+            else
+            {
+                var responseJson = await response.Content.ReadAsStringAsync();
+                agentResponse = JsonSerializer.Deserialize<NodeDetectResponse>(
+                    responseJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+                if (agentResponse is null)
+                {
+                    _logger.LogWarning(
+                        "Failed to deserialize agent response for node {NodeId} ({Hostname})",
+                        node.NodeId, node.Hostname);
+                    error = "Failed to deserialize agent response";
+                }
+                else
+                {
+                    probeSuccessful = true;
+                }
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            _logger.LogWarning("Agent probe timed out for node {NodeId} ({Hostname})",
+                node.NodeId, node.Hostname);
+            error = "Agent probe timed out";
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning("Agent unreachable for node {NodeId} ({Hostname}): {Error}",
+                node.NodeId, node.Hostname, ex.Message);
+            error = $"Agent unreachable: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error probing node {NodeId} ({Hostname})",
+                node.NodeId, node.Hostname);
+            error = $"Unexpected error: {ex.Message}";
+        }
+
+        if (!probeSuccessful || agentResponse is null)
+        {
+            return Ok(new NodePreCheckSummary
+            {
+                CheckedAt = DateTime.UtcNow,
+                Items = new List<PreCheckItem>
+                {
+                    new PreCheckItem
+                    {
+                        Category = "error",
+                        Name = "Probe Failed",
+                        Status = "failed",
+                        Detail = error ?? "Unknown error"
+                    }
+                }
+            });
+        }
+
+        var summary = await ReconcileProbeResults(node, agentResponse, workloadDetectionConfigs);
+
+        await _db.SaveChangesAsync();
+        return Ok(summary);
+    }
+
     private async Task<NodePreCheckSummary> ReconcileProbeResults(
         NodeEntity node,
         NodeDetectResponse agentResponse,
@@ -662,15 +778,59 @@ public class NodesController : ControllerBase
         foreach (var state in entity.NodeWorkloadStates)
         {
             var hasPackageState = !string.IsNullOrEmpty(state.PackageStatesJson) && state.PackageStatesJson != "{}";
-            items.Add(new PreCheckItem
+
+            if (hasPackageState)
             {
-                Category = "package",
-                Name = state.Workload?.Name ?? state.WorkloadId.ToString(),
-                ExpectedVersion = state.CurrentRevision?.Version ?? "",
-                ActualVersion = state.CurrentRevision?.Version ?? "",
-                Status = hasPackageState ? "passed" : "unknown",
-                Detail = hasPackageState ? "" : "Run pre-check to probe agent"
-            });
+                string status = "passed";
+                string detail = "";
+
+                try
+                {
+                    using var doc = JsonDocument.Parse(state.PackageStatesJson);
+                    var anyFailed = false;
+                    var anyWarning = false;
+
+                    foreach (var prop in doc.RootElement.EnumerateObject())
+                    {
+                        if (prop.Value.TryGetProperty("status", out var statusEl))
+                        {
+                            var s = statusEl.GetString();
+                            if (s == "NotPresent") anyFailed = true;
+                            else if (s == "WrongVersion") anyWarning = true;
+                        }
+                    }
+
+                    if (anyFailed) status = "failed";
+                    else if (anyWarning) status = "warning";
+                }
+                catch
+                {
+                    status = "warning";
+                    detail = "Could not parse package state";
+                }
+
+                items.Add(new PreCheckItem
+                {
+                    Category = "package",
+                    Name = state.Workload?.Name ?? state.WorkloadId.ToString(),
+                    ExpectedVersion = state.CurrentRevision?.Version ?? "",
+                    ActualVersion = state.CurrentRevision?.Version ?? "",
+                    Status = status,
+                    Detail = detail
+                });
+            }
+            else
+            {
+                items.Add(new PreCheckItem
+                {
+                    Category = "package",
+                    Name = state.Workload?.Name ?? state.WorkloadId.ToString(),
+                    ExpectedVersion = state.CurrentRevision?.Version ?? "",
+                    ActualVersion = state.CurrentRevision?.Version ?? "",
+                    Status = "unknown",
+                    Detail = "Run pre-check to probe agent"
+                });
+            }
         }
 
         return new NodePreCheckSummary

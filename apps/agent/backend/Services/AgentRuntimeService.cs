@@ -168,7 +168,7 @@ public sealed class AgentRuntimeService : BackgroundService
         {
             // Atomic claim
             var claimResponse = await http.PatchAsJsonAsync(
-                $"/api/workload-runs/{run.RunId}",
+                $"/api/workload-runs/{run.RunId}?agent_id={nodeId}",
                 new { status = "Running" }, ct);
 
             if (!claimResponse.IsSuccessStatusCode)
@@ -255,7 +255,7 @@ public sealed class AgentRuntimeService : BackgroundService
 
                     // Report final status
                     await http.PatchAsJsonAsync(
-                        $"/api/workload-runs/{run.RunId}",
+                        $"/api/workload-runs/{run.RunId}?agent_id={nodeId}",
                         new
                         {
                             status = result.Success ? "Completed" : "Failed",
@@ -270,7 +270,7 @@ public sealed class AgentRuntimeService : BackgroundService
                     try
                     {
                         await http.PatchAsJsonAsync(
-                            $"/api/workload-runs/{run.RunId}",
+                            $"/api/workload-runs/{run.RunId}?agent_id={nodeId}",
                             new { status = "Failed", error = ex.Message }, CancellationToken.None);
                     }
                     catch { /* best effort */ }

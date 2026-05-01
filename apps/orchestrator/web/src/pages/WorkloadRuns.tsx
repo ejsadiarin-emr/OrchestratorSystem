@@ -8,9 +8,10 @@ import {
   listNodeWorkloadStates,
   listWorkloadRuns,
   listWorkloads,
+  runNodesPreChecks,
 } from '../services/api'
 import { subscribeToRunProgress } from '../services/realtime'
-import type { Node, NodeWorkloadState, WorkloadDefinition, WorkloadRevision, WorkloadRun, WorkloadRunStatus } from '../types'
+import type { Node, NodePreCheckSummary, NodeWorkloadState, WorkloadDefinition, WorkloadRevision, WorkloadRun, WorkloadRunStatus } from '../types'
 import { Modal, ModalContent, ModalDescription, ModalFooter, ModalHeader, ModalTitle } from '../components/ui/modal'
 
 const filterValues: Array<WorkloadRunStatus | 'all'> = [
@@ -47,6 +48,8 @@ export default function WorkloadRuns() {
   const [submitting, setSubmitting] = useState(false)
   const [nodeWorkloadStates, setNodeWorkloadStates] = useState<NodeWorkloadState[]>([])
   const [uninstallConfirmed, setUninstallConfirmed] = useState(false)
+  const [precheckRunning, setPrecheckRunning] = useState(false)
+  const [precheckResults, setPrecheckResults] = useState<Map<string, NodePreCheckSummary>>(new Map())
 
   const unsubscribers = useRef<Map<string, () => void>>(new Map())
 
@@ -152,6 +155,7 @@ export default function WorkloadRuns() {
     setFormErrors(current => ({ ...current, workloadId: '' }))
     setWorkloadDetails(null)
     setNodeWorkloadStates([])
+    setPrecheckResults(new Map())
 
     if (!workloadId) return
 
@@ -619,6 +623,35 @@ export default function WorkloadRuns() {
                       className="w-full rounded-lg border border-[var(--surface-border)] px-3 py-2 text-sm"
                     />
 
+                    {form.workloadId && (
+                      <button
+                        type="button"
+                        disabled={precheckRunning}
+                        onClick={async () => {
+                          setPrecheckRunning(true)
+                          setPrecheckResults(new Map())
+                          try {
+                            const onlineIds = nodes.filter(n => n.status === 'online').map(n => n.id)
+                            const results = await runNodesPreChecks(onlineIds, form.workloadId)
+                            const resultMap = new Map<string, NodePreCheckSummary>()
+                            for (const r of results) {
+                              if (r.summary) resultMap.set(r.nodeId, r.summary)
+                            }
+                            setPrecheckResults(resultMap)
+                            const states = await listNodeWorkloadStates()
+                            setNodeWorkloadStates(states)
+                          } catch {
+                            // handled below by results
+                          } finally {
+                            setPrecheckRunning(false)
+                          }
+                        }}
+                        className="w-full rounded-lg border border-[var(--surface-border)] px-3 py-2 text-xs font-medium text-[var(--accent)] hover:bg-[var(--surface-subtle)] hover:border-[var(--accent)] disabled:opacity-50"
+                      >
+                        {precheckRunning ? 'Running pre-checks...' : 'Run pre-check'}
+                      </button>
+                    )}
+
                     <div
                       className={`max-h-48 overflow-y-auto rounded-lg border p-2 space-y-1 ${
                         formErrors.targetNodeIds ? 'border-rose-300' : 'border-[var(--surface-border)]'
@@ -696,6 +729,20 @@ export default function WorkloadRuns() {
                               {form.workloadId && !installedVersion && (
                                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
                                   not installed
+                                </span>
+                              )}
+                              {precheckResults.has(node.id) && (
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                    precheckResults.get(node.id)!.overallStatus === 'passed'
+                                      ? 'bg-emerald-100 text-emerald-700'
+                                      : precheckResults.get(node.id)!.overallStatus === 'warning'
+                                        ? 'bg-amber-100 text-amber-700'
+                                        : 'bg-red-100 text-red-700'
+                                  }`}
+                                  title={precheckResults.get(node.id)!.overallStatus === 'passed' ? 'All pre-checks passed' : 'Pre-checks found issues'}
+                                >
+                                  {precheckResults.get(node.id)!.overallStatus === 'passed' ? 'pre-check passed' : 'pre-check: issues'}
                                 </span>
                               )}
                             </label>

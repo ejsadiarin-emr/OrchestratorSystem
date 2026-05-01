@@ -12,6 +12,8 @@ public sealed class AssignRunPayload
     public List<PackageAssignment> Packages { get; set; } = new();
     public List<string> PreWorkloadSteps { get; set; } = new();
     public List<string> PostWorkloadSteps { get; set; } = new();
+    public List<string> PreUninstallSteps { get; set; } = new();
+    public List<string> PostUninstallSteps { get; set; } = new();
     public string DefaultShell { get; set; } = "powershell";
     public List<PackageAssignment> CurrentPackages { get; set; } = new();
     public bool ForceInstall { get; set; }

@@ -126,6 +126,12 @@ public sealed class WorkloadsController : ControllerBase
             PostWorkloadStepsJson = request.PostWorkloadSteps is { Count: > 0 }
                 ? System.Text.Json.JsonSerializer.Serialize(request.PostWorkloadSteps)
                 : "[]",
+            PreUninstallStepsJson = request.PreUninstallSteps is { Count: > 0 }
+                ? System.Text.Json.JsonSerializer.Serialize(request.PreUninstallSteps)
+                : "[]",
+            PostUninstallStepsJson = request.PostUninstallSteps is { Count: > 0 }
+                ? System.Text.Json.JsonSerializer.Serialize(request.PostUninstallSteps)
+                : "[]",
             DefaultShell = string.IsNullOrWhiteSpace(request.DefaultShell) ? "powershell" : request.DefaultShell,
             Packages = request.Packages
                 .OrderBy(p => p.PackageIndex)
@@ -155,6 +161,8 @@ public sealed class WorkloadsController : ControllerBase
             CreatedAtUtc = revision.CreatedAtUtc,
             PreWorkloadSteps = DeserializeStringList(revision.PreWorkloadStepsJson),
             PostWorkloadSteps = DeserializeStringList(revision.PostWorkloadStepsJson),
+            PreUninstallSteps = DeserializeStringList(revision.PreUninstallStepsJson),
+            PostUninstallSteps = DeserializeStringList(revision.PostUninstallStepsJson),
             DefaultShell = revision.DefaultShell,
             Packages = revision.Packages
                 .OrderBy(p => p.PackageIndex)
@@ -175,6 +183,229 @@ public sealed class WorkloadsController : ControllerBase
         };
 
         return Created($"/api/workloads/{workloadId}", revisionDto);
+    }
+
+    [HttpPut("{workloadId:guid}/revisions/{revisionId:guid}")]
+    public async Task<ActionResult<WorkloadRevisionUpdateResponse>> UpdateRevision(Guid workloadId, Guid revisionId, [FromBody] UpdateWorkloadRevisionRequest request)
+    {
+        var errors = new List<ValidationFieldError>();
+        if (!ModelState.IsValid)
+        {
+            errors.AddRange(ToValidationErrorResponse(ModelState).Errors);
+        }
+
+        if (request.Packages.Count == 0)
+        {
+            errors.Add(new ValidationFieldError
+            {
+                Field = "packages",
+                Error = "Workload revisions must include at least 1 package"
+            });
+        }
+
+        if (request.Packages.Select(p => p.PackageIndex).Distinct().Count() != request.Packages.Count)
+        {
+            errors.Add(new ValidationFieldError
+            {
+                Field = "packages",
+                Error = "PackageIndex values must be unique"
+            });
+        }
+
+        if (request.Packages.Any(p => p.PackageId == Guid.Empty))
+        {
+            errors.Add(new ValidationFieldError
+            {
+                Field = "packages.packageId",
+                Error = "PackageId must be a non-empty GUID"
+            });
+        }
+
+        var workload = await _db.WorkloadDefinitions.SingleOrDefaultAsync(w => w.WorkloadId == workloadId);
+        if (workload is null)
+        {
+            return NotFound(new { message = $"Workload {workloadId} not found" });
+        }
+
+        var revision = await _db.WorkloadRevisions
+            .Include(r => r.Packages)
+            .SingleOrDefaultAsync(r => r.RevisionId == revisionId && r.WorkloadId == workloadId);
+        if (revision is null)
+        {
+            return NotFound(new { message = $"Revision {revisionId} not found for workload {workloadId}" });
+        }
+
+        var packageIds = request.Packages.Select(p => p.PackageId).Distinct().ToList();
+        var existingPackages = await _db.Packages
+            .Where(p => packageIds.Contains(p.PackageId))
+            .ToDictionaryAsync(p => p.PackageId);
+        if (existingPackages.Count != packageIds.Count)
+        {
+            errors.Add(new ValidationFieldError
+            {
+                Field = "packages",
+                Error = "One or more package ids were not found"
+            });
+        }
+
+        if (errors.Count > 0)
+        {
+            return BadRequest(new ValidationErrorResponse
+            {
+                Errors = errors
+            });
+        }
+
+        // Diff check
+        var newPreWorkloadSteps = request.PreWorkloadSteps is { Count: > 0 }
+            ? JsonSerializer.Serialize(request.PreWorkloadSteps)
+            : "[]";
+        var newPostWorkloadSteps = request.PostWorkloadSteps is { Count: > 0 }
+            ? JsonSerializer.Serialize(request.PostWorkloadSteps)
+            : "[]";
+        var newPreUninstallSteps = request.PreUninstallSteps is { Count: > 0 }
+            ? JsonSerializer.Serialize(request.PreUninstallSteps)
+            : "[]";
+        var newPostUninstallSteps = request.PostUninstallSteps is { Count: > 0 }
+            ? JsonSerializer.Serialize(request.PostUninstallSteps)
+            : "[]";
+        var newDefaultShell = string.IsNullOrWhiteSpace(request.DefaultShell) ? "powershell" : request.DefaultShell;
+        var newVersion = request.Version.Trim();
+
+        var orderedNewPackages = request.Packages.OrderBy(p => p.PackageIndex).ToList();
+        var orderedOldPackages = revision.Packages.OrderBy(p => p.PackageIndex).ToList();
+
+        bool hasChanges =
+            revision.Version != newVersion ||
+            revision.DefaultShell != newDefaultShell ||
+            !StringJsonListsEqual(revision.PreWorkloadStepsJson, newPreWorkloadSteps) ||
+            !StringJsonListsEqual(revision.PostWorkloadStepsJson, newPostWorkloadSteps) ||
+            !StringJsonListsEqual(revision.PreUninstallStepsJson, newPreUninstallSteps) ||
+            !StringJsonListsEqual(revision.PostUninstallStepsJson, newPostUninstallSteps) ||
+            orderedOldPackages.Count != orderedNewPackages.Count;
+
+        if (!hasChanges)
+        {
+            for (int i = 0; i < orderedOldPackages.Count; i++)
+            {
+                var oldPkg = orderedOldPackages[i];
+                var newPkg = orderedNewPackages[i];
+                var newPreInit = newPkg.PreInitSteps is { Count: > 0 } ? JsonSerializer.Serialize(newPkg.PreInitSteps) : "[]";
+                var newPostInit = newPkg.PostInitSteps is { Count: > 0 } ? JsonSerializer.Serialize(newPkg.PostInitSteps) : "[]";
+
+                if (oldPkg.PackageId != newPkg.PackageId ||
+                    oldPkg.PackageIndex != newPkg.PackageIndex ||
+                    !StringJsonListsEqual(oldPkg.PreInitStepsJson, newPreInit) ||
+                    !StringJsonListsEqual(oldPkg.PostInitStepsJson, newPostInit))
+                {
+                    hasChanges = true;
+                    break;
+                }
+            }
+        }
+
+        if (!hasChanges)
+        {
+            var unchangedDto = new WorkloadRevisionDto
+            {
+                RevisionId = revision.RevisionId,
+                Version = revision.Version,
+                IsPublished = revision.IsPublished,
+                CreatedAtUtc = revision.CreatedAtUtc,
+                PreWorkloadSteps = DeserializeStringList(revision.PreWorkloadStepsJson),
+                PostWorkloadSteps = DeserializeStringList(revision.PostWorkloadStepsJson),
+                PreUninstallSteps = DeserializeStringList(revision.PreUninstallStepsJson),
+                PostUninstallSteps = DeserializeStringList(revision.PostUninstallStepsJson),
+                DefaultShell = revision.DefaultShell,
+                Packages = revision.Packages
+                    .OrderBy(p => p.PackageIndex)
+                    .Select(p =>
+                    {
+                        var pkg = existingPackages.GetValueOrDefault(p.PackageId);
+                        return new WorkloadPackageDto
+                        {
+                            PackageId = p.PackageId,
+                            PackageIndex = p.PackageIndex,
+                            PackageName = pkg?.Name ?? string.Empty,
+                            PackageVersion = pkg?.Version ?? string.Empty,
+                            PreInitSteps = DeserializeStringList(p.PreInitStepsJson),
+                            PostInitSteps = DeserializeStringList(p.PostInitStepsJson)
+                        };
+                    })
+                    .ToList()
+            };
+
+            return Ok(new WorkloadRevisionUpdateResponse
+            {
+                Changed = false,
+                Revision = unchangedDto
+            });
+        }
+
+        // Apply updates
+        revision.Version = newVersion;
+        revision.DefaultShell = newDefaultShell;
+        revision.PreWorkloadStepsJson = newPreWorkloadSteps;
+        revision.PostWorkloadStepsJson = newPostWorkloadSteps;
+        revision.PreUninstallStepsJson = newPreUninstallSteps;
+        revision.PostUninstallStepsJson = newPostUninstallSteps;
+        workload.UpdatedAtUtc = DateTime.UtcNow;
+
+        // Remove old packages and add new ones
+        _db.WorkloadPackages.RemoveRange(revision.Packages);
+        revision.Packages = orderedNewPackages.Select(p => new WorkloadPackageEntity
+        {
+            WorkloadPackageId = Guid.NewGuid(),
+            RevisionId = revision.RevisionId,
+            PackageId = p.PackageId,
+            PackageIndex = p.PackageIndex,
+            PreInitStepsJson = p.PreInitSteps is { Count: > 0 } ? JsonSerializer.Serialize(p.PreInitSteps) : "[]",
+            PostInitStepsJson = p.PostInitSteps is { Count: > 0 } ? JsonSerializer.Serialize(p.PostInitSteps) : "[]"
+        }).ToList();
+
+        await _db.SaveChangesAsync();
+
+        var updatedDto = new WorkloadRevisionDto
+        {
+            RevisionId = revision.RevisionId,
+            Version = revision.Version,
+            IsPublished = revision.IsPublished,
+            CreatedAtUtc = revision.CreatedAtUtc,
+            PreWorkloadSteps = DeserializeStringList(revision.PreWorkloadStepsJson),
+            PostWorkloadSteps = DeserializeStringList(revision.PostWorkloadStepsJson),
+            PreUninstallSteps = DeserializeStringList(revision.PreUninstallStepsJson),
+            PostUninstallSteps = DeserializeStringList(revision.PostUninstallStepsJson),
+            DefaultShell = revision.DefaultShell,
+            Packages = revision.Packages
+                .OrderBy(p => p.PackageIndex)
+                .Select(p =>
+                {
+                    var pkg = existingPackages.GetValueOrDefault(p.PackageId);
+                    return new WorkloadPackageDto
+                    {
+                        PackageId = p.PackageId,
+                        PackageIndex = p.PackageIndex,
+                        PackageName = pkg?.Name ?? string.Empty,
+                        PackageVersion = pkg?.Version ?? string.Empty,
+                        PreInitSteps = DeserializeStringList(p.PreInitStepsJson),
+                        PostInitSteps = DeserializeStringList(p.PostInitStepsJson)
+                    };
+                })
+                .ToList()
+        };
+
+        return Ok(new WorkloadRevisionUpdateResponse
+        {
+            Changed = true,
+            Revision = updatedDto
+        });
+    }
+
+    private static bool StringJsonListsEqual(string? jsonA, string? jsonB)
+    {
+        var a = DeserializeStringList(jsonA);
+        var b = DeserializeStringList(jsonB);
+        return a.Count == b.Count && a.SequenceEqual(b);
     }
 
     [HttpPost("{workloadId:guid}/publish")]
@@ -357,6 +588,8 @@ public sealed class WorkloadsController : ControllerBase
                     CreatedAtUtc = r.CreatedAtUtc,
                     PreWorkloadSteps = DeserializeStringList(r.PreWorkloadStepsJson),
                     PostWorkloadSteps = DeserializeStringList(r.PostWorkloadStepsJson),
+                    PreUninstallSteps = DeserializeStringList(r.PreUninstallStepsJson),
+                    PostUninstallSteps = DeserializeStringList(r.PostUninstallStepsJson),
                     DefaultShell = r.DefaultShell,
                     Packages = r.Packages
                         .OrderBy(p => p.PackageIndex)
@@ -660,6 +893,21 @@ public sealed class WorkloadsController : ControllerBase
                     continue;
                 }
 
+                var workloadPreUninstallSteps = ParseInitStepsList(w.PreUninstallSteps);
+                var workloadPostUninstallSteps = ParseInitStepsList(w.PostUninstallSteps);
+
+                if (workloadPreUninstallSteps is null || workloadPostUninstallSteps is null)
+                {
+                    results.Add(new BulkImportResultItem
+                    {
+                        Name = w.Name,
+                        Slug = w.Slug,
+                        Status = "failed",
+                        Reason = "Workload-level uninstall steps contain validation errors (empty string or command exceeds 4096 characters)"
+                    });
+                    continue;
+                }
+
                 var workloadName = w.Name.Trim();
                 var workloadVersion = string.IsNullOrWhiteSpace(w.Version) ? "1.0.0" : w.Version.Trim();
                 var existingWorkload = await _db.WorkloadDefinitions
@@ -708,6 +956,8 @@ public sealed class WorkloadsController : ControllerBase
                     CreatedAtUtc = now,
                     PreWorkloadStepsJson = JsonSerializeList(workloadPreWorkloadSteps),
                     PostWorkloadStepsJson = JsonSerializeList(workloadPostWorkloadSteps),
+                    PreUninstallStepsJson = JsonSerializeList(workloadPreUninstallSteps),
+                    PostUninstallStepsJson = JsonSerializeList(workloadPostUninstallSteps),
                     DefaultShell = string.IsNullOrWhiteSpace(w.DefaultShell) ? "powershell" : w.DefaultShell
                 };
 
@@ -866,6 +1116,12 @@ public sealed class WorkloadImportModel
 
     [System.Text.Json.Serialization.JsonPropertyName("postWorkloadSteps")]
     public List<System.Text.Json.JsonElement>? PostWorkloadSteps { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("preUninstallSteps")]
+    public List<System.Text.Json.JsonElement>? PreUninstallSteps { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("postUninstallSteps")]
+    public List<System.Text.Json.JsonElement>? PostUninstallSteps { get; set; }
 
     public string? DefaultShell { get; set; }
 }

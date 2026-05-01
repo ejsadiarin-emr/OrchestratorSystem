@@ -10,6 +10,8 @@ public sealed class WorkloadRevisionEntity
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public string PreWorkloadStepsJson { get; set; } = "[]";
     public string PostWorkloadStepsJson { get; set; } = "[]";
+    public string PreUninstallStepsJson { get; set; } = "[]";
+    public string PostUninstallStepsJson { get; set; } = "[]";
     public string DefaultShell { get; set; } = "powershell";
     public List<WorkloadPackageEntity> Packages { get; set; } = new();
 }

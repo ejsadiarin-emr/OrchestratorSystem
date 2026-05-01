@@ -69,6 +69,8 @@ $DbeaverManifestOlder = @{
         type = "exe"
         command = $DbeaverExeOlder
         arguments = "/S /allusers"
+        uninstallArgs = "/S /allusers"
+        upgradeBehavior = "InPlace"
         expectedExitCodes = @(0)
         timeoutSeconds = 300
     }
@@ -98,6 +100,8 @@ $PythonManifestOlder = @{
         type = "exe"
         command = $PythonExeOlder
         arguments = "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0"
+        uninstallArgs = "/uninstall"
+        upgradeBehavior = "SideBySide"
         expectedExitCodes = @(0)
         timeoutSeconds = 300
     }
@@ -122,6 +126,8 @@ $DbeaverManifestNewer = @{
         type = "exe"
         command = $DbeaverExeNewer
         arguments = "/S /allusers"
+        uninstallArgs = "/S /allusers"
+        upgradeBehavior = "InPlace"
         expectedExitCodes = @(0)
         timeoutSeconds = 300
     }
@@ -151,6 +157,8 @@ $PythonManifestNewer = @{
         type = "exe"
         command = $PythonExeNewer
         arguments = "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0"
+        uninstallArgs = "/uninstall"
+        upgradeBehavior = "SideBySide"
         expectedExitCodes = @(0)
         timeoutSeconds = 300
     }

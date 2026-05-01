@@ -11,6 +11,7 @@ public sealed class PackageAssignment
     public string? ArtifactFileName { get; set; }
     public string? DownloadUrl { get; set; }
     public string? ExpectedSha256 { get; set; }
+    public long? SizeBytes { get; set; }
     public List<string> PreInitSteps { get; set; } = new();
     public List<string> PostInitSteps { get; set; } = new();
     public InstallAdapterConfig InstallAdapter { get; set; } = new();

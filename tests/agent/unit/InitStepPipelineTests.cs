@@ -408,4 +408,40 @@ public sealed class InitStepPipelineTests
 
         Assert.True(result.Success);
     }
+
+    [Fact]
+    public async Task Update_ChangedPackage_RunsPreInitAndPostInit()
+    {
+        var (executor, _) = CreateExecutor();
+
+        var context = CreateContext(
+            mode: "update",
+            forceInstall: true,
+            currentPackages: new List<PackageAssignment>
+            {
+                CreatePackage(0, "pkg-a", "1.0.0")
+            },
+            targetPackages: new List<PackageAssignment>
+            {
+                CreatePackage(0, "pkg-a", "2.0.0",
+                    preInitSteps: new List<string> { "echo pre" },
+                    postInitSteps: new List<string> { "echo post" })
+            });
+
+        await executor.ExecuteAsync(context, (msg, ct) => Task.CompletedTask);
+
+        var names = StepHistoryNames(context);
+        var preInitIdx = names.IndexOf("PreInit_0_0");
+        var acquireIdx = names.IndexOf("AcquireArtifact");
+        var postInstallVerifyIdx = names.IndexOf("PostInstallVerify");
+        var postInitIdx = names.IndexOf("PostInit_0_0");
+
+        Assert.True(preInitIdx >= 0, "PreInit_0_0 should be in step history");
+        Assert.True(acquireIdx >= 0, "AcquireArtifact should be in step history");
+        Assert.True(preInitIdx < acquireIdx, "PreInit should run before AcquireArtifact");
+
+        Assert.True(postInstallVerifyIdx >= 0, "PostInstallVerify should be in step history");
+        Assert.True(postInitIdx >= 0, "PostInit_0_0 should be in step history");
+        Assert.True(postInstallVerifyIdx < postInitIdx, "PostInstallVerify should run before PostInit");
+    }
 }

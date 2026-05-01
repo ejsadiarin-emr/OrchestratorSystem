@@ -6,6 +6,7 @@ public sealed class InstallAdapterConfig
     public string Command { get; set; } = string.Empty;
     public string Arguments { get; set; } = string.Empty;
     public string UninstallArgs { get; set; } = string.Empty;
+    public string UpgradeBehavior { get; set; } = "InPlace";
     public List<int> ExpectedExitCodes { get; set; } = new() { 0 };
     public int TimeoutSeconds { get; set; } = 300;
 }

@@ -9,6 +9,7 @@ public sealed class PackageEntity
     public string InstallType { get; set; } = string.Empty;
     public string InstallArgs { get; set; } = string.Empty;
     public string UninstallArgs { get; set; } = string.Empty;
+    public string UpgradeBehavior { get; set; } = string.Empty;
     public string ExpectedExitCodesJson { get; set; } = string.Empty;
     public string DetectionConfigJson { get; set; } = string.Empty;
     public int TimeoutSeconds { get; set; } = 300;

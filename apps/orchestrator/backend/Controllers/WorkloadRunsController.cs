@@ -7,6 +7,7 @@ using DeploymentPoC.Orchestrator.Contracts.Api.WorkloadRuns;
 using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Data.Entities;
 using DeploymentPoC.Orchestrator.Services;
+using DeploymentPoC.Orchestrator.Validation;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
@@ -703,12 +704,16 @@ public sealed class WorkloadRunsController : ControllerBase
             Filename = fn ?? string.Empty,
             DownloadUrl = hasArtifact ? $"/api/artifacts/{wp.PackageId}/download" : string.Empty,
             ExpectedSha256 = expectedSha256,
+            SizeBytes = _artifactStore.TryGetMetadata(pkg?.Name ?? "", pkg?.Version ?? "", out var meta) ? meta.Length : null,
             InstallAdapter = new InstallAdapterConfig
             {
                 Type = installType,
                 Command = pkg?.SourcePath ?? "{artifactPath}",
                 Arguments = installArgs,
                 UninstallArgs = pkg?.UninstallArgs ?? "",
+                UpgradeBehavior = string.IsNullOrWhiteSpace(pkg?.UpgradeBehavior)
+                    ? UpgradeBehaviorValidator.DefaultValue
+                    : UpgradeBehaviorValidator.Normalize(pkg.UpgradeBehavior),
                 ExpectedExitCodes = expectedExitCodes,
                 TimeoutSeconds = timeoutSeconds
             },

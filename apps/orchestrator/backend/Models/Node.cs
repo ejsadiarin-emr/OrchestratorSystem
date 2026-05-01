@@ -95,4 +95,14 @@ public class PreCheckItem
 
 public class RunPreCheckRequest
 {
+    public List<Guid> NodeIds { get; set; } = new();
+    public Guid? WorkloadId { get; set; }
+}
+
+public class NodePreCheckResponse
+{
+    public Guid NodeId { get; set; }
+    public string Hostname { get; set; } = string.Empty;
+    public string? Error { get; set; }
+    public NodePreCheckSummary Summary { get; set; } = new();
 }

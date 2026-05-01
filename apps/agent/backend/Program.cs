@@ -1,6 +1,7 @@
 using DeploymentPoC.Agent.Models;
 using DeploymentPoC.Agent.Pipeline;
 using DeploymentPoC.Agent.Services;
+using DeploymentPoC.Agent.Steps;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -73,6 +74,7 @@ var app = builder.Build();
 
 app.UseRouting();
 app.MapGet("/health", () => Results.Ok(new { service = "agent", status = "ok" }));
+app.MapPost("/api/detect", DetectEndpointHandler.HandleAsync);
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapFallbackToFile("index.html");

@@ -103,6 +103,7 @@ public class EnrollmentController : ControllerBase
             DisplayName = displayName,
             IpAddress = ipAddress,
             Description = "Enrolled via token",
+            Status = "Online",
             LastSeenUtc = DateTime.UtcNow,
             FirstConnectedUtc = DateTime.UtcNow,
             OsVersion = request?.OsVersion ?? "",

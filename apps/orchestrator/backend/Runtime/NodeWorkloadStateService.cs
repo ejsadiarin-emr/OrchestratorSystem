@@ -153,6 +153,7 @@ public sealed class NodeWorkloadStateService
         var node = await db.Nodes.FindAsync(nodeId);
         if (node is not null)
         {
+            node.Status = "Online";
             node.LastSeenUtc = DateTime.UtcNow;
 
             var payload = TryDeserializePayload<HeartbeatPayload>(envelope.Payload);

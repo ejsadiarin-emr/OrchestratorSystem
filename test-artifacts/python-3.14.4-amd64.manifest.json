@@ -2,13 +2,15 @@
     "packageId":  "python",
     "version":  "3.14.4",
     "installAdapter":  {
+                           "upgradeBehavior":  "UninstallFirst",
+                           "arguments":  "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0",
+                           "timeoutSeconds":  300,
+                           "uninstallArgs":  "/uninstall",
+                           "command":  "python-3.14.4-amd64.exe",
+                           "type":  "exe",
                            "expectedExitCodes":  [
                                                      0
-                                                 ],
-                           "timeoutSeconds":  300,
-                           "command":  "python-3.14.4-amd64.exe",
-                           "arguments":  "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0",
-                           "type":  "exe"
+                                                 ]
                        },
     "channel":  "stable",
     "artifactType":  "exe",

@@ -7,6 +7,7 @@ import {
   listArtifacts,
   listWorkloads,
   publishWorkloadRevision,
+  updateWorkloadRevision,
 } from '../services/api'
 import { Modal, ModalContent, ModalDescription, ModalFooter, ModalHeader, ModalTitle } from '../components/ui/modal'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,6 +20,9 @@ interface RevisionForm {
   workloadId: string
   revision: string
   packageIds: string[]
+  defaultShell: string
+  preWorkloadSteps: string
+  postWorkloadSteps: string
 }
 
 function formatBytes(bytes?: number): string {
@@ -81,10 +85,15 @@ export default function Workloads() {
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const [revisionMode, setRevisionMode] = useState<'create' | 'edit'>('create')
+  const [editingRevisionId, setEditingRevisionId] = useState<string>('')
   const [revisionForm, setRevisionForm] = useState<RevisionForm>({
     workloadId: '',
     revision: '1.0.0',
     packageIds: [],
+    defaultShell: 'powershell',
+    preWorkloadSteps: '',
+    postWorkloadSteps: '',
   })
 
   const refresh = async () => {
@@ -130,42 +139,95 @@ export default function Workloads() {
 
   const canCreateRevision = revisionForm.packageIds.length >= 1
 
-  const onCreateRevision = async (event: React.FormEvent) => {
+  const onSubmitRevision = async (event: React.FormEvent) => {
     event.preventDefault()
     setError(null)
     setMessage(null)
 
     try {
-      const created = await createWorkloadRevision({
-        workloadId: revisionForm.workloadId,
-        revision: revisionForm.revision,
-        packageSteps: selectedPackages.map((artifact, index) => ({
+      const originalRevision = detailWorkload?.revisions.find(r => r.id === editingRevisionId)
+      const packageSteps = selectedPackages.map((artifact, index) => {
+        const existingStep = originalRevision?.packageSteps?.find(
+          s => s.packageId === (artifact.packageEntityId ?? artifact.id),
+        )
+        return {
           packageId: artifact.packageEntityId ?? artifact.id,
           packageName: artifact.manifest.packageId ?? artifact.fileName,
           packageVersion: artifact.manifest.version ?? '0.0.0',
           packageIndex: index + 1,
           stepId: 'install-or-upgrade',
-        })),
+          preInitSteps: existingStep?.preInitSteps,
+          postInitSteps: existingStep?.postInitSteps,
+        }
       })
-      setRevisionForm(current => ({ ...current, packageIds: [] }))
-      await refresh()
-      setMessage(`Created WorkloadRevision draft ${created.revision}`)
-      setIsRevisionModalOpen(false)
 
-      // refresh detail modal if open for same workload
-      if (detailWorkload && detailWorkload.id === created.workloadId) {
-        setDetailLoading(true)
-        try {
-          const updated = await getWorkload(created.workloadId)
-          setDetailWorkload(updated)
-        } catch {
-          // ignore detail refresh errors
-        } finally {
-          setDetailLoading(false)
+      const requestBase = {
+        workloadId: revisionForm.workloadId,
+        revision: revisionForm.revision,
+        packageSteps,
+        defaultShell: revisionForm.defaultShell,
+        preWorkloadSteps: revisionForm.preWorkloadSteps
+          .split('\n')
+          .map(s => s.trim())
+          .filter(s => s.length > 0),
+        postWorkloadSteps: revisionForm.postWorkloadSteps
+          .split('\n')
+          .map(s => s.trim())
+          .filter(s => s.length > 0),
+      }
+
+      if (revisionMode === 'edit') {
+        const result = await updateWorkloadRevision(revisionForm.workloadId, editingRevisionId, requestBase)
+        await refresh()
+        if (result.changed) {
+          setMessage(`Updated revision ${result.revision.revision}`)
+        } else {
+          setMessage(`No changes detected for revision ${result.revision.revision}. Skipped update.`)
+        }
+        setIsRevisionModalOpen(false)
+        setRevisionMode('create')
+        setEditingRevisionId('')
+
+        // refresh detail modal if open for same workload
+        if (detailWorkload && detailWorkload.id === result.revision.workloadId) {
+          setDetailLoading(true)
+          try {
+            const updated = await getWorkload(result.revision.workloadId)
+            setDetailWorkload(updated)
+          } catch {
+            // ignore detail refresh errors
+          } finally {
+            setDetailLoading(false)
+          }
+        }
+      } else {
+        const created = await createWorkloadRevision(requestBase)
+        setRevisionForm(current => ({
+          ...current,
+          packageIds: [],
+          preWorkloadSteps: '',
+          postWorkloadSteps: '',
+          defaultShell: 'powershell',
+        }))
+        await refresh()
+        setMessage(`Created WorkloadRevision draft ${created.revision}`)
+        setIsRevisionModalOpen(false)
+
+        // refresh detail modal if open for same workload
+        if (detailWorkload && detailWorkload.id === created.workloadId) {
+          setDetailLoading(true)
+          try {
+            const updated = await getWorkload(created.workloadId)
+            setDetailWorkload(updated)
+          } catch {
+            // ignore detail refresh errors
+          } finally {
+            setDetailLoading(false)
+          }
         }
       }
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Failed to create revision draft.')
+      setError(requestError instanceof Error ? requestError.message : `Failed to ${revisionMode} revision.`)
     }
   }
 
@@ -517,10 +579,10 @@ export default function Workloads() {
       <Modal open={isRevisionModalOpen} onOpenChange={setIsRevisionModalOpen}>
         <ModalContent className="w-[min(92vw,40rem)]">
           <ModalHeader>
-            <ModalTitle>Create Workload Revision Draft</ModalTitle>
-            <ModalDescription>Choose a workload and select 1 or more ordered package steps.</ModalDescription>
+            <ModalTitle>{revisionMode === 'edit' ? 'Edit Workload Revision' : 'Create Workload Revision Draft'}</ModalTitle>
+            <ModalDescription>{revisionMode === 'edit' ? 'Update fields and re-publish this revision.' : 'Choose a workload and select 1 or more ordered package steps.'}</ModalDescription>
           </ModalHeader>
-          <form onSubmit={onCreateRevision} className="space-y-3 px-4 pb-4">
+          <form onSubmit={onSubmitRevision} className="space-y-3 px-4 pb-4">
             <label className="block text-sm text-[var(--text-soft)]">
               Workload
               <select
@@ -531,6 +593,7 @@ export default function Workloads() {
                 }}
                 className="mt-1 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2"
                 required
+                disabled={revisionMode === 'edit'}
               >
                 <option value="">Select workload...</option>
                 {workloads.map(item => (
@@ -547,6 +610,33 @@ export default function Workloads() {
                 onChange={event => setRevisionForm(current => ({ ...current, revision: event.target.value }))}
                 className="mt-1 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2"
                 required
+              />
+            </label>
+            <label className="block text-sm text-[var(--text-soft)]">
+              Default Shell
+              <input
+                value={revisionForm.defaultShell}
+                onChange={event => setRevisionForm(current => ({ ...current, defaultShell: event.target.value }))}
+                className="mt-1 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2"
+                placeholder="powershell"
+              />
+            </label>
+            <label className="block text-sm text-[var(--text-soft)]">
+              Pre-workload steps (one per line)
+              <textarea
+                value={revisionForm.preWorkloadSteps}
+                onChange={event => setRevisionForm(current => ({ ...current, preWorkloadSteps: event.target.value }))}
+                className="mt-1 h-20 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2 text-sm font-mono"
+                placeholder="e.g. echo 'starting'"
+              />
+            </label>
+            <label className="block text-sm text-[var(--text-soft)]">
+              Post-workload steps (one per line)
+              <textarea
+                value={revisionForm.postWorkloadSteps}
+                onChange={event => setRevisionForm(current => ({ ...current, postWorkloadSteps: event.target.value }))}
+                className="mt-1 h-20 w-full rounded-lg border border-[var(--surface-border)] px-3 py-2 text-sm font-mono"
+                placeholder="e.g. echo 'finished'"
               />
             </label>
             <label className="block text-sm text-[var(--text-soft)]">
@@ -570,7 +660,11 @@ export default function Workloads() {
             <ModalFooter className="px-0 pb-0 pt-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
-                onClick={() => setIsRevisionModalOpen(false)}
+                onClick={() => {
+                  setIsRevisionModalOpen(false)
+                  setRevisionMode('create')
+                  setEditingRevisionId('')
+                }}
                 className="rounded-lg border border-[var(--surface-border)] px-4 py-2 text-sm text-[var(--text-soft)] hover:bg-[var(--surface-subtle)]"
               >
                 Cancel
@@ -580,7 +674,7 @@ export default function Workloads() {
                 disabled={!canCreateRevision}
                 className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Create Revision Draft
+                {revisionMode === 'edit' ? 'Save Changes' : 'Create Revision Draft'}
               </button>
             </ModalFooter>
           </form>
@@ -648,6 +742,24 @@ export default function Workloads() {
                                 Publish
                               </button>
                             )}
+                            <button
+                              onClick={() => {
+                                setRevisionMode('edit')
+                                setEditingRevisionId(revision.id)
+                                setRevisionForm({
+                                  workloadId: detailWorkload.id,
+                                  revision: revision.revision,
+                                  packageIds: revision.packageSteps?.map(s => s.packageId) ?? [],
+                                  defaultShell: revision.defaultShell ?? 'powershell',
+                                  preWorkloadSteps: (revision.preWorkloadSteps ?? []).join('\n'),
+                                  postWorkloadSteps: (revision.postWorkloadSteps ?? []).join('\n'),
+                                })
+                                setIsRevisionModalOpen(true)
+                              }}
+                              className="rounded-lg border border-[var(--surface-border)] px-3 py-1.5 text-xs font-medium text-[var(--text-soft)] hover:bg-[var(--surface-subtle)]"
+                            >
+                              Edit
+                            </button>
                           </div>
                         </div>
                         <div className="mt-2 space-y-2">

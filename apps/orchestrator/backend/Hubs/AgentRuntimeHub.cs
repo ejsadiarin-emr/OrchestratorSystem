@@ -33,6 +33,7 @@ public sealed class AgentRuntimeHub : Hub
         var node = await _db.Nodes.FindAsync(nodeId);
         if (node is not null)
         {
+            node.Status = "Online";
             node.LastSeenUtc = DateTime.UtcNow;
             await _db.SaveChangesAsync();
         }
@@ -83,6 +84,16 @@ public sealed class AgentRuntimeHub : Hub
         else
         {
             _logger.LogInformation("Agent disconnected: {ConnectionId}", Context.ConnectionId);
+        }
+
+        if (_connectionTracker.TryGetNodeId(Context.ConnectionId, out var disconnectedNodeId))
+        {
+            var node = await _db.Nodes.FindAsync(disconnectedNodeId);
+            if (node is not null)
+            {
+                node.Status = "Offline";
+                await _db.SaveChangesAsync();
+            }
         }
 
         _connectionTracker.Unregister(Context.ConnectionId);

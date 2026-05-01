@@ -1,0 +1,30 @@
+﻿{
+    "detection":  {
+                      "path":  "C:\\Program Files\\Microsoft SQL Server\\MSSQL15.SQLEXPRESS\\MSSQL\\Binn\\sqlservr.exe",
+                      "expectedVersion":  null,
+                      "type":  "file"
+                  },
+    "verificationResult":  "pass",
+    "channel":  "stable",
+    "policyTags":  {
+                       "idempotencyMode":  "none",
+                       "riskLevel":  "high",
+                       "retryabilityClass":  "non-idempotent",
+                       "approvalRequired":  true
+                   },
+    "version":  "2019",
+    "installAdapter":  {
+                           "upgradeBehavior":  "UninstallFirst",
+                           "arguments":  "/IACCEPTSQLSERVERLICENSETERMS /ACTION=Install /FEATURES=SQLEngine /INSTANCENAME=SQLEXPRESS /QUIET /SQLSVCACCOUNT=\"NT AUTHORITY\\SYSTEM\" /SQLSYSADMINACCOUNTS=\"BUILTIN\\ADMINISTRATORS\"",
+                           "timeoutSeconds":  600,
+                           "uninstallArgs":  "/ACTION=Uninstall /FEATURES=SQLEngine /INSTANCENAME=SQLEXPRESS /QUIET /IACCEPTSQLSERVERLICENSETERMS",
+                           "command":  "SQL2019-SSEI-Expr.exe",
+                           "type":  "exe",
+                           "expectedExitCodes":  [
+                                                     0,
+                                                     3010
+                                                 ]
+                       },
+    "packageId":  "sqlserver",
+    "artifactType":  "exe"
+}

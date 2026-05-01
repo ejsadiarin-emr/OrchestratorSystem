@@ -1,7 +1,7 @@
 ﻿{
     "detection":  {
                       "path":  "dbeaver",
-                      "expectedVersion":  "26.0.3",
+                      "expectedVersion":  "24.3.1",
                       "type":  "version_manifest"
                   },
     "verificationResult":  "pass",
@@ -12,13 +12,13 @@
                        "retryabilityClass":  "non-idempotent",
                        "approvalRequired":  false
                    },
-    "version":  "26.0.3",
+    "version":  "24.3.1",
     "installAdapter":  {
                            "upgradeBehavior":  "InPlace",
                            "arguments":  "/S /allusers",
                            "timeoutSeconds":  300,
                            "uninstallArgs":  "/S /allusers",
-                           "command":  "dbeaver-ce-26.0.3-windows-x86_64.exe",
+                           "command":  "dbeaver-ce-24.3.1-x86_64-setup.exe",
                            "type":  "exe",
                            "expectedExitCodes":  [
                                                      0

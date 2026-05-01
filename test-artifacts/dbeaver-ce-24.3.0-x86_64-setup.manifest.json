@@ -14,13 +14,15 @@
                    },
     "version":  "24.3.0",
     "installAdapter":  {
+                           "upgradeBehavior":  "InPlace",
+                           "arguments":  "/S /allusers",
+                           "timeoutSeconds":  300,
+                           "uninstallArgs":  "/S /allusers",
+                           "command":  "dbeaver-ce-24.3.0-x86_64-setup.exe",
+                           "type":  "exe",
                            "expectedExitCodes":  [
                                                      0
-                                                 ],
-                           "timeoutSeconds":  300,
-                           "command":  "dbeaver-ce-24.3.0-x86_64-setup.exe",
-                           "arguments":  "/S /allusers",
-                           "type":  "exe"
+                                                 ]
                        },
     "packageId":  "dbeaver",
     "artifactType":  "exe"

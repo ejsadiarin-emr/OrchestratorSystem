@@ -50,7 +50,7 @@ public sealed class WorkloadRunsController : ControllerBase
             errors.Add(new ValidationFieldError
             {
                 Field = "mode",
-                Error = "Mode must be one of: install, update, rollback"
+                Error = "Mode must be one of: install, update, uninstall"
             });
         }
 
@@ -99,7 +99,7 @@ public sealed class WorkloadRunsController : ControllerBase
         }
 
         var normalizedKey = request.IdempotencyKey.Trim();
-        var requestHash = ComputeIdempotencyRequestHash(request.WorkloadId, request.RevisionId, mode, distinctNodeIds, request.ForceInstall);
+        var requestHash = ComputeIdempotencyRequestHash(request.WorkloadId, request.RevisionId, mode, distinctNodeIds, request.ForceInstall, request.Reinstall);
         var existingByIdempotency = await _db.WorkloadRuns.AsNoTracking()
             .Where(r => r.IdempotencyKey == normalizedKey)
             .OrderBy(r => r.CreatedAtUtc)
@@ -134,6 +134,12 @@ public sealed class WorkloadRunsController : ControllerBase
         }
 
         var riskLevel = await _policyEvaluation.EvaluateRunRiskAsync(request.RevisionId, _db, HttpContext.RequestAborted);
+
+        var nodeWorkloadStates = await _db.NodeWorkloadStates
+            .AsNoTracking()
+            .Where(s => s.WorkloadId == request.WorkloadId && distinctNodeIds.Contains(s.NodeId))
+            .ToDictionaryAsync(s => s.NodeId);
+
         var now = DateTime.UtcNow;
         var runId = Guid.NewGuid();
         var snapshotJson = JsonSerializer.Serialize(revision.Packages
@@ -148,6 +154,30 @@ public sealed class WorkloadRunsController : ControllerBase
         foreach (var nodeId in distinctNodeIds)
         {
             var nodeDisplayName = nodesMap.TryGetValue(nodeId, out var n) ? n.DisplayName : string.Empty;
+
+            string effectiveMode = mode;
+            bool effectiveForceInstall = request.ForceInstall;
+
+            if (mode == "install")
+            {
+                var hasState = nodeWorkloadStates.TryGetValue(nodeId, out var state);
+                if (!hasState || state.CurrentRevisionId == null)
+                {
+                    effectiveMode = "install";
+                    effectiveForceInstall = false;
+                }
+                else if (state.CurrentRevisionId == request.RevisionId)
+                {
+                    effectiveMode = "install";
+                    effectiveForceInstall = request.Reinstall;
+                }
+                else
+                {
+                    effectiveMode = "update";
+                    effectiveForceInstall = false;
+                }
+            }
+
             created.Add(new WorkloadRunEntity
             {
                 WorkloadRunRecordId = Guid.NewGuid(),
@@ -157,12 +187,12 @@ public sealed class WorkloadRunsController : ControllerBase
                 RevisionSnapshotJson = snapshotJson,
                 NodeId = nodeId,
                 NodeDisplayName = nodeDisplayName,
-                Mode = mode,
+                Mode = effectiveMode,
                 State = "Queued",
                 IdempotencyKey = normalizedKey,
                 IdempotencyRequestHash = requestHash,
                 RiskLevel = riskLevel,
-                ForceInstall = request.ForceInstall,
+                ForceInstall = effectiveForceInstall,
                 CreatedAtUtc = now,
                 UpdatedAtUtc = now
             });
@@ -488,10 +518,11 @@ public sealed class WorkloadRunsController : ControllerBase
                 : new List<PendingPackageDto>()
         }).ToList();
 
-        // Heartbeat: refresh node last-seen timestamp on every poll
+        // Heartbeat: refresh node status and last-seen timestamp on every poll
         var node = await _db.Nodes.FindAsync(agentId);
         if (node is not null)
         {
+            node.Status = "Online";
             node.LastSeenUtc = DateTime.UtcNow;
             await _db.SaveChangesAsync();
         }
@@ -605,12 +636,12 @@ public sealed class WorkloadRunsController : ControllerBase
         normalized = (mode ?? string.Empty).Trim().ToLowerInvariant();
         return normalized switch
         {
-            "install" or "update" or "rollback" => true,
+            "install" or "update" or "uninstall" => true,
             _ => false
         };
     }
 
-    private static string ComputeIdempotencyRequestHash(Guid workloadId, Guid revisionId, string mode, List<Guid> nodeIds, bool forceInstall)
+    private static string ComputeIdempotencyRequestHash(Guid workloadId, Guid revisionId, string mode, List<Guid> nodeIds, bool forceInstall, bool reinstall)
     {
         var canonical = JsonSerializer.Serialize(new
         {
@@ -618,7 +649,8 @@ public sealed class WorkloadRunsController : ControllerBase
             revisionId,
             mode,
             nodeIds,
-            forceInstall
+            forceInstall,
+            reinstall
         });
         var bytes = Encoding.UTF8.GetBytes(canonical);
         var hash = SHA256.HashData(bytes);

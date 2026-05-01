@@ -450,7 +450,7 @@ public class WorkloadRunsControllerCurrentPackagesTests
         {
             WorkloadId = workloadId,
             RevisionId = revisionId,
-            Mode = "rollback",
+            Mode = "uninstall",
             IdempotencyKey = Guid.NewGuid().ToString(),
             NodeIds = new List<Guid> { nodeId }
         };

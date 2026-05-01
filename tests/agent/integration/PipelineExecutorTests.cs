@@ -985,14 +985,14 @@ public sealed class PipelineExecutorDiffTests
     }
 
     [Xunit.Fact]
-    public async Task Rollback_UninstallsRemovedAndInstallsChanged_WithoutInitSteps()
+    public async Task Uninstall_UninstallsRemovedAndInstallsChanged_WithoutInitSteps()
     {
         var payload = Encoding.UTF8.GetBytes("artifact");
         var handler = new StubArtifactHandler(payload, supportsRange: false);
         using var http = new HttpClient(handler);
         var executor = new PipelineExecutor(new StubHttpClientFactory(http), new Microsoft.Extensions.Logging.Abstractions.NullLogger<PipelineExecutor>());
 
-        var detectFile = Path.Combine(Path.GetTempPath(), $"rollback-test-{Guid.NewGuid():N}.bin");
+        var detectFile = Path.Combine(Path.GetTempPath(), $"uninstall-test-{Guid.NewGuid():N}.bin");
         File.WriteAllBytes(detectFile, Array.Empty<byte>());
 
         try
@@ -1004,7 +1004,7 @@ public sealed class PipelineExecutorDiffTests
                 {
                     RunId = runId,
                     WorkloadName = "test-workload",
-                    Mode = "rollback",
+                    Mode = "uninstall",
                     DefaultShell = "cmd",
                     ForceInstall = true,
                     Packages = new List<PackageAssignment>

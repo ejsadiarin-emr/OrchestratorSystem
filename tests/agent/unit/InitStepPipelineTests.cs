@@ -343,12 +343,12 @@ public sealed class InitStepPipelineTests
     }
 
     [Fact]
-    public async Task Rollback_mode_skips_all_init_steps()
+    public async Task Uninstall_mode_skips_all_init_steps()
     {
         var (executor, _) = CreateExecutor();
 
         var context = CreateContext(
-            mode: "rollback",
+            mode: "uninstall",
             forceInstall: true,
             currentPackages: new List<PackageAssignment>(),
             targetPackages: new List<PackageAssignment>

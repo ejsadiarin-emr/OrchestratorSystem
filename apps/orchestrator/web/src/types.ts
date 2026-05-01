@@ -100,7 +100,7 @@ export interface Node {
 
 export type WorkloadRevisionState = 'draft' | 'published'
 
-export type WorkloadRunMode = 'install' | 'update' | 'rollback'
+export type WorkloadRunMode = 'install' | 'update' | 'uninstall'
 
 export type WorkloadRunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
 
@@ -177,6 +177,7 @@ export interface NodeWorkloadState {
   runId: string
   status: WorkloadRunStatus
   updatedAt: string
+  packageStatesJson?: string | null
 }
 
 export interface DashboardSummary {
@@ -201,7 +202,7 @@ export type NodeRunState =
   | 'idle'
   | 'install'
   | 'update'
-  | 'rollback'
+  | 'uninstall'
   | 'cancel'
   | 'pending-approval'
   | 'failed'
@@ -293,7 +294,7 @@ export interface CreateWorkloadRunRequest {
   revisionId: string
   mode: WorkloadRunMode
   targetNodeIds: string[]
-  forceInstall?: boolean
+  reinstall?: boolean
 }
 
 export interface CreateNodeRequest {
@@ -358,6 +359,8 @@ export interface WorkloadJsonEntry {
   slug: string
   packages: string[]
   preUpgradeActions?: unknown[]
+  preUninstallSteps?: string[]
+  postUninstallSteps?: string[]
 }
 
 export interface NodeWorkloadAssignment {
@@ -370,6 +373,7 @@ export interface NodeWorkloadAssignment {
 export interface PreCheckItem {
   category: string
   name: string
+  packageId?: string
   status: 'passed' | 'failed' | 'warning'
   detail?: string
   expectedVersion?: string

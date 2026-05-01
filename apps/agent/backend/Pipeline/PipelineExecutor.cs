@@ -83,12 +83,12 @@ public class PipelineExecutor
             targetPackages.Count);
 
         // Phase 0.5: Pre-workload init steps
-        var isRollback = string.Equals(context.Payload.Mode, "rollback", StringComparison.OrdinalIgnoreCase);
+        var isUninstall = string.Equals(context.Payload.Mode, "uninstall", StringComparison.OrdinalIgnoreCase);
         var defaultShell = string.IsNullOrWhiteSpace(context.Payload.DefaultShell) ? "powershell" : context.Payload.DefaultShell;
         var initStepExecutor = new InitStepExecutor();
         var initStepCb = CreateInitStepStatusCallback(sendMessageAsync, context, ct);
 
-        if (!isRollback)
+        if (!isUninstall)
         {
             var preWorkloadSteps = context.Payload.PreWorkloadSteps ?? new List<string>();
             for (int i = 0; i < preWorkloadSteps.Count; i++)
@@ -104,54 +104,116 @@ public class PipelineExecutor
                 }
             }
         }
-
-        // Phase 1: Uninstall removed packages AND UninstallFirst changed packages in reverse PackageIndex order
-        var currentPackagesByName = context.CurrentPackages.ToDictionary(p => p.Name);
-        var packagesToUninstall = removed
-            .Concat(changed.Where(p =>
-                string.Equals(p.InstallAdapter.UpgradeBehavior, "UninstallFirst", StringComparison.OrdinalIgnoreCase)))
-            .OrderByDescending(p => p.PackageIndex)
-            .ToList();
-
-        foreach (var package in packagesToUninstall)
+        else
         {
-            var stepCt = ct;
-
-            if (preCheckResults?.TryGetValue(package.Name, out var preCheck) == true && preCheck.Status == PreCheckStatus.NotPresent)
+            var preUninstallSteps = context.Payload.PreUninstallSteps ?? new List<string>();
+            for (int i = 0; i < preUninstallSteps.Count; i++)
             {
+                var stepName = $"PreUninstall_{i}";
+                var envVars = InitStepEnvVars.Build(context, null, null);
+                var result = await initStepExecutor.ExecuteAsync(preUninstallSteps[i], defaultShell, stepName, envVars, 60, -1, initStepCb, ct);
+                context.RecordStep(stepName, -1, "", result.Success, result.ErrorOutput);
+                if (!result.Success)
+                {
+                    _logger.LogError("PreUninstall step {StepName} failed: {Error}", stepName, result.ErrorOutput);
+                    return await FinalizeAsync(sendMessageAsync, context, ct);
+                }
+            }
+        }
+
+        // Phase 1: Uninstall packages
+        if (isUninstall)
+        {
+            // Uninstall all detected packages in reverse PackageIndex order
+            var packagesToUninstall = targetPackages
+                .OrderByDescending(p => p.PackageIndex)
+                .ToList();
+
+            foreach (var package in packagesToUninstall)
+            {
+                var stepCt = ct;
+
+                if (preCheckResults?.TryGetValue(package.Name, out var preCheck) == true && preCheck.Status == PreCheckStatus.NotPresent)
+                {
+                    _logger.LogInformation(
+                        "Step UninstallSkippedAlreadyGone: PackageIndex={PackageIndex}, PackageId={PackageId}",
+                        package.PackageIndex,
+                        package.PackageId);
+
+                    await SendStepStatusAsync(sendMessageAsync, context, "UninstallSkippedAlreadyGone", package, true, null, stepCt);
+                    context.RecordStep("UninstallSkippedAlreadyGone", package.PackageIndex, package.PackageId, true, null);
+                    continue;
+                }
+
                 _logger.LogInformation(
-                    "Step UninstallSkippedAlreadyGone: PackageIndex={PackageIndex}, PackageId={PackageId}",
+                    "Step UninstallPackage: PackageIndex={PackageIndex}, PackageId={PackageId}",
                     package.PackageIndex,
                     package.PackageId);
 
-                await SendStepStatusAsync(sendMessageAsync, context, "UninstallSkippedAlreadyGone", package, true, null, stepCt);
-                context.RecordStep("UninstallSkippedAlreadyGone", package.PackageIndex, package.PackageId, true, null);
-                continue;
+                var uninstallResult = await UninstallPackage.ExecuteAsync(package.InstallAdapter, stepCt);
+                await SendStepStatusAsync(sendMessageAsync, context, "UninstallPackage", package, uninstallResult.Success, uninstallResult.Error, stepCt);
+                context.RecordStep("UninstallPackage", package.PackageIndex, package.PackageId, uninstallResult.Success, uninstallResult.Error);
+
+                if (!uninstallResult.Success)
+                {
+                    _logger.LogError(
+                        "Pipeline halted at UninstallPackage: PackageIndex={PackageIndex}, Error={Error}",
+                        package.PackageIndex,
+                        uninstallResult.Error);
+                    return await FinalizeAsync(sendMessageAsync, context, ct);
+                }
             }
+        }
+        else
+        {
+            // Uninstall removed packages AND UninstallFirst changed packages in reverse PackageIndex order
+            var currentPackagesByName = context.CurrentPackages.ToDictionary(p => p.Name);
+            var packagesToUninstall = removed
+                .Concat(changed.Where(p =>
+                    string.Equals(p.InstallAdapter.UpgradeBehavior, "UninstallFirst", StringComparison.OrdinalIgnoreCase)))
+                .OrderByDescending(p => p.PackageIndex)
+                .ToList();
 
-            _logger.LogInformation(
-                "Step UninstallPackage: PackageIndex={PackageIndex}, PackageId={PackageId}",
-                package.PackageIndex,
-                package.PackageId);
-
-            // For changed packages, use the OLD package's InstallAdapter (from CurrentPackages) for uninstall
-            var uninstallConfig = removed.Contains(package)
-                ? package.InstallAdapter
-                : (currentPackagesByName.TryGetValue(package.Name, out var oldPkg)
-                    ? oldPkg.InstallAdapter
-                    : package.InstallAdapter);
-
-            var uninstallResult = await UninstallPackage.ExecuteAsync(uninstallConfig, stepCt);
-            await SendStepStatusAsync(sendMessageAsync, context, "UninstallPackage", package, uninstallResult.Success, uninstallResult.Error, stepCt);
-            context.RecordStep("UninstallPackage", package.PackageIndex, package.PackageId, uninstallResult.Success, uninstallResult.Error);
-
-            if (!uninstallResult.Success)
+            foreach (var package in packagesToUninstall)
             {
-                _logger.LogError(
-                    "Pipeline halted at UninstallPackage: PackageIndex={PackageIndex}, Error={Error}",
+                var stepCt = ct;
+
+                if (preCheckResults?.TryGetValue(package.Name, out var preCheck) == true && preCheck.Status == PreCheckStatus.NotPresent)
+                {
+                    _logger.LogInformation(
+                        "Step UninstallSkippedAlreadyGone: PackageIndex={PackageIndex}, PackageId={PackageId}",
+                        package.PackageIndex,
+                        package.PackageId);
+
+                    await SendStepStatusAsync(sendMessageAsync, context, "UninstallSkippedAlreadyGone", package, true, null, stepCt);
+                    context.RecordStep("UninstallSkippedAlreadyGone", package.PackageIndex, package.PackageId, true, null);
+                    continue;
+                }
+
+                _logger.LogInformation(
+                    "Step UninstallPackage: PackageIndex={PackageIndex}, PackageId={PackageId}",
                     package.PackageIndex,
-                    uninstallResult.Error);
-                return await FinalizeAsync(sendMessageAsync, context, ct);
+                    package.PackageId);
+
+                // For changed packages, use the OLD package's InstallAdapter (from CurrentPackages) for uninstall
+                var uninstallConfig = removed.Contains(package)
+                    ? package.InstallAdapter
+                    : (currentPackagesByName.TryGetValue(package.Name, out var oldPkg)
+                        ? oldPkg.InstallAdapter
+                        : package.InstallAdapter);
+
+                var uninstallResult = await UninstallPackage.ExecuteAsync(uninstallConfig, stepCt);
+                await SendStepStatusAsync(sendMessageAsync, context, "UninstallPackage", package, uninstallResult.Success, uninstallResult.Error, stepCt);
+                context.RecordStep("UninstallPackage", package.PackageIndex, package.PackageId, uninstallResult.Success, uninstallResult.Error);
+
+                if (!uninstallResult.Success)
+                {
+                    _logger.LogError(
+                        "Pipeline halted at UninstallPackage: PackageIndex={PackageIndex}, Error={Error}",
+                        package.PackageIndex,
+                        uninstallResult.Error);
+                    return await FinalizeAsync(sendMessageAsync, context, ct);
+                }
             }
         }
 
@@ -160,7 +222,9 @@ public class PipelineExecutor
             .OrderBy(p => p.PackageIndex)
             .ToList();
 
-        foreach (var package in packagesToInstall)
+        if (!isUninstall)
+        {
+            foreach (var package in packagesToInstall)
         {
             var stepCt = ct;
 
@@ -177,7 +241,7 @@ public class PipelineExecutor
             }
 
             // Step 0.1: Pre-init steps (per package)
-            if (!isRollback)
+            if (!isUninstall)
             {
                 var preInitSteps = package.PreInitSteps ?? new List<string>();
                 var preInitFailed = false;
@@ -267,19 +331,6 @@ public class PipelineExecutor
                 package.PackageId,
                 package.Detection.Type);
 
-            // Warn for SideBySide packages with bare command detection (ADR-0006)
-            if (string.Equals(package.InstallAdapter.UpgradeBehavior, "SideBySide", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(package.Detection.Type, "Command", StringComparison.OrdinalIgnoreCase)
-                && !Path.IsPathRooted(package.Detection.Path))
-            {
-                _logger.LogWarning(
-                    "Package {PackageName} has UpgradeBehavior=SideBySide but DetectionConfig.Path='{Path}' is a bare command without absolute path. " +
-                    "Post-install verification may detect the wrong version if multiple versions are installed. " +
-                    "Consider using an absolute path to the binary (e.g., 'C:\\Program Files\\...\\python.exe') or a registry/file detection method.",
-                    package.Name,
-                    package.Detection.Path);
-            }
-
             var verifyResult = await PostInstallVerify.ExecuteAsync(package.Detection, stepCt);
             await SendStepStatusAsync(sendMessageAsync, context, "PostInstallVerify", package, verifyResult.Success, verifyResult.Error, stepCt);
             context.RecordStep("PostInstallVerify", package.PackageIndex, package.PackageId, verifyResult.Success, verifyResult.Error);
@@ -294,7 +345,7 @@ public class PipelineExecutor
             }
 
             // Step 3.1: Post-init steps (per package)
-            if (!isRollback)
+            if (!isUninstall)
             {
                 var postInitSteps = package.PostInitSteps ?? new List<string>();
                 for (int si = 0; si < postInitSteps.Count; si++)
@@ -310,9 +361,10 @@ public class PipelineExecutor
                 }
             }
         }
+        }
 
-        // Phase 3: Post-workload init steps
-        if (!isRollback)
+        // Phase 3: Post-workload / Post-uninstall init steps
+        if (!isUninstall)
         {
             var postWorkloadSteps = context.Payload.PostWorkloadSteps ?? new List<string>();
             string? lastArtifactPath = null;
@@ -334,6 +386,21 @@ public class PipelineExecutor
                 if (!result.Success)
                 {
                     _logger.LogError("PostWorkload step {StepName} failed: {Error}", stepName, result.ErrorOutput);
+                }
+            }
+        }
+        else
+        {
+            var postUninstallSteps = context.Payload.PostUninstallSteps ?? new List<string>();
+            for (int i = 0; i < postUninstallSteps.Count; i++)
+            {
+                var stepName = $"PostUninstall_{i}";
+                var envVars = InitStepEnvVars.Build(context, null, null);
+                var result = await initStepExecutor.ExecuteAsync(postUninstallSteps[i], defaultShell, stepName, envVars, 180, -1, initStepCb, ct);
+                context.RecordStep(stepName, -1, "", result.Success, result.ErrorOutput);
+                if (!result.Success)
+                {
+                    _logger.LogError("PostUninstall step {StepName} failed: {Error}", stepName, result.ErrorOutput);
                 }
             }
         }

@@ -172,6 +172,8 @@ public sealed class InstallerDbContext : DbContext
             entity.Property(x => x.Version).HasMaxLength(64);
             entity.Property(x => x.PreWorkloadStepsJson).HasMaxLength(4096);
             entity.Property(x => x.PostWorkloadStepsJson).HasMaxLength(4096);
+            entity.Property(x => x.PreUninstallStepsJson).HasMaxLength(4096).IsRequired().HasDefaultValue("[]");
+            entity.Property(x => x.PostUninstallStepsJson).HasMaxLength(4096).IsRequired().HasDefaultValue("[]");
             entity.Property(x => x.DefaultShell).HasMaxLength(64);
             entity.HasOne(x => x.Workload)
                 .WithMany(x => x.Revisions)
@@ -222,7 +224,7 @@ public sealed class InstallerDbContext : DbContext
                 .IsUnique();
             entity.ToTable(t =>
             {
-                t.HasCheckConstraint("CK_WorkloadRuns_Mode", "\"Mode\" IN ('install','update','rollback','cancel')");
+                t.HasCheckConstraint("CK_WorkloadRuns_Mode", "\"Mode\" IN ('install','update','uninstall','cancel')");
                 t.HasCheckConstraint("CK_WorkloadRuns_State", "\"State\" IN ('Queued','Running','Completed','Failed','Cancelled')");
             });
         });
@@ -276,6 +278,8 @@ public sealed class InstallerDbContext : DbContext
                 .Where(p => p.Metadata.Name is not nameof(WorkloadRevisionEntity.IsPublished)
                          and not nameof(WorkloadRevisionEntity.PreWorkloadStepsJson)
                          and not nameof(WorkloadRevisionEntity.PostWorkloadStepsJson)
+                         and not nameof(WorkloadRevisionEntity.PreUninstallStepsJson)
+                         and not nameof(WorkloadRevisionEntity.PostUninstallStepsJson)
                          and not nameof(WorkloadRevisionEntity.DefaultShell))
                 .Any(p => p.IsModified);
             if (forbiddenPropertiesChanged)

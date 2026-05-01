@@ -12,11 +12,11 @@ public class PipelineExecutor
     private readonly ILogger<PipelineExecutor> _logger;
     private readonly IConfiguration _configuration;
 
-    public PipelineExecutor(IHttpClientFactory httpClientFactory, ILogger<PipelineExecutor> logger, IConfiguration configuration)
+    public PipelineExecutor(IHttpClientFactory httpClientFactory, ILogger<PipelineExecutor> logger, IConfiguration? configuration = null)
     {
         _httpClientFactory = httpClientFactory ?? throw new ArgumentNullException(nameof(httpClientFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+        _configuration = configuration ?? new ConfigurationBuilder().Build();
     }
 
     public virtual async Task<PipelineResult> ExecuteAsync(
@@ -105,8 +105,15 @@ public class PipelineExecutor
             }
         }
 
-        // Phase 1: Uninstall removed packages in reverse PackageIndex order
-        foreach (var package in removed.OrderByDescending(p => p.PackageIndex))
+        // Phase 1: Uninstall removed packages AND UninstallFirst changed packages in reverse PackageIndex order
+        var currentPackagesByName = context.CurrentPackages.ToDictionary(p => p.Name);
+        var packagesToUninstall = removed
+            .Concat(changed.Where(p =>
+                string.Equals(p.InstallAdapter.UpgradeBehavior, "UninstallFirst", StringComparison.OrdinalIgnoreCase)))
+            .OrderByDescending(p => p.PackageIndex)
+            .ToList();
+
+        foreach (var package in packagesToUninstall)
         {
             var stepCt = ct;
 
@@ -127,7 +134,14 @@ public class PipelineExecutor
                 package.PackageIndex,
                 package.PackageId);
 
-            var uninstallResult = await UninstallPackage.ExecuteAsync(package.InstallAdapter, stepCt);
+            // For changed packages, use the OLD package's InstallAdapter (from CurrentPackages) for uninstall
+            var uninstallConfig = removed.Contains(package)
+                ? package.InstallAdapter
+                : (currentPackagesByName.TryGetValue(package.Name, out var oldPkg)
+                    ? oldPkg.InstallAdapter
+                    : package.InstallAdapter);
+
+            var uninstallResult = await UninstallPackage.ExecuteAsync(uninstallConfig, stepCt);
             await SendStepStatusAsync(sendMessageAsync, context, "UninstallPackage", package, uninstallResult.Success, uninstallResult.Error, stepCt);
             context.RecordStep("UninstallPackage", package.PackageIndex, package.PackageId, uninstallResult.Success, uninstallResult.Error);
 
@@ -252,6 +266,19 @@ public class PipelineExecutor
                 package.PackageIndex,
                 package.PackageId,
                 package.Detection.Type);
+
+            // Warn for SideBySide packages with bare command detection (ADR-0006)
+            if (string.Equals(package.InstallAdapter.UpgradeBehavior, "SideBySide", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(package.Detection.Type, "Command", StringComparison.OrdinalIgnoreCase)
+                && !Path.IsPathRooted(package.Detection.Path))
+            {
+                _logger.LogWarning(
+                    "Package {PackageName} has UpgradeBehavior=SideBySide but DetectionConfig.Path='{Path}' is a bare command without absolute path. " +
+                    "Post-install verification may detect the wrong version if multiple versions are installed. " +
+                    "Consider using an absolute path to the binary (e.g., 'C:\\Program Files\\...\\python.exe') or a registry/file detection method.",
+                    package.Name,
+                    package.Detection.Path);
+            }
 
             var verifyResult = await PostInstallVerify.ExecuteAsync(package.Detection, stepCt);
             await SendStepStatusAsync(sendMessageAsync, context, "PostInstallVerify", package, verifyResult.Success, verifyResult.Error, stepCt);

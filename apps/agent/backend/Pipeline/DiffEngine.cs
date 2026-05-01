@@ -70,6 +70,26 @@ public static class DiffEngine
             added.Remove(package);
             changed.Add(package);
         }
+
+        var changedToAdded = changed
+            .Where(p => preCheckResults.TryGetValue(p.Name, out var r) && r.Status == PreCheckStatus.NotPresent)
+            .ToList();
+
+        foreach (var package in changedToAdded)
+        {
+            changed.Remove(package);
+            added.Add(package);
+        }
+
+        var changedToUnchanged = changed
+            .Where(p => preCheckResults.TryGetValue(p.Name, out var r) && r.Status == PreCheckStatus.AlreadySatisfied)
+            .ToList();
+
+        foreach (var package in changedToUnchanged)
+        {
+            changed.Remove(package);
+            unchanged.Add(package);
+        }
     }
 }
 

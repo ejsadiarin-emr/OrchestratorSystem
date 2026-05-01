@@ -429,6 +429,10 @@ namespace DeploymentPoC.Orchestrator.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("UpgradeBehavior")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Version")
                         .IsRequired()
                         .HasMaxLength(64)

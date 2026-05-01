@@ -63,6 +63,7 @@ public sealed class PendingPackageDto
     public string Filename { get; set; } = string.Empty;
     public string DownloadUrl { get; set; } = string.Empty;
     public string? ExpectedSha256 { get; set; }
+    public long? SizeBytes { get; set; }
     public InstallAdapterConfig InstallAdapter { get; set; } = new();
     public DetectionConfig Detection { get; set; } = new();
 }

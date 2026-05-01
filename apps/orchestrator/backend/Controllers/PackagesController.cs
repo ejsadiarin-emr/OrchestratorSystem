@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Data.Entities;
 using DeploymentPoC.Orchestrator.Models;
+using DeploymentPoC.Orchestrator.Validation;
 using Microsoft.Extensions.Logging;
 
 namespace DeploymentPoC.Orchestrator.Controllers;
@@ -33,6 +34,7 @@ public class PackagesController : ControllerBase
                 SourcePath = p.SourcePath,
                 InstallType = p.InstallType,
                 InstallArgs = p.InstallArgs,
+                UpgradeBehavior = p.UpgradeBehavior,
                 CreatedAt = p.CreatedAtUtc
             })
             .ToListAsync();
@@ -53,6 +55,7 @@ public class PackagesController : ControllerBase
                 SourcePath = p.SourcePath,
                 InstallType = p.InstallType,
                 InstallArgs = p.InstallArgs,
+                UpgradeBehavior = p.UpgradeBehavior,
                 CreatedAt = p.CreatedAtUtc
             })
             .SingleOrDefaultAsync();
@@ -68,6 +71,12 @@ public class PackagesController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Package>> Create([FromBody] CreatePackageRequest request)
     {
+        var validation = UpgradeBehaviorValidator.Validate(request.UpgradeBehavior);
+        if (!validation.IsValid)
+        {
+            return BadRequest(new { message = validation.Error });
+        }
+
         var entity = new PackageEntity
         {
             PackageId = Guid.NewGuid(),
@@ -76,6 +85,7 @@ public class PackagesController : ControllerBase
             SourcePath = request.SourcePath,
             InstallType = request.InstallType,
             InstallArgs = request.InstallArgs,
+            UpgradeBehavior = UpgradeBehaviorValidator.Normalize(request.UpgradeBehavior),
             CreatedAtUtc = DateTime.UtcNow
         };
 
@@ -90,10 +100,11 @@ public class PackagesController : ControllerBase
             SourcePath = request.SourcePath,
             InstallType = request.InstallType,
             InstallArgs = request.InstallArgs,
+            UpgradeBehavior = entity.UpgradeBehavior,
             CreatedAt = entity.CreatedAtUtc
         };
 
-        _logger.LogInformation("Created package {Name} v{Version}", package.Name, package.Version);
+        _logger.LogInformation("Created package {Name} v{Version} with UpgradeBehavior={UpgradeBehavior}", package.Name, package.Version, package.UpgradeBehavior);
         
         return CreatedAtAction(nameof(GetById), new { id = package.Id }, package);
     }

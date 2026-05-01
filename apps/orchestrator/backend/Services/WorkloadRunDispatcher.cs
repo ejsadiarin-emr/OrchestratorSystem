@@ -4,6 +4,7 @@ using DeploymentPoC.Contracts.Runtime.RunPayloads;
 using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Data.Entities;
 using DeploymentPoC.Orchestrator.Hubs;
+using DeploymentPoC.Orchestrator.Validation;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -194,12 +195,16 @@ public sealed class WorkloadRunDispatcher
                     Channel = "stable",
                     ArtifactFileName = artifactFileName,
                     DownloadUrl = hasArtifact ? $"/api/artifacts/{wp.PackageId}/download" : string.Empty,
+                    SizeBytes = _artifactStore.TryGetMetadata(pkg?.Name ?? "", pkg?.Version ?? "", out var meta) ? meta.Length : null,
                     InstallAdapter = new InstallAdapterConfig
                     {
                         Type = installType,
                         Command = command,
                         Arguments = arguments,
                         UninstallArgs = pkg?.UninstallArgs ?? "",
+                        UpgradeBehavior = string.IsNullOrWhiteSpace(pkg?.UpgradeBehavior)
+                            ? UpgradeBehaviorValidator.DefaultValue
+                            : UpgradeBehaviorValidator.Normalize(pkg.UpgradeBehavior),
                         ExpectedExitCodes = expectedExitCodes,
                         TimeoutSeconds = timeoutSeconds
                     },

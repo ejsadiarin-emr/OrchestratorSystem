@@ -983,6 +983,342 @@ public sealed class PipelineExecutorDiffTests
                 File.Delete(tempFile);
         }
     }
+
+    [Xunit.Fact]
+    public async Task Rollback_UninstallsRemovedAndInstallsChanged_WithoutInitSteps()
+    {
+        var payload = Encoding.UTF8.GetBytes("artifact");
+        var handler = new StubArtifactHandler(payload, supportsRange: false);
+        using var http = new HttpClient(handler);
+        var executor = new PipelineExecutor(new StubHttpClientFactory(http), new Microsoft.Extensions.Logging.Abstractions.NullLogger<PipelineExecutor>());
+
+        var detectFile = Path.Combine(Path.GetTempPath(), $"rollback-test-{Guid.NewGuid():N}.bin");
+        File.WriteAllBytes(detectFile, Array.Empty<byte>());
+
+        try
+        {
+            var runId = Guid.NewGuid();
+            var context = new PipelineContext
+            {
+                Payload = new AssignRunPayload
+                {
+                    RunId = runId,
+                    WorkloadName = "test-workload",
+                    Mode = "rollback",
+                    DefaultShell = "cmd",
+                    ForceInstall = true,
+                    Packages = new List<PackageAssignment>
+                    {
+                        new()
+                        {
+                            PackageIndex = 0,
+                            PackageId = "pkg-a",
+                            Name = "pkg-a",
+                            Version = "1.0.0",
+                            PreInitSteps = new List<string> { "echo pre" },
+                            PostInitSteps = new List<string> { "echo post" },
+                            InstallAdapter = new InstallAdapterConfig
+                            {
+                                Type = "exe",
+                                Command = "cmd",
+                                Arguments = "/C exit 0",
+                                TimeoutSeconds = 30
+                            },
+                            Detection = new DetectionConfig
+                            {
+                                Type = "file",
+                                Path = detectFile,
+                                ExpectedVersion = null
+                            }
+                        }
+                    },
+                    PreWorkloadSteps = new List<string> { "echo pre-workload" },
+                    PostWorkloadSteps = new List<string> { "echo post-workload" }
+                },
+                CurrentPackages = new List<PackageAssignment>
+                {
+                    new()
+                    {
+                        PackageIndex = 0,
+                        PackageId = "pkg-a",
+                        Name = "pkg-a",
+                        Version = "2.0.0",
+                        InstallAdapter = new InstallAdapterConfig(),
+                        Detection = new DetectionConfig()
+                    },
+                    new()
+                    {
+                        PackageIndex = 1,
+                        PackageId = "pkg-b",
+                        Name = "pkg-b",
+                        Version = "1.0.0",
+                        InstallAdapter = new InstallAdapterConfig
+                        {
+                            Type = "exe",
+                            Command = "cmd",
+                            UninstallArgs = "/C exit 0",
+                            TimeoutSeconds = 30
+                        },
+                        Detection = new DetectionConfig()
+                    }
+                },
+                OrchestratorBaseUrl = "https://unit.test",
+                AgentId = "agent-1",
+                RunId = runId.ToString(),
+                Sequence = 1,
+                ForceInstall = true
+            };
+
+            var messages = new List<MessageEnvelope>();
+            var result = await executor.ExecuteAsync(context, (msg, ct) =>
+            {
+                messages.Add(msg);
+                return Task.CompletedTask;
+            });
+
+            Xunit.Assert.True(result.Success);
+
+            var stepStatuses = messages.Where(m => m.MessageType == MessageTypes.StepStatus).ToList();
+            var stepNames = stepStatuses.Select(m => ((StepStatusPayload)m.Payload).StepName).ToList();
+
+            Xunit.Assert.Contains("UninstallPackage", stepNames);
+            Xunit.Assert.Contains("InstallOrUpgrade", stepNames);
+
+            var uninstallStep = stepStatuses
+                .Select(m => (StepStatusPayload)m.Payload)
+                .First(s => s.StepName == "UninstallPackage");
+            Xunit.Assert.Equal("pkg-b", uninstallStep.PackageId);
+
+            var installStep = stepStatuses
+                .Select(m => (StepStatusPayload)m.Payload)
+                .First(s => s.StepName == "InstallOrUpgrade");
+            Xunit.Assert.Equal("pkg-a", installStep.PackageId);
+
+            Xunit.Assert.DoesNotContain(stepNames, n => n.StartsWith("PreWorkload"));
+            Xunit.Assert.DoesNotContain(stepNames, n => n.StartsWith("PreInit"));
+            Xunit.Assert.DoesNotContain(stepNames, n => n.StartsWith("PostInit"));
+            Xunit.Assert.DoesNotContain(stepNames, n => n.StartsWith("PostWorkload"));
+        }
+        finally
+        {
+            if (File.Exists(detectFile))
+                File.Delete(detectFile);
+        }
+    }
+
+    [Xunit.Fact]
+    public async Task Update_PreCheckWrongVersion_MarksChanged_RunsInitSteps()
+    {
+        var payload = Encoding.UTF8.GetBytes("artifact");
+        var handler = new StubArtifactHandler(payload, supportsRange: false);
+        using var http = new HttpClient(handler);
+        var executor = new PipelineExecutor(new StubHttpClientFactory(http), new Microsoft.Extensions.Logging.Abstractions.NullLogger<PipelineExecutor>());
+
+        var runId = Guid.NewGuid();
+        var context = new PipelineContext
+        {
+            Payload = new AssignRunPayload
+            {
+                RunId = runId,
+                WorkloadName = "test-workload",
+                Mode = "update",
+                DefaultShell = "cmd",
+                Packages = new List<PackageAssignment>
+                {
+                    new()
+                    {
+                        PackageIndex = 0,
+                        PackageId = "pkg-a",
+                        Name = "pkg-a",
+                        Version = "2.0.0",
+                        PreInitSteps = new List<string> { "echo pre" },
+                        InstallAdapter = new InstallAdapterConfig
+                        {
+                            Type = "exe",
+                            Command = "cmd",
+                            Arguments = "/C exit 0",
+                            TimeoutSeconds = 30
+                        },
+                        Detection = new DetectionConfig
+                        {
+                            Type = "version_manifest",
+                            Path = "cmd",
+                            ExpectedVersion = "99999.0.0"
+                        }
+                    }
+                }
+            },
+            CurrentPackages = new List<PackageAssignment>
+            {
+                new()
+                {
+                    PackageIndex = 0,
+                    PackageId = "pkg-a",
+                    Name = "pkg-a",
+                    Version = "1.0.0",
+                    InstallAdapter = new InstallAdapterConfig(),
+                    Detection = new DetectionConfig()
+                }
+            },
+            OrchestratorBaseUrl = "https://unit.test",
+            AgentId = "agent-1",
+            RunId = runId.ToString(),
+            Sequence = 1
+        };
+
+        var messages = new List<MessageEnvelope>();
+        var result = await executor.ExecuteAsync(context, (msg, ct) =>
+        {
+            if (msg.MessageType == MessageTypes.StepStatus && msg.Payload is StepStatusPayload stepPayload && stepPayload.StepName == "PreCheckProbe" && stepPayload.PackageId == "pkg-a")
+            {
+                var pkg = context.Payload.Packages.First(p => p.PackageId == "pkg-a");
+                pkg.Detection.ExpectedVersion = null;
+            }
+            messages.Add(msg);
+            return Task.CompletedTask;
+        });
+
+        Xunit.Assert.True(result.Success);
+
+        var stepStatuses = messages.Where(m => m.MessageType == MessageTypes.StepStatus).ToList();
+        var stepNames = stepStatuses.Select(m => ((StepStatusPayload)m.Payload).StepName).ToList();
+
+        Xunit.Assert.Contains("PreCheckProbe", stepNames);
+        Xunit.Assert.Contains("PreInit_0_0", stepNames);
+        Xunit.Assert.Contains("AcquireArtifact", stepNames);
+        Xunit.Assert.Contains("InstallOrUpgrade", stepNames);
+        Xunit.Assert.Contains("PostInstallVerify", stepNames);
+
+        var preCheckStep = stepStatuses
+            .Select(m => (StepStatusPayload)m.Payload)
+            .First(s => s.StepName == "PreCheckProbe");
+        Xunit.Assert.Contains("version_mismatch", preCheckStep.Error ?? string.Empty);
+    }
+
+    [Xunit.Fact]
+    public async Task Update_TwoPhaseWithInitSteps_RunsInOrder()
+    {
+        var payload = Encoding.UTF8.GetBytes("artifact");
+        var handler = new StubArtifactHandler(payload, supportsRange: false);
+        using var http = new HttpClient(handler);
+        var executor = new PipelineExecutor(new StubHttpClientFactory(http), new Microsoft.Extensions.Logging.Abstractions.NullLogger<PipelineExecutor>());
+
+        var tempFile = Path.Combine(Path.GetTempPath(), $"twophase-test-{Guid.NewGuid():N}.bin");
+        File.WriteAllBytes(tempFile, payload);
+        var detectFile = Path.Combine(Path.GetTempPath(), $"detect-{Guid.NewGuid():N}.bin");
+        File.WriteAllBytes(detectFile, Array.Empty<byte>());
+
+        try
+        {
+            var runId = Guid.NewGuid();
+            var context = new PipelineContext
+            {
+                Payload = new AssignRunPayload
+                {
+                    RunId = runId,
+                    WorkloadName = "test-workload",
+                    Mode = "update",
+                    DefaultShell = "cmd",
+                    Packages = new List<PackageAssignment>
+                    {
+                        new()
+                        {
+                            PackageIndex = 1,
+                            PackageId = "pkg-b",
+                            Name = "pkg-b",
+                            Version = "1.0.0",
+                            PreInitSteps = new List<string> { "echo pre" },
+                            PostInitSteps = new List<string> { "echo post" },
+                            InstallAdapter = new InstallAdapterConfig
+                            {
+                                Type = "exe",
+                                Command = "cmd",
+                                Arguments = "/C exit 0",
+                                TimeoutSeconds = 30
+                            },
+                            Detection = new DetectionConfig
+                            {
+                                Type = "file",
+                                Path = detectFile,
+                                ExpectedVersion = null
+                            }
+                        }
+                    },
+                    PostWorkloadSteps = new List<string> { "echo post-workload" }
+                },
+                CurrentPackages = new List<PackageAssignment>
+                {
+                    new()
+                    {
+                        PackageIndex = 0,
+                        PackageId = "pkg-a",
+                        Name = "pkg-a",
+                        Version = "1.0.0",
+                        InstallAdapter = new InstallAdapterConfig
+                        {
+                            Type = "exe",
+                            Command = "cmd",
+                            UninstallArgs = "/C exit 0",
+                            TimeoutSeconds = 30
+                        },
+                        Detection = new DetectionConfig
+                        {
+                            Type = "file",
+                            Path = tempFile,
+                            ExpectedVersion = null
+                        }
+                    }
+                },
+                OrchestratorBaseUrl = "https://unit.test",
+                AgentId = "agent-1",
+                RunId = runId.ToString(),
+                Sequence = 1,
+                ForceInstall = true
+            };
+
+            var messages = new List<MessageEnvelope>();
+            var result = await executor.ExecuteAsync(context, (msg, ct) =>
+            {
+                messages.Add(msg);
+                return Task.CompletedTask;
+            });
+
+            Xunit.Assert.True(result.Success);
+
+            var stepStatuses = messages.Where(m => m.MessageType == MessageTypes.StepStatus).ToList();
+            var steps = stepStatuses.Select(m => (StepStatusPayload)m.Payload).ToList();
+
+            int uninstallIdx = steps.FindIndex(s => s.StepName == "UninstallPackage" && s.PackageId == "pkg-a");
+            int preInitIdx = steps.FindIndex(s => s.StepName == "PreInit_1_0");
+            int acquireIdx = steps.FindIndex(s => s.StepName == "AcquireArtifact" && s.PackageId == "pkg-b");
+            int installIdx = steps.FindIndex(s => s.StepName == "InstallOrUpgrade" && s.PackageId == "pkg-b");
+            int verifyIdx = steps.FindIndex(s => s.StepName == "PostInstallVerify" && s.PackageId == "pkg-b");
+            int postInitIdx = steps.FindIndex(s => s.StepName == "PostInit_1_0");
+            int postWorkloadIdx = steps.FindIndex(s => s.StepName == "PostWorkload_0");
+
+            Xunit.Assert.True(uninstallIdx >= 0);
+            Xunit.Assert.True(preInitIdx >= 0);
+            Xunit.Assert.True(acquireIdx >= 0);
+            Xunit.Assert.True(installIdx >= 0);
+            Xunit.Assert.True(verifyIdx >= 0);
+            Xunit.Assert.True(postInitIdx >= 0);
+            Xunit.Assert.True(postWorkloadIdx >= 0);
+
+            Xunit.Assert.True(uninstallIdx < preInitIdx);
+            Xunit.Assert.True(preInitIdx < acquireIdx);
+            Xunit.Assert.True(acquireIdx < installIdx);
+            Xunit.Assert.True(installIdx < verifyIdx);
+            Xunit.Assert.True(verifyIdx < postInitIdx);
+            Xunit.Assert.True(postInitIdx < postWorkloadIdx);
+        }
+        finally
+        {
+            if (File.Exists(tempFile))
+                File.Delete(tempFile);
+            if (File.Exists(detectFile))
+                File.Delete(detectFile);
+        }
+    }
 }
 
 file sealed class StubHttpClientFactory : IHttpClientFactory

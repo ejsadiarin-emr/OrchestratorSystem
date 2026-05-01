@@ -43,6 +43,8 @@ public sealed class WorkloadRevisionDto
     public DateTime CreatedAtUtc { get; set; }
     public List<string> PreWorkloadSteps { get; set; } = new();
     public List<string> PostWorkloadSteps { get; set; } = new();
+    public List<string> PreUninstallSteps { get; set; } = new();
+    public List<string> PostUninstallSteps { get; set; } = new();
     public string DefaultShell { get; set; } = "powershell";
     public List<WorkloadPackageDto> Packages { get; set; } = new();
 }

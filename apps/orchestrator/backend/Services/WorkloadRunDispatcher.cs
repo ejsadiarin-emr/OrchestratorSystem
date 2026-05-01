@@ -89,6 +89,8 @@ public sealed class WorkloadRunDispatcher
             ForceInstall = run.ForceInstall,
             PreWorkloadSteps = DeserializeStringList(revision.PreWorkloadStepsJson),
             PostWorkloadSteps = DeserializeStringList(revision.PostWorkloadStepsJson),
+            PreUninstallSteps = DeserializeStringList(revision.PreUninstallStepsJson),
+            PostUninstallSteps = DeserializeStringList(revision.PostUninstallStepsJson),
             DefaultShell = revision.DefaultShell
         };
 

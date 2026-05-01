@@ -32,12 +32,20 @@ public sealed class NodeHeartbeatMonitorService : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<InstallerDbContext>();
 
         var cutoff = DateTime.UtcNow.AddMinutes(-2);
-        var staleCount = await db.Nodes
-            .CountAsync(n => n.LastSeenUtc < cutoff, cancellationToken);
+        var staleNodes = await db.Nodes
+            .Where(n => n.LastSeenUtc < cutoff && n.Status != "Offline")
+            .ToListAsync(cancellationToken);
 
-        if (staleCount > 0)
+        if (staleNodes.Count > 0)
         {
-            _logger.LogInformation("Detected {Count} nodes past heartbeat timeout", staleCount);
+            _logger.LogInformation("Marking {Count} nodes as Offline (heartbeat timeout)", staleNodes.Count);
+
+            foreach (var node in staleNodes)
+            {
+                node.Status = "Offline";
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
         }
     }
 }

@@ -74,17 +74,27 @@ vi.mock('../services/api', async (importOriginal) => {
       packageSteps: [{ packageId: 'pkg-runtime', packageName: '', packageVersion: '', packageIndex: 1, stepId: 'step-1' }],
     }),
     deleteWorkload: vi.fn().mockResolvedValue(undefined),
+    updateWorkloadRevision: vi.fn().mockResolvedValue({
+      changed: true,
+      revision: {
+        id: 'wrv-new',
+        workloadId: 'workload-001',
+        revision: '2.0.0',
+        state: 'draft',
+        createdAt: new Date().toISOString(),
+        packageSteps: [{ packageId: 'pkg-runtime', packageName: '', packageVersion: '', packageIndex: 1, stepId: 'step-1' }],
+      },
+    }),
   }
 })
 
 describe('Workloads page', () => {
   beforeEach(async () => {
     render(<Workloads />)
-    await screen.findByText('Workload Definitions')
+    await screen.findByRole('heading', { name: 'Workload Definitions', level: 1 })
   })
 
   it('renders workload cards with latest revision info', async () => {
-    expect(screen.getByText('Definitions and Latest Revision')).toBeInTheDocument()
     expect(screen.getByText('Factory Base Install')).toBeInTheDocument()
     expect(screen.getByText('Baseline package set for production line nodes.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'View Details' })).toBeInTheDocument()

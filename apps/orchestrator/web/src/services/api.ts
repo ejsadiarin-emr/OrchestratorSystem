@@ -999,7 +999,12 @@ export async function createWorkloadRevision(
       packages: request.packageSteps.map(step => ({
         packageId: step.packageId,
         packageIndex: step.packageIndex,
+        preInitSteps: step.preInitSteps ?? [],
+        postInitSteps: step.postInitSteps ?? [],
       })),
+      preWorkloadSteps: request.preWorkloadSteps ?? [],
+      postWorkloadSteps: request.postWorkloadSteps ?? [],
+      defaultShell: request.defaultShell ?? 'powershell',
     }),
   })
   if (!response.ok) {
@@ -1036,6 +1041,85 @@ export async function createWorkloadRevision(
       packageIndex: p.packageIndex,
       stepId: `step-${p.packageIndex}`,
     })),
+  }
+}
+
+export async function updateWorkloadRevision(
+  workloadId: string,
+  revisionId: string,
+  request: CreateWorkloadRevisionRequest,
+): Promise<{ changed: boolean; revision: WorkloadRevision }> {
+  const count = request.packageSteps.length
+  if (count === 0) {
+    throw new Error('Workload revision must have at least 1 package')
+  }
+
+  const response = await fetch(`/api/workloads/${workloadId}/revisions/${revisionId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      version: request.revision,
+      packages: request.packageSteps.map(step => ({
+        packageId: step.packageId,
+        packageIndex: step.packageIndex,
+        preInitSteps: step.preInitSteps ?? [],
+        postInitSteps: step.postInitSteps ?? [],
+      })),
+      preWorkloadSteps: request.preWorkloadSteps ?? [],
+      postWorkloadSteps: request.postWorkloadSteps ?? [],
+      defaultShell: request.defaultShell ?? 'powershell',
+    }),
+  })
+  if (!response.ok) {
+    let message = `Failed to update revision: ${response.status}`
+    try {
+      const body = await response.json() as { message?: string; errors?: ValidationFieldError[] }
+      if (body.errors && body.errors.length > 0) {
+        message = body.errors.map((e: ValidationFieldError) => `${e.field}: ${e.error}`).join('; ')
+      } else if (body.message) {
+        message = body.message
+      }
+    } catch {
+      // use default message
+    }
+    throw new Error(message)
+  }
+  const data = await response.json() as {
+    changed: boolean
+    revision: {
+      revisionId: string
+      version: string
+      isPublished: boolean
+      createdAtUtc: string
+      preWorkloadSteps?: string[] | null
+      postWorkloadSteps?: string[] | null
+      defaultShell?: string | null
+      packages: Array<{ packageId: string; packageIndex: number; packageName: string; packageVersion: string; preInitSteps?: string[] | null; postInitSteps?: string[] | null }>
+    }
+  }
+  const r = data.revision
+  return {
+    changed: data.changed,
+    revision: {
+      id: r.revisionId,
+      workloadId,
+      revision: r.version,
+      state: r.isPublished ? ('published' as const) : ('draft' as const),
+      createdAt: r.createdAtUtc,
+      publishedAt: r.isPublished ? r.createdAtUtc : undefined,
+      preWorkloadSteps: r.preWorkloadSteps ?? [],
+      postWorkloadSteps: r.postWorkloadSteps ?? [],
+      defaultShell: r.defaultShell ?? 'powershell',
+      packageSteps: r.packages.map(p => ({
+        packageId: p.packageId,
+        packageName: p.packageName,
+        packageVersion: p.packageVersion,
+        packageIndex: p.packageIndex,
+        stepId: `step-${p.packageIndex}`,
+        preInitSteps: p.preInitSteps ?? [],
+        postInitSteps: p.postInitSteps ?? [],
+      })),
+    },
   }
 }
 
@@ -1171,7 +1255,7 @@ export async function createWorkloadRun(request: CreateWorkloadRunRequest): Prom
       mode: request.mode,
       idempotencyKey,
       nodeIds: request.targetNodeIds,
-      forceInstall: request.forceInstall,
+      forceInstall: request.reinstall,
     }),
   })
   if (!response.ok) {
@@ -1343,6 +1427,7 @@ export async function listNodeWorkloadStates(): Promise<NodeWorkloadState[]> {
     runId: s.runId ?? '',
     status: s.state ?? s.status ?? 'queued',
     updatedAt: s.updatedAt ?? new Date().toISOString(),
+    packageStatesJson: s.packageStatesJson ?? s.package_states_json ?? null,
   }))
 }
 

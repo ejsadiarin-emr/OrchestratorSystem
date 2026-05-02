@@ -71,7 +71,6 @@ describe('ArtifactManifest matches backend ArtifactIngestManifest contract', () 
       detection: {
         type: 'registry',
         path: 'HKLM\\Software\\EJ',
-        expectedVersion: '1.12.0',
       },
       policyTags: {
         retryabilityClass: 'retryable',
@@ -113,12 +112,10 @@ describe('ArtifactManifest matches backend ArtifactIngestManifest contract', () 
     const detection: DetectionInput = {
       type: 'registry',
       path: 'HKLM\\Software\\EJ',
-      expectedVersion: '1.12.0',
     }
 
     expect(detection).toHaveProperty('type')
     expect(detection).toHaveProperty('path')
-    expect(detection).toHaveProperty('expectedVersion')
   })
 
   it('provides PolicyTagsInput sub-fields matching backend PolicyTagsInput', () => {
@@ -149,7 +146,7 @@ describe('suggestManifestFromFile produces backend-conformant shape', () => {
     expect(manifest.installAdapter!.type).toBe('msi')
     expect(manifest.installAdapter!.command).toBe('msiexec')
     expect(manifest.detection).toBeDefined()
-    expect(manifest.detection!.expectedVersion).toBe('2.4.1')
+    expect(manifest.detection!.type).toBe('registry')
     expect(manifest.policyTags).toBeDefined()
   })
 
@@ -180,7 +177,7 @@ describe('uploadArtifact sends real HTTP request with FormData', () => {
         channel: 'stable',
         artifactType: 'msi',
         installAdapter: { type: 'msi', command: 'msiexec', arguments: '/quiet', expectedExitCodes: [0], timeoutSeconds: 300 },
-        detection: { type: 'registry', path: 'HKLM\\Widget', expectedVersion: '2.4.1' },
+        detection: { type: 'registry', path: 'HKLM\\Widget' },
         policyTags: { retryabilityClass: 'retryable', idempotencyMode: 'enforced', riskLevel: 'low', approvalRequired: false },
         originMetadata: { source: 'test', publisher: 'test', ingestedBy: 'anonymous', ingestedAtUtc: '2026-01-01T00:00:00Z', verificationResult: 'derived' },
       },

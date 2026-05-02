@@ -44,41 +44,10 @@ public static class PackageDetector
     private static Task<PreCheckResult> DetectFileAsync(DetectionConfig config, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(config.Path))
-        {
             return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent, Error = "missing_detection_path" });
-        }
 
         if (!File.Exists(config.Path))
-        {
             return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent, Error = "file_not_found" });
-        }
-
-        if (!string.IsNullOrWhiteSpace(config.ExpectedVersion))
-        {
-            try
-            {
-                var versionInfo = FileVersionInfo.GetVersionInfo(config.Path);
-                var actualVersion = versionInfo.FileVersion ?? versionInfo.ProductVersion;
-                if (string.IsNullOrWhiteSpace(actualVersion))
-                {
-                    return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent, Error = "version_not_readable" });
-                }
-
-                if (!VersionEquals(actualVersion, config.ExpectedVersion))
-                {
-                    return Task.FromResult(new PreCheckResult
-                    {
-                        Status = PreCheckStatus.WrongVersion,
-                        ActualVersion = actualVersion,
-                        Error = $"version_mismatch: expected {config.ExpectedVersion}, got {actualVersion}"
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent, Error = $"version_check_error: {ex.Message}" });
-            }
-        }
 
         return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied });
     }
@@ -91,7 +60,6 @@ public static class PackageDetector
         }
 
         var displayNameToMatch = config.Path;
-        var expectedVersion = config.ExpectedVersion;
 
         var hives = new[] { RegistryHive.LocalMachine, RegistryHive.CurrentUser };
         var views = new[] { RegistryView.Registry64, RegistryView.Registry32 };
@@ -125,20 +93,6 @@ public static class PackageDetector
 
                             if (!string.Equals(displayName, displayNameToMatch, StringComparison.OrdinalIgnoreCase))
                                 continue;
-
-                            if (!string.IsNullOrWhiteSpace(expectedVersion))
-                            {
-                                var displayVersion = subKey.GetValue("DisplayVersion") as string;
-                                if (!string.IsNullOrWhiteSpace(displayVersion) && !VersionEquals(displayVersion, expectedVersion))
-                                {
-                                    return Task.FromResult(new PreCheckResult
-                                    {
-                                        Status = PreCheckStatus.WrongVersion,
-                                        ActualVersion = displayVersion,
-                                        Error = $"version_mismatch: expected {expectedVersion}, got {displayVersion}"
-                                    });
-                                }
-                            }
 
                             return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied });
                         }
@@ -194,8 +148,7 @@ public static class PackageDetector
                     return DetectFileAsync(new DetectionConfig
                     {
                         Type = config.Type,
-                        Path = fullPath,
-                        ExpectedVersion = config.ExpectedVersion
+                        Path = fullPath
                     }, ct);
                 }
             }
@@ -231,8 +184,7 @@ public static class PackageDetector
                             return DetectFileAsync(new DetectionConfig
                             {
                                 Type = config.Type,
-                                Path = fullPath,
-                                ExpectedVersion = config.ExpectedVersion
+                                Path = fullPath
                             }, ct);
                         }
                     }
@@ -243,54 +195,5 @@ public static class PackageDetector
         return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent });
     }
 
-    private static bool VersionEquals(string actual, string expected)
-    {
-        var a = NormalizeVersion(actual);
-        var b = NormalizeVersion(expected);
 
-        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // Prefix match by dot-separated segments: expected must be a prefix of actual
-        var aSegs = a.Split('.');
-        var bSegs = b.Split('.');
-
-        if (bSegs.Length > aSegs.Length)
-            return false;
-
-        for (int i = 0; i < bSegs.Length; i++)
-        {
-            if (!string.Equals(aSegs[i], bSegs[i], StringComparison.OrdinalIgnoreCase))
-                return false;
-        }
-
-        return true;
-    }
-
-    private static string NormalizeVersion(string version)
-    {
-        var v = version.Trim();
-
-        // Strip leading comparison operators (==, >=, <=, >, <, =)
-        var opMatch = System.Text.RegularExpressions.Regex.Match(v, @"^(==|>=|<=|>|<|=)");
-        if (opMatch.Success)
-        {
-            v = v[opMatch.Length..];
-        }
-
-        // Strip trailing .0 segments
-        while (v.EndsWith(".0", StringComparison.Ordinal) && v.Count(c => c == '.') > 1)
-        {
-            v = v[..^2];
-        }
-
-        // Strip parenthetical metadata (e.g. " ((SQLServer).190924-2033)")
-        var parenIdx = v.IndexOf(" (", StringComparison.Ordinal);
-        if (parenIdx >= 0)
-        {
-            v = v[..parenIdx];
-        }
-
-        return v;
-    }
 }

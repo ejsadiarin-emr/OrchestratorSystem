@@ -52,8 +52,7 @@ public sealed class PipelineExecutorTests
                         Detection = new DetectionConfig
                         {
                             Type = "file",
-                            Path = "/nonexistent",
-                            ExpectedVersion = null
+                            Path = "/nonexistent"
                         }
                     }
                 }
@@ -128,8 +127,7 @@ public sealed class PipelineExecutorTests
                         Detection = new DetectionConfig
                         {
                             Type = "file",
-                            Path = "/nonexistent",
-                            ExpectedVersion = null
+                            Path = "/nonexistent"
                         }
                     }
                 }

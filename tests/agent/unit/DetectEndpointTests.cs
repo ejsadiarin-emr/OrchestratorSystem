@@ -95,8 +95,7 @@ public sealed class DetectEndpointTests
                     Detection = new DetectionConfig
                     {
                         Type = "file",
-                        Path = cmdPath,
-                        ExpectedVersion = null
+                        Path = cmdPath
                     }
                 }
             }
@@ -129,8 +128,7 @@ public sealed class DetectEndpointTests
                     Detection = new DetectionConfig
                     {
                         Type = "version_manifest",
-                        Path = cmdPath,
-                        ExpectedVersion = null
+                        Path = cmdPath
                     }
                 }
             }
@@ -164,8 +162,7 @@ public sealed class DetectEndpointTests
                     Detection = new DetectionConfig
                     {
                         Type = "version_manifest",
-                        Path = cmdPath,
-                        ExpectedVersion = actualVersion
+                        Path = cmdPath
                     }
                 }
             }
@@ -196,8 +193,7 @@ public sealed class DetectEndpointTests
                     Detection = new DetectionConfig
                     {
                         Type = "registry",
-                        Path = @"HKLM\Software\Test",
-                        ExpectedVersion = "1.0.0"
+                        Path = @"HKLM\Software\Test"
                     }
                 }
             }
@@ -241,8 +237,7 @@ public sealed class DetectEndpointTests
                     Detection = new DetectionConfig
                     {
                         Type = "version_manifest",
-                        Path = "nonexistent-command-xyz123",
-                        ExpectedVersion = "1.0.0"
+                        Path = "nonexistent-command-xyz123"
                     }
                 }
             }
@@ -273,8 +268,7 @@ public sealed class DetectEndpointTests
                     Detection = new DetectionConfig
                     {
                         Type = "unknown_type",
-                        Path = "test",
-                        ExpectedVersion = "1.0.0"
+                        Path = "test"
                     }
                 }
             }

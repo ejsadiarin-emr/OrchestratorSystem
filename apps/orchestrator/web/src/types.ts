@@ -11,7 +11,6 @@ export interface InstallAdapterInput {
 export interface DetectionInput {
   type?: string
   path?: string
-  expectedVersion?: string
 }
 
 export interface PolicyTagsInput {

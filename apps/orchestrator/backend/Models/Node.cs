@@ -92,7 +92,6 @@ public class PreCheckItem
     public string Name { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string Detail { get; set; } = string.Empty;
-    public string? ExpectedVersion { get; set; }
     public string? ActualVersion { get; set; }
 }
 

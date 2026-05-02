@@ -104,8 +104,7 @@ public sealed class InitStepPipelineTests
             Detection = new DetectionConfig
             {
                 Type = "version_manifest",
-                Path = "cmd",
-                ExpectedVersion = null
+                Path = "cmd"
             }
         };
     }

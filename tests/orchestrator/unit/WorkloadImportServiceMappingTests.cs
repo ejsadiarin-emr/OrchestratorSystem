@@ -48,8 +48,7 @@ public class PackageAssignmentSlugTests
             Detection = new Detection
             {
                 Type = "version_manifest",
-                Path = "emerson-uaf-runtime",
-                ExpectedVersion = "==1.0.0"
+                Path = "emerson-uaf-runtime"
             },
             OriginMetadata = new OriginMetadata
             {

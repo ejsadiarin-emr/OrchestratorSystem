@@ -729,8 +729,7 @@ public sealed class WorkloadsController : ControllerBase
                         var detectionConfig = new DeploymentPoC.Contracts.Runtime.RunPayloads.DetectionConfig
                         {
                             Type = manifest.Detection.Type ?? "version_manifest",
-                            Path = manifest.Detection.Path ?? packageId,
-                            ExpectedVersion = manifest.Detection.ExpectedVersion ?? version
+                            Path = manifest.Detection.Path ?? packageId
                         };
                         detectionConfigJson = System.Text.Json.JsonSerializer.Serialize(detectionConfig);
                     }

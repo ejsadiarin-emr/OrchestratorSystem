@@ -21,8 +21,7 @@ public class ArtifactIngestServiceSourceTests
             Detection = new DetectionInput
             {
                 Type = "registry",
-                Path = "HKLM\\Software\\Test",
-                ExpectedVersion = "1.0.0"
+                Path = "HKLM\\Software\\Test"
             },
             PolicyTags = new PolicyTagsInput
             {

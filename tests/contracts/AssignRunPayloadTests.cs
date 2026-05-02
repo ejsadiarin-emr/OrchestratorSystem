@@ -64,8 +64,7 @@ public class AssignRunPayloadTests
                     Detection = new DetectionConfig
                     {
                         Type = "product",
-                        Path = "Product A",
-                        ExpectedVersion = "1.0.0"
+                        Path = "Product A"
                     }
                 },
                 new PackageAssignment
@@ -85,8 +84,7 @@ public class AssignRunPayloadTests
                     Detection = new DetectionConfig
                     {
                         Type = "file",
-                        Path = @"C:\Program Files\PkgB\bin\pkg-b.exe",
-                        ExpectedVersion = "2.1.0"
+                        Path = @"C:\Program Files\PkgB\bin\pkg-b.exe"
                     }
                 }
             ]
@@ -169,7 +167,6 @@ public class AssignRunPayloadTests
         // Assert
         Assert.Empty(config.Type);
         Assert.Empty(config.Path);
-        Assert.Empty(config.ExpectedVersion);
     }
 
     [Fact]

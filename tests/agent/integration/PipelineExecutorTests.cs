@@ -48,8 +48,7 @@ public sealed class PipelineExecutorTests
                             {
                                 Type = "file",
                                 Path = tempFile,
-                                ExpectedVersion = null
-                            }
+                                }
                         }
                     }
                 },
@@ -111,7 +110,6 @@ public sealed class PipelineExecutorTests
                         {
                             Type = "file",
                             Path = "/nonexistent",
-                            ExpectedVersion = null
                         }
                     }
                 }
@@ -169,7 +167,6 @@ public sealed class PipelineExecutorTests
                         {
                             Type = "file",
                             Path = "/nonexistent",
-                            ExpectedVersion = null
                         }
                     }
                 }
@@ -232,8 +229,7 @@ public sealed class PipelineExecutorTests
                             {
                                 Type = "file",
                                 Path = tempFile,
-                                ExpectedVersion = null
-                            }
+                                }
                         },
                         new()
                         {
@@ -252,8 +248,7 @@ public sealed class PipelineExecutorTests
                             {
                                 Type = "file",
                                 Path = tempFile,
-                                ExpectedVersion = null
-                            }
+                                }
                         }
                     }
                 },
@@ -414,7 +409,7 @@ public sealed class PostInstallVerifyTests
             {
                 Type = "file",
                 Path = tempFile,
-                ExpectedVersion = null
+                
             };
 
             var result = await PostInstallVerify.ExecuteAsync(config, CancellationToken.None);
@@ -434,7 +429,7 @@ public sealed class PostInstallVerifyTests
         {
             Type = "file",
             Path = "/nonexistent/file.txt",
-            ExpectedVersion = null
+            
         };
 
         var result = await PostInstallVerify.ExecuteAsync(config, CancellationToken.None);
@@ -449,7 +444,7 @@ public sealed class PostInstallVerifyTests
         {
             Type = "registry",
             Path = "HKLM\\Software\\Test",
-            ExpectedVersion = null
+            
         };
 
         var result = await PostInstallVerify.ExecuteAsync(config, CancellationToken.None);
@@ -463,7 +458,7 @@ public sealed class PostInstallVerifyTests
         {
             Type = "unknown",
             Path = "/some/path",
-            ExpectedVersion = null
+            
         };
 
         var result = await PostInstallVerify.ExecuteAsync(config, CancellationToken.None);
@@ -550,8 +545,7 @@ public sealed class PipelineExecutorDiffTests
                             {
                                 Type = "file",
                                 Path = detectFile,
-                                ExpectedVersion = null
-                            }
+                                }
                         }
                     }
                 },
@@ -574,8 +568,7 @@ public sealed class PipelineExecutorDiffTests
                             {
                                 Type = "file",
                                 Path = tempFile,
-                                ExpectedVersion = null
-                            }
+                                }
                     }
                 },
                 OrchestratorBaseUrl = "https://unit.test",
@@ -652,8 +645,7 @@ public sealed class PipelineExecutorDiffTests
                             {
                                 Type = "file",
                                 Path = "/nonexistent",
-                                ExpectedVersion = null
-                            }
+                                }
                         },
                         new()
                         {
@@ -672,8 +664,7 @@ public sealed class PipelineExecutorDiffTests
                             {
                                 Type = "file",
                                 Path = tempFile,
-                                ExpectedVersion = null
-                            }
+                                }
                         }
                     }
                 },
@@ -760,8 +751,7 @@ public sealed class PipelineExecutorDiffTests
                             {
                                 Type = "file",
                                 Path = tempFile,
-                                ExpectedVersion = null
-                            }
+                                }
                         }
                     }
                 },
@@ -851,7 +841,6 @@ public sealed class PipelineExecutorDiffTests
                         {
                             Type = "file",
                             Path = tempFile,
-                            ExpectedVersion = null
                         }
                     }
                 },
@@ -926,8 +915,7 @@ public sealed class PipelineExecutorDiffTests
                             {
                                 Type = "file",
                                 Path = "/nonexistent",
-                                ExpectedVersion = null
-                            }
+                                }
                         }
                     }
                 },
@@ -950,7 +938,6 @@ public sealed class PipelineExecutorDiffTests
                         {
                             Type = "file",
                             Path = tempFile,
-                            ExpectedVersion = null
                         }
                     }
                 },
@@ -1028,8 +1015,7 @@ public sealed class PipelineExecutorDiffTests
                             {
                                 Type = "file",
                                 Path = detectFile,
-                                ExpectedVersion = null
-                            }
+                                }
                         }
                     },
                     PreWorkloadSteps = new List<string> { "echo pre-workload" },
@@ -1107,95 +1093,6 @@ public sealed class PipelineExecutorDiffTests
     }
 
     [Xunit.Fact]
-    public async Task Update_PreCheckWrongVersion_MarksChanged_RunsInitSteps()
-    {
-        var payload = Encoding.UTF8.GetBytes("artifact");
-        var handler = new StubArtifactHandler(payload, supportsRange: false);
-        using var http = new HttpClient(handler);
-        var executor = new PipelineExecutor(new StubHttpClientFactory(http), new Microsoft.Extensions.Logging.Abstractions.NullLogger<PipelineExecutor>());
-
-        var runId = Guid.NewGuid();
-        var context = new PipelineContext
-        {
-            Payload = new AssignRunPayload
-            {
-                RunId = runId,
-                WorkloadName = "test-workload",
-                Mode = "update",
-                DefaultShell = "cmd",
-                Packages = new List<PackageAssignment>
-                {
-                    new()
-                    {
-                        PackageIndex = 0,
-                        PackageId = "pkg-a",
-                        Name = "pkg-a",
-                        Version = "2.0.0",
-                        PreInitSteps = new List<string> { "echo pre" },
-                        InstallAdapter = new InstallAdapterConfig
-                        {
-                            Type = "exe",
-                            Command = "cmd",
-                            Arguments = "/C exit 0",
-                            TimeoutSeconds = 30
-                        },
-                        Detection = new DetectionConfig
-                        {
-                            Type = "version_manifest",
-                            Path = "cmd",
-                            ExpectedVersion = "99999.0.0"
-                        }
-                    }
-                }
-            },
-            CurrentPackages = new List<PackageAssignment>
-            {
-                new()
-                {
-                    PackageIndex = 0,
-                    PackageId = "pkg-a",
-                    Name = "pkg-a",
-                    Version = "1.0.0",
-                    InstallAdapter = new InstallAdapterConfig(),
-                    Detection = new DetectionConfig()
-                }
-            },
-            OrchestratorBaseUrl = "https://unit.test",
-            AgentId = "agent-1",
-            RunId = runId.ToString(),
-            Sequence = 1
-        };
-
-        var messages = new List<MessageEnvelope>();
-        var result = await executor.ExecuteAsync(context, (msg, ct) =>
-        {
-            if (msg.MessageType == MessageTypes.StepStatus && msg.Payload is StepStatusPayload stepPayload && stepPayload.StepName == "PreCheckProbe" && stepPayload.PackageId == "pkg-a")
-            {
-                var pkg = context.Payload.Packages.First(p => p.PackageId == "pkg-a");
-                pkg.Detection.ExpectedVersion = null;
-            }
-            messages.Add(msg);
-            return Task.CompletedTask;
-        });
-
-        Xunit.Assert.True(result.Success);
-
-        var stepStatuses = messages.Where(m => m.MessageType == MessageTypes.StepStatus).ToList();
-        var stepNames = stepStatuses.Select(m => ((StepStatusPayload)m.Payload).StepName).ToList();
-
-        Xunit.Assert.Contains("PreCheckProbe", stepNames);
-        Xunit.Assert.Contains("PreInit_0_0", stepNames);
-        Xunit.Assert.Contains("AcquireArtifact", stepNames);
-        Xunit.Assert.Contains("InstallOrUpgrade", stepNames);
-        Xunit.Assert.Contains("PostInstallVerify", stepNames);
-
-        var preCheckStep = stepStatuses
-            .Select(m => (StepStatusPayload)m.Payload)
-            .First(s => s.StepName == "PreCheckProbe");
-        Xunit.Assert.Contains("version_mismatch", preCheckStep.Error ?? string.Empty);
-    }
-
-    [Xunit.Fact]
     public async Task Update_TwoPhaseWithInitSteps_RunsInOrder()
     {
         var payload = Encoding.UTF8.GetBytes("artifact");
@@ -1240,8 +1137,7 @@ public sealed class PipelineExecutorDiffTests
                             {
                                 Type = "file",
                                 Path = detectFile,
-                                ExpectedVersion = null
-                            }
+                                }
                         }
                     },
                     PostWorkloadSteps = new List<string> { "echo post-workload" }
@@ -1265,7 +1161,6 @@ public sealed class PipelineExecutorDiffTests
                         {
                             Type = "file",
                             Path = tempFile,
-                            ExpectedVersion = null
                         }
                     }
                 },

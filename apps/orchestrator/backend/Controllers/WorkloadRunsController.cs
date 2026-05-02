@@ -1118,7 +1118,7 @@ public sealed class WorkloadRunsController : ControllerBase
         DetectionConfig detection;
         try { detection = string.IsNullOrWhiteSpace(pkg?.DetectionConfigJson) ? null : JsonSerializer.Deserialize<DetectionConfig>(pkg.DetectionConfigJson); }
         catch { detection = null; }
-        detection ??= new DetectionConfig { Type = "version_manifest", Path = pkg?.Name ?? "", ExpectedVersion = pkg?.Version ?? "" };
+        detection ??= new DetectionConfig { Type = "version_manifest", Path = pkg?.Name ?? "" };
 
         var hasArtifact = pkg is not null && _artifactStore.HasArtifactFile(pkg.Name, pkg.Version);
         if (!hasArtifact && !isCurrentPackage)

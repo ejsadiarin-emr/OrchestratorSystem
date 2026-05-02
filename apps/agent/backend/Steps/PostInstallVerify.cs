@@ -13,7 +13,7 @@ public static class PostInstallVerify
             PreCheckStatus.WrongVersion => new VerifyResult
             {
                 Success = false,
-                Error = result.Error ?? $"version_mismatch: expected {config.ExpectedVersion}, got {result.ActualVersion}"
+                Error = result.Error ?? "version_mismatch"
             },
             PreCheckStatus.NotPresent => new VerifyResult
             {

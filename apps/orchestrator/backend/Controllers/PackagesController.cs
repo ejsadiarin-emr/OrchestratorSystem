@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using DeploymentPoC.Contracts.Runtime.RunPayloads;
 using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Data.Entities;
 using DeploymentPoC.Orchestrator.Models;
@@ -24,9 +25,17 @@ public class PackagesController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Package>>> GetAll()
     {
-        var packages = await _db.Packages
+        var entities = await _db.Packages
             .OrderByDescending(p => p.CreatedAtUtc)
-            .Select(p => new Package
+            .ToListAsync();
+
+        var packages = entities.Select(p =>
+        {
+            var detectionConfig = string.IsNullOrWhiteSpace(p.DetectionConfigJson)
+                ? new DetectionConfig()
+                : System.Text.Json.JsonSerializer.Deserialize<DetectionConfig>(p.DetectionConfigJson) ?? new DetectionConfig();
+
+            return new Package
             {
                 Id = p.PackageId,
                 Name = p.Name,
@@ -37,9 +46,12 @@ public class PackagesController : ControllerBase
                 UninstallCommand = p.UninstallCommand,
                 UninstallArgs = p.UninstallArgs,
                 UpgradeBehavior = p.UpgradeBehavior,
+                DetectionType = detectionConfig.Type,
+                DetectionPath = detectionConfig.Path,
+                ExpectedVersion = detectionConfig.ExpectedVersion,
                 CreatedAt = p.CreatedAtUtc
-            })
-            .ToListAsync();
+            };
+        }).ToList();
 
         return Ok(packages);
     }
@@ -47,29 +59,37 @@ public class PackagesController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<Package>> GetById(Guid id)
     {
-        var package = await _db.Packages
+        var entity = await _db.Packages
             .Where(p => p.PackageId == id)
-            .Select(p => new Package
-            {
-                Id = p.PackageId,
-                Name = p.Name,
-                Version = p.Version,
-                SourcePath = p.SourcePath,
-                InstallType = p.InstallType,
-                InstallArgs = p.InstallArgs,
-                UninstallCommand = p.UninstallCommand,
-                UninstallArgs = p.UninstallArgs,
-                UpgradeBehavior = p.UpgradeBehavior,
-                CreatedAt = p.CreatedAtUtc
-            })
             .SingleOrDefaultAsync();
 
-        if (package is not null)
+        if (entity is null)
         {
-            return Ok(package);
+            return NotFound(new { message = $"Package {id} not found" });
         }
 
-        return NotFound(new { message = $"Package {id} not found" });
+        var detectionConfig = string.IsNullOrWhiteSpace(entity.DetectionConfigJson)
+            ? new DetectionConfig()
+            : System.Text.Json.JsonSerializer.Deserialize<DetectionConfig>(entity.DetectionConfigJson) ?? new DetectionConfig();
+
+        var package = new Package
+        {
+            Id = entity.PackageId,
+            Name = entity.Name,
+            Version = entity.Version,
+            SourcePath = entity.SourcePath,
+            InstallType = entity.InstallType,
+            InstallArgs = entity.InstallArgs,
+            UninstallCommand = entity.UninstallCommand,
+            UninstallArgs = entity.UninstallArgs,
+            UpgradeBehavior = entity.UpgradeBehavior,
+            DetectionType = detectionConfig.Type,
+            DetectionPath = detectionConfig.Path,
+            ExpectedVersion = detectionConfig.ExpectedVersion,
+            CreatedAt = entity.CreatedAtUtc
+        };
+
+        return Ok(package);
     }
 
     [HttpPost]
@@ -92,6 +112,14 @@ public class PackagesController : ControllerBase
             UninstallCommand = request.UninstallCommand,
             UninstallArgs = request.UninstallArgs,
             UpgradeBehavior = UpgradeBehaviorValidator.Normalize(request.UpgradeBehavior),
+            DetectionConfigJson = string.IsNullOrWhiteSpace(request.DetectionType) && string.IsNullOrWhiteSpace(request.DetectionPath) && string.IsNullOrWhiteSpace(request.ExpectedVersion)
+                ? string.Empty
+                : System.Text.Json.JsonSerializer.Serialize(new DetectionConfig
+                {
+                    Type = request.DetectionType,
+                    Path = request.DetectionPath,
+                    ExpectedVersion = request.ExpectedVersion
+                }),
             CreatedAtUtc = DateTime.UtcNow
         };
 
@@ -109,6 +137,9 @@ public class PackagesController : ControllerBase
             UninstallCommand = request.UninstallCommand,
             UninstallArgs = request.UninstallArgs,
             UpgradeBehavior = entity.UpgradeBehavior,
+            DetectionType = request.DetectionType,
+            DetectionPath = request.DetectionPath,
+            ExpectedVersion = request.ExpectedVersion,
             CreatedAt = entity.CreatedAtUtc
         };
 

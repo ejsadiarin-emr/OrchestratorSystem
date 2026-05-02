@@ -208,8 +208,8 @@ $SqlServerManifestOlder = @{
     installAdapter = @{
         type = "exe"
         command = $SqlServerExeOlder
-        arguments = '/ACTION=Install /Q /IACCEPTSQLSERVERLICENSETERMS /FEATURES=SQLEngine /INSTANCENAME=SQLEXPRESS'
-        uninstallArgs = "/ACTION=Uninstall /FEATURES=SQLEngine /INSTANCENAME=SQLEXPRESS /QUIET /IACCEPTSQLSERVERLICENSETERMS"
+        arguments = '/ACTION=Install /Q /IACCEPTSQLSERVERLICENSETERMS'
+        uninstallArgs = "/ACTION=Uninstall /FEATURES=SQLEngine /INSTANCENAME=SQLEXPRESS /Q /IACCEPTSQLSERVERLICENSETERMS"
         uninstallCommand = "%ProgramFiles%\Microsoft SQL Server\150\Setup Bootstrap\SQL2019\setup.exe"
         upgradeBehavior = "UninstallFirst"
         expectedExitCodes = @(0, 3010)
@@ -305,8 +305,8 @@ $SqlServerManifestNewer = @{
     installAdapter = @{
         type = "exe"
         command = $SqlServerExeNewer
-        arguments = '/ACTION=Install /Q /IACCEPTSQLSERVERLICENSETERMS /FEATURES=SQLEngine /INSTANCENAME=SQLEXPRESS /SUPPRESSPRIVACYSTATEMENTNOTICE'
-        uninstallArgs = "/ACTION=Uninstall /FEATURES=SQLEngine /INSTANCENAME=SQLEXPRESS /QUIET /IACCEPTSQLSERVERLICENSETERMS"
+        arguments = '/ACTION=Install /Q /IACCEPTSQLSERVERLICENSETERMS /SUPPRESSPRIVACYSTATEMENTNOTICE'
+        uninstallArgs = "/ACTION=Uninstall /FEATURES=SQLEngine /INSTANCENAME=SQLEXPRESS /Q /IACCEPTSQLSERVERLICENSETERMS"
         uninstallCommand = "%ProgramFiles%\Microsoft SQL Server\170\Setup Bootstrap\SQL2025\setup.exe"
         upgradeBehavior = "UninstallFirst"
         expectedExitCodes = @(0, 3010)

@@ -240,7 +240,7 @@ public sealed class ArtifactIngestService
             {
                 Type = string.IsNullOrWhiteSpace(manifest.Detection.Type) ? "version_manifest" : manifest.Detection.Type.Trim(),
                 Path = string.IsNullOrWhiteSpace(manifest.Detection.Path) ? manifest.PackageId ?? string.Empty : manifest.Detection.Path.Trim(),
-                ExpectedVersion = string.IsNullOrWhiteSpace(manifest.Detection.ExpectedVersion) ? $"=={manifest.Version}" : manifest.Detection.ExpectedVersion.Trim()
+                ExpectedVersion = manifest.Detection.ExpectedVersion?.Trim() ?? string.Empty
             };
         }
 

@@ -209,4 +209,38 @@ public sealed class UninstallPackageTests
         Assert.True(result.Success);
         Assert.Null(result.Error);
     }
+
+    [Fact]
+    public async Task UninstallCommand_ExpandsEnvironmentVariables_WindowsStyle()
+    {
+        var config = new InstallAdapterConfig
+        {
+            Type = "exe",
+            UninstallCommand = Shell,
+            UninstallArgs = $"{ShellArgsPrefix} exit 0",
+            TimeoutSeconds = 5
+        };
+
+        var result = await UninstallPackage.ExecuteAsync(config, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Null(result.Error);
+    }
+
+    [Fact]
+    public async Task UninstallCommand_ExpandsPowerShellEnvVariable()
+    {
+        var config = new InstallAdapterConfig
+        {
+            Type = "exe",
+            UninstallCommand = Shell,
+            UninstallArgs = $"{ShellArgsPrefix} exit 0",
+            TimeoutSeconds = 5
+        };
+
+        var result = await UninstallPackage.ExecuteAsync(config, CancellationToken.None);
+
+        Assert.True(result.Success);
+        Assert.Null(result.Error);
+    }
 }

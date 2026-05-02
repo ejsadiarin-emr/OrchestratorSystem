@@ -74,7 +74,7 @@ cat > "${DBEAVER_BASE_OLDER}.manifest.json" <<EOF
     "command": "${DBEAVER_EXE_OLDER}",
     "arguments": "/S /allusers",
     "uninstallArgs": "/S",
-    "uninstallCommand": "\$env:ProgramFiles\\DBeaver\\uninstaller.exe",
+    "uninstallCommand": "%ProgramFiles%\\DBeaver\\uninstaller.exe",
     "expectedExitCodes": [0],
     "timeoutSeconds": 300
   },
@@ -106,7 +106,7 @@ cat > "${PYTHON_BASE_OLDER}.manifest.json" <<EOF
     "command": "${PYTHON_EXE_OLDER}",
     "arguments": "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0",
     "uninstallArgs": "/quiet /uninstall",
-    "uninstallCommand": "\$env:ProgramFiles\\Python313\\python.exe",
+    "uninstallCommand": "%ProgramFiles%\\Python313\\python.exe",
     "expectedExitCodes": [0],
     "timeoutSeconds": 300
   },
@@ -133,7 +133,7 @@ cat > "${DBEAVER_BASE_NEWER}.manifest.json" <<EOF
     "command": "${DBEAVER_EXE_NEWER}",
     "arguments": "/S /allusers",
     "uninstallArgs": "/S",
-    "uninstallCommand": "\$env:ProgramFiles\\DBeaver\\uninstaller.exe",
+    "uninstallCommand": "%ProgramFiles%\\DBeaver\\uninstaller.exe",
     "expectedExitCodes": [0],
     "timeoutSeconds": 300
   },
@@ -165,7 +165,7 @@ cat > "${PYTHON_BASE_NEWER}.manifest.json" <<EOF
     "command": "${PYTHON_EXE_NEWER}",
     "arguments": "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0",
     "uninstallArgs": "/quiet /uninstall",
-    "uninstallCommand": "\$env:ProgramFiles\\Python314\\python.exe",
+    "uninstallCommand": "%ProgramFiles%\\Python314\\python.exe",
     "expectedExitCodes": [0],
     "timeoutSeconds": 300
   },

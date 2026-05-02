@@ -232,7 +232,7 @@
       {
       "name": "sqlserver-2025",
       "preInitSteps": [
-        "Write-Host 'Checking for conflicting ODBC drivers...'; try { $odbc = Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Where-Object { $_.DisplayName -match 'Microsoft ODBC Driver \\d+ for SQL Server' } | Select-Object -First 1; if ($odbc) { Write-Host \"Removing: $($odbc.DisplayName)\"; Start-Process msiexec.exe -ArgumentList \"/x $($odbc.PSChildName) /quiet /norestart\" -Wait -NoNewWindow; Write-Host \"Removed: $($odbc.DisplayName)\" } else { Write-Host 'No conflicting ODBC drivers found' } } catch { Write-Host \"ODBC check skipped (non-critical): $_\" }; exit 0",
+        "Write-Host 'Checking for conflicting ODBC drivers...'; try { $odbc = Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Where-Object { $_.DisplayName -eq 'Microsoft ODBC Driver 18 for SQL Server' } | Select-Object -First 1; if ($odbc) { Write-Host \"Removing: $($odbc.DisplayName)\"; Start-Process msiexec.exe -ArgumentList \"/x $($odbc.PSChildName) /quiet /norestart\" -Wait -NoNewWindow; Write-Host \"Removed: $($odbc.DisplayName)\" } else { Write-Host 'No conflicting ODBC drivers found' } } catch { Write-Host \"ODBC check skipped (non-critical): $_\" }; exit 0",
         "Write-Host 'Checking for existing SQL Server instances...'",
           "$sqlSvc = Get-Service -Name MSSQL`$SQLEXPRESS -ErrorAction SilentlyContinue",
           "if ($sqlSvc) { Write-Host \"SQL Server Express service found: $($sqlSvc.Status)\" } else { Write-Host 'No existing SQL instance - proceeding with fresh install' }"

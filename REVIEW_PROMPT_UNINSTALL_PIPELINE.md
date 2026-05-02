@@ -1,10 +1,6 @@
 # Review Request: Uninstall Pipeline & Pre-check Architecture
 
-NOTE: this is mostly for Windows
-
-- We may need to create/edit scripts (for downloading artifacts & generating manifests/workloads) and Makefile for the commands if we want to test it locally.
-
-BUT I just need you to do an in-depth review and a thorough audit that points out the ISSUES in the codebase, especially the logic. You may explore as you need to.
+I just need you to do an in-depth review and a thorough audit that points out the ISSUES in the codebase, especially the logic. You may explore as you need to.
 
 **USE SUBAGENTS AS NEEDED.**
 

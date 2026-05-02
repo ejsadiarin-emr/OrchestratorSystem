@@ -147,7 +147,7 @@ $DbeaverManifestOlder = @{
         command = $DbeaverExeOlder
         arguments = "/S /allusers"
         uninstallArgs = "/S"
-        uninstallCommand = "%ProgramFiles%\DBeaver\uninstaller.exe"
+        uninstallCommand = "%ProgramFiles%\DBeaver\uninstall.exe"
         upgradeBehavior = "InPlace"
         expectedExitCodes = @(0)
         timeoutSeconds = 300
@@ -180,8 +180,8 @@ $PythonManifestOlder = @{
         type = "exe"
         command = $PythonExeOlder
         arguments = "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0"
-        uninstallArgs = "/quiet /uninstall"
-        uninstallCommand = "%ProgramFiles%\Python313\python.exe"
+        uninstallArgs = ""
+        uninstallCommand = ""
         upgradeBehavior = "UninstallFirst"
         expectedExitCodes = @(0)
         timeoutSeconds = 300
@@ -210,7 +210,7 @@ $SqlServerManifestOlder = @{
         command = $SqlServerExeOlder
         arguments = '/IACCEPTSQLSERVERLICENSETERMS /ACTION=Install /FEATURES=SQLEngine /INSTANCENAME=SQLEXPRESS /QUIET /SQLSVCACCOUNT="NT AUTHORITY\SYSTEM" /SQLSYSADMINACCOUNTS="BUILTIN\ADMINISTRATORS"'
         uninstallArgs = "/ACTION=Uninstall /FEATURES=SQLEngine /INSTANCENAME=SQLEXPRESS /QUIET /IACCEPTSQLSERVERLICENSETERMS"
-        uninstallCommand = "%ProgramFiles%\Microsoft SQL Server\160\Setup Bootstrap\SQLServer2019\setup.exe"
+        uninstallCommand = "%ProgramFiles%\Microsoft SQL Server\150\Setup Bootstrap\SQL2019\setup.exe"
         upgradeBehavior = "UninstallFirst"
         expectedExitCodes = @(0, 3010)
         timeoutSeconds = 600
@@ -244,7 +244,7 @@ $DbeaverManifestNewer = @{
         command = $DbeaverExeNewer
         arguments = "/S /allusers"
         uninstallArgs = "/S"
-        uninstallCommand = "%ProgramFiles%\DBeaver\uninstaller.exe"
+        uninstallCommand = "%ProgramFiles%\DBeaver\uninstall.exe"
         upgradeBehavior = "InPlace"
         expectedExitCodes = @(0)
         timeoutSeconds = 300
@@ -277,8 +277,8 @@ $PythonManifestNewer = @{
         type = "exe"
         command = $PythonExeNewer
         arguments = "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0"
-        uninstallArgs = "/quiet /uninstall"
-        uninstallCommand = "%ProgramFiles%\Python314\python.exe"
+        uninstallArgs = ""
+        uninstallCommand = ""
         upgradeBehavior = "UninstallFirst"
         expectedExitCodes = @(0)
         timeoutSeconds = 300
@@ -307,7 +307,7 @@ $SqlServerManifestNewer = @{
         command = $SqlServerExeNewer
         arguments = '/IACCEPTSQLSERVERLICENSETERMS /ACTION=Install /FEATURES=SQLEngine /INSTANCENAME=SQLEXPRESS /QUIET /SQLSVCACCOUNT="NT AUTHORITY\SYSTEM" /SQLSYSADMINACCOUNTS="BUILTIN\ADMINISTRATORS"'
         uninstallArgs = "/ACTION=Uninstall /FEATURES=SQLEngine /INSTANCENAME=SQLEXPRESS /QUIET /IACCEPTSQLSERVERLICENSETERMS"
-        uninstallCommand = "%ProgramFiles%\Microsoft SQL Server\170\Setup Bootstrap\SQLServer2025\setup.exe"
+        uninstallCommand = "%ProgramFiles%\Microsoft SQL Server\170\Setup Bootstrap\SQL2025\setup.exe"
         upgradeBehavior = "UninstallFirst"
         expectedExitCodes = @(0, 3010)
         timeoutSeconds = 600

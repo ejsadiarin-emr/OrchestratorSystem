@@ -1,6 +1,7 @@
 using DeploymentPoC.Orchestrator.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace DeploymentPoC.Orchestrator.Controllers;
@@ -12,12 +13,15 @@ public class AgentDownloadController : ControllerBase
     private readonly ILogger<AgentDownloadController> _logger;
     private readonly IWebHostEnvironment _env;
     private readonly InstallerDbContext _db;
+    private readonly string _agentExePath;
 
-    public AgentDownloadController(ILogger<AgentDownloadController> logger, IWebHostEnvironment env, InstallerDbContext db)
+    public AgentDownloadController(ILogger<AgentDownloadController> logger, IWebHostEnvironment env, InstallerDbContext db, IConfiguration configuration)
     {
         _logger = logger;
         _env = env;
         _db = db;
+        _agentExePath = configuration["AgentDownload:AgentExePath"]
+            ?? Path.Combine(env.ContentRootPath, "data", "agent.exe");
     }
 
     [HttpGet("download")]
@@ -39,7 +43,7 @@ public class AgentDownloadController : ControllerBase
             return StatusCode(410, new { message = "Enrollment token has expired." });
         }
 
-        var agentPath = Path.Combine(_env.ContentRootPath, "data", "agent.exe");
+        var agentPath = _agentExePath;
         if (!System.IO.File.Exists(agentPath))
         {
             // Create a minimal placeholder binary so the download endpoint works in PoC

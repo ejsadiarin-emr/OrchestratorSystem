@@ -7,8 +7,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-OUTPUT_DIR="$PROJECT_DIR/test-artifacts"
+OUTPUT_DIR="$PROJECT_DIR/dist/artifacts"
+WORKLOADS_DIR="$PROJECT_DIR/dist/workloads"
 TEMP_DIR="$(mktemp -d)"
+
+mkdir -p "$OUTPUT_DIR"
+mkdir -p "$WORKLOADS_DIR"
 
 # --- Older versions (from workloads-older.json) ---
 DBEAVER_VERSION_OLDER="24.3.0"
@@ -186,6 +190,13 @@ echo ""
 echo "=== Cleaning up temporary files ==="
 cd "$PROJECT_DIR"
 rm -rf "$TEMP_DIR"
+
+# Copy workload definitions to dist/workloads for runtime import
+if [ -d "$PROJECT_DIR/test-workloads" ]; then
+  cp "$PROJECT_DIR/test-workloads"/*.json "$WORKLOADS_DIR/"
+  echo ""
+  echo "Copied workload definitions to: $WORKLOADS_DIR"
+fi
 
 echo ""
 echo "Done. Manifests created in: $OUTPUT_DIR"

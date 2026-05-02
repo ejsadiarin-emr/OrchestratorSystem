@@ -271,7 +271,9 @@ public class NodesController : ControllerBase
             .ThenInclude(s => s.CurrentRevision)
             .ToListAsync();
 
-        var workloadDetectionConfigs = await LoadDetectionConfigsByWorkloadAsync(request.WorkloadId);
+        var workloadDetectionConfigs = request.WorkloadId.HasValue
+            ? await LoadDetectionConfigsByWorkloadAsync(request.WorkloadId)
+            : new Dictionary<Guid, List<DetectionConfigDto>>();
 
         var timeoutSeconds = _configuration.GetValue<int>("AgentProbeTimeoutSeconds", 30);
         var client = _httpClientFactory.CreateClient();
@@ -301,6 +303,7 @@ public class NodesController : ControllerBase
                         Version = c.Version,
                         Detection = c.Detection
                     })
+                    .DistinctBy(c => c.PackageId)
                     .ToList();
 
                 var requestBody = new DetectRequest { Packages = allPackageRequests };
@@ -308,8 +311,8 @@ public class NodesController : ControllerBase
                 var json = JsonSerializer.Serialize(requestBody);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                _logger.LogInformation("Probing agent on node {NodeId} ({Hostname}) at {IpAddress}",
-                    node.NodeId, node.Hostname, node.IpAddress);
+                _logger.LogInformation("Probing agent on node {NodeId} ({Hostname}) at {IpAddress} for {PackageCount} packages",
+                    node.NodeId, node.Hostname, node.IpAddress, allPackageRequests.Count);
 
                 var response = await client.PostAsync(
                     $"http://{node.IpAddress}:5001/api/detect", content);
@@ -387,7 +390,9 @@ public class NodesController : ControllerBase
             return NotFound(new { message = $"Node {id} not found" });
         }
 
-        var workloadDetectionConfigs = await LoadDetectionConfigsByWorkloadAsync(workloadId);
+        var workloadDetectionConfigs = workloadId.HasValue
+            ? await LoadDetectionConfigsByWorkloadAsync(workloadId)
+            : new Dictionary<Guid, List<DetectionConfigDto>>();
 
         var timeoutSeconds = _configuration.GetValue<int>("AgentProbeTimeoutSeconds", 30);
         var client = _httpClientFactory.CreateClient();
@@ -399,21 +404,22 @@ public class NodesController : ControllerBase
 
         try
         {
-            var allPackageRequests = workloadDetectionConfigs
-                .SelectMany(kvp => kvp.Value)
-                .Select(c => new PackageDetectionRequest
-                {
-                    PackageId = c.PackageId,
-                    Name = c.Name,
-                    Version = c.Version,
-                    Detection = c.Detection
-                })
-                .ToList();
+                var allPackageRequests = workloadDetectionConfigs
+                    .SelectMany(kvp => kvp.Value)
+                    .Select(c => new PackageDetectionRequest
+                    {
+                        PackageId = c.PackageId,
+                        Name = c.Name,
+                        Version = c.Version,
+                        Detection = c.Detection
+                    })
+                    .DistinctBy(c => c.PackageId)
+                    .ToList();
 
-            var requestBody = new DetectRequest { Packages = allPackageRequests };
+                var requestBody = new DetectRequest { Packages = allPackageRequests };
 
-            var json = JsonSerializer.Serialize(requestBody);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var json = JsonSerializer.Serialize(requestBody);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             _logger.LogInformation("Probing agent on node {NodeId} ({Hostname}) at {IpAddress}",
                 node.NodeId, node.Hostname, node.IpAddress);
@@ -540,27 +546,7 @@ public class NodesController : ControllerBase
 
             if (existingState is null)
             {
-                if (hasAnyDetected)
-                {
-                    // Scenario C — Pre-existing packages found, no state in DB
-                    var publishedRevision = await _db.WorkloadRevisions
-                        .FirstOrDefaultAsync(r => r.WorkloadId == workloadId && r.IsPublished);
-
-                    if (publishedRevision is not null)
-                    {
-                        var newState = new NodeWorkloadStateEntity
-                        {
-                            NodeId = node.NodeId,
-                            WorkloadId = workloadId,
-                            CurrentRevisionId = publishedRevision.RevisionId,
-                            PackageStatesJson = BuildPackageStatesJson(detectionConfigs, agentResultMap),
-                            UpdatedAtUtc = DateTime.UtcNow
-                        };
-                        _db.NodeWorkloadStates.Add(newState);
-
-                        items.AddRange(BuildPerPackageItems(detectionConfigs, agentResultMap, publishedRevision.Version));
-                    }
-                }
+                // Workload not assigned to this node — do not report or create phantom state
             }
             else
             {

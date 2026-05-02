@@ -219,6 +219,7 @@ public sealed class WorkloadRunDispatcher
                         Command = command,
                         Arguments = arguments,
                         UninstallArgs = pkg?.UninstallArgs ?? "",
+                        UninstallCommand = pkg?.UninstallCommand ?? "",
                         UpgradeBehavior = string.IsNullOrWhiteSpace(pkg?.UpgradeBehavior)
                             ? UpgradeBehaviorValidator.DefaultValue
                             : UpgradeBehaviorValidator.Normalize(pkg.UpgradeBehavior),

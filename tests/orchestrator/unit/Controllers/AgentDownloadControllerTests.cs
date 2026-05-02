@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
 
@@ -48,7 +49,9 @@ public class AgentDownloadControllerTests
 
     private AgentDownloadController CreateController()
     {
-        return new AgentDownloadController(_loggerMock.Object, _envMock.Object, _db);
+        var configMock = new Mock<IConfiguration>();
+        configMock.Setup(c => c["AgentDownload:AgentExePath"]).Returns(Path.Combine(_tempPath, "agent.exe"));
+        return new AgentDownloadController(_loggerMock.Object, _envMock.Object, _db, configMock.Object);
     }
 
     [Test]

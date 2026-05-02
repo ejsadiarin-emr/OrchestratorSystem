@@ -91,9 +91,9 @@ public static class InstallOrUpgrade
 
             if (!expectedExitCodes.Contains(process.ExitCode))
             {
-                if (process.ExitCode == 1603)
+                if (process.ExitCode == 1603 || process.ExitCode == -1)
                 {
-                    logger.LogWarning("Install exited with code 1603 (insufficient privileges). Retrying with elevation.");
+                    logger.LogWarning("Install exited with code {ExitCode} (likely insufficient privileges). Retrying with elevation.", process.ExitCode);
                     return await ExecuteWithElevationAsync(command, arguments, artifactPath, workingDirectory, expectedExitCodes, timeout, ct, logger);
                 }
 

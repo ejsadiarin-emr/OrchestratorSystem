@@ -54,6 +54,21 @@ public sealed class WorkloadImportService
 
         if (existing is not null)
         {
+            var hasUpdates = false;
+            if (string.IsNullOrEmpty(existing.UninstallCommand))
+            {
+                existing.UninstallCommand = manifest.InstallAdapter?.UninstallCommand ?? string.Empty;
+                hasUpdates = true;
+            }
+            if (string.IsNullOrEmpty(existing.UninstallArgs))
+            {
+                existing.UninstallArgs = manifest.InstallAdapter?.UninstallArgs ?? string.Empty;
+                hasUpdates = true;
+            }
+            if (hasUpdates)
+            {
+                await _db.SaveChangesAsync();
+            }
             return [existing.PackageId];
         }
 

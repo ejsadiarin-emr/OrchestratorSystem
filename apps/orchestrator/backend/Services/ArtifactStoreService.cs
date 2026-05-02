@@ -107,14 +107,20 @@ public sealed class ArtifactStoreService
         return true;
     }
 
-    public async Task<bool> SaveResolvedManifestAsync(string packageId, string version, string manifestJson, CancellationToken cancellationToken = default)
+    public async Task<bool> SaveResolvedManifestAsync(string packageId, string version, string manifestJson, bool overwrite = false, CancellationToken cancellationToken = default)
     {
+        var manifestPath = GetManifestPath(packageId, version);
+
         if (ExistsAny(packageId, version))
         {
-            return false;
+            if (!overwrite)
+            {
+                return false;
+            }
+            if (File.Exists(manifestPath))
+                File.Delete(manifestPath);
         }
 
-        var manifestPath = GetManifestPath(packageId, version);
         Directory.CreateDirectory(Path.GetDirectoryName(manifestPath)!);
         await File.WriteAllTextAsync(manifestPath, manifestJson, Encoding.UTF8, cancellationToken);
         return true;

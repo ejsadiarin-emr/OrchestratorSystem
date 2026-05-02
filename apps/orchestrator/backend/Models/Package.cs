@@ -10,6 +10,8 @@ public class Package
     public string SourcePath { get; set; } = string.Empty;
     public string InstallType { get; set; } = string.Empty;
     public string InstallArgs { get; set; } = string.Empty;
+    public string UninstallCommand { get; set; } = string.Empty;
+    public string UninstallArgs { get; set; } = string.Empty;
     public string UpgradeBehavior { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
@@ -34,6 +36,12 @@ public class CreatePackageRequest
 
     [StringLength(2048)]
     public string InstallArgs { get; set; } = string.Empty;
+
+    [StringLength(2048)]
+    public string UninstallCommand { get; set; } = string.Empty;
+
+    [StringLength(2048)]
+    public string UninstallArgs { get; set; } = string.Empty;
 
     [Required]
     [StringLength(64)]

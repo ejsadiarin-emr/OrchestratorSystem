@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DeploymentPoC.Contracts.Runtime;
+using DeploymentPoC.Contracts.Runtime.RunPayloads;
 using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -316,21 +317,7 @@ public sealed class PackageState
     public DateTime UpdatedAt { get; set; }
 }
 
-public sealed class StepStatusPayload
-{
-    public string StepName { get; set; } = string.Empty;
-    public int PackageIndex { get; set; }
-    public string PackageId { get; set; } = string.Empty;
-    public string Status { get; set; } = string.Empty;
-    public string? Error { get; set; }
-}
 
-public sealed class FinalizationPayload
-{
-    public string Result { get; set; } = string.Empty;
-    public string? Error { get; set; }
-    public int StepCount { get; set; }
-}
 
 public sealed class HeartbeatPayload
 {

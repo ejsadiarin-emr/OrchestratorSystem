@@ -1,5 +1,6 @@
 using DeploymentPoC.Agent.Pipeline;
 using DeploymentPoC.Agent.Steps;
+using DeploymentPoC.Contracts.Runtime.RunPayloads;
 using Moq;
 using Xunit;
 

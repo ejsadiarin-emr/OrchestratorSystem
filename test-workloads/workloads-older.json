@@ -193,7 +193,7 @@
   {
     "name": "Amazing Workload",
     "slug": "amazing-workload",
-    "description": "A workload that includes both a database management tool and a programming language, providing a versatile environment for development and testing.",
+    "description": "A workload that includes a database management tool, a programming language, and SQL Server Express for a complete development environment.",
     "version": "1.0.0",
     "preWorkloadSteps": [
       "Write-Host 'Amazing Workload (older) pre-workload: preparing development environment...'",
@@ -201,7 +201,7 @@
     ],
     "postWorkloadSteps": [
       "Write-Host 'Amazing Workload (older) post-workload: development environment ready'",
-      "Write-Host 'Summary: DBeaver + Python installed and verified'"
+      "Write-Host 'Summary: DBeaver + Python + SQL Server Express installed and verified'"
     ],
     "defaultShell": "powershell",
     "packages": [
@@ -228,6 +228,19 @@
           "Write-Host 'Verifying Python installation...'",
           "$pyPath = Get-Command python -ErrorAction SilentlyContinue",
           "if ($pyPath) { python --version } else { Write-Error 'python command not found' }"
+        ]
+      },
+      {
+        "name": "sqlserver-2019",
+        "preInitSteps": [
+          "Write-Host 'Checking for existing SQL Server instances...'",
+          "$sqlSvc = Get-Service -Name MSSQL`$SQLEXPRESS -ErrorAction SilentlyContinue",
+          "if ($sqlSvc) { Write-Host \"SQL Server Express service found: $($sqlSvc.Status)\" }"
+        ],
+        "postInitSteps": [
+          "Write-Host 'Verifying SQL Server Express installation...'",
+          "$sqlSvc = Get-Service -Name MSSQL`$SQLEXPRESS -ErrorAction SilentlyContinue",
+          "if ($sqlSvc) { Write-Host \"SQL Server Express running: $($sqlSvc.Status)\" } else { Write-Warning 'SQL Server Express service not found' }"
         ]
       }
     ]

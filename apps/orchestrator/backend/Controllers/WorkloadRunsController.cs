@@ -1146,6 +1146,7 @@ public sealed class WorkloadRunsController : ControllerBase
                 Command = pkg?.SourcePath ?? "{artifactPath}",
                 Arguments = installArgs,
                 UninstallArgs = pkg?.UninstallArgs ?? "",
+                UninstallCommand = pkg?.UninstallCommand ?? "",
                 UpgradeBehavior = string.IsNullOrWhiteSpace(pkg?.UpgradeBehavior)
                     ? UpgradeBehaviorValidator.DefaultValue
                     : UpgradeBehaviorValidator.Normalize(pkg.UpgradeBehavior),

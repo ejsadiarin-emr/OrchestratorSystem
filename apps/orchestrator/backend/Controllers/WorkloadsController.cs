@@ -702,6 +702,7 @@ public sealed class WorkloadsController : ControllerBase
         public string SourcePath { get; set; } = "{artifactPath}";
         public string InstallArgs { get; set; } = "";
         public string UninstallArgs { get; set; } = "";
+        public string UninstallCommand { get; set; } = "";
         public string UpgradeBehavior { get; set; } = "InPlace";
         public string ExpectedExitCodesJson { get; set; } = "[0]";
         public int TimeoutSeconds { get; set; } = 300;
@@ -740,6 +741,7 @@ public sealed class WorkloadsController : ControllerBase
                         SourcePath = string.IsNullOrWhiteSpace(adapter.Command) ? "{artifactPath}" : adapter.Command,
                         InstallArgs = adapter.Arguments ?? "",
                         UninstallArgs = adapter.UninstallArgs ?? "",
+                        UninstallCommand = adapter.UninstallCommand ?? "",
                         UpgradeBehavior = string.IsNullOrWhiteSpace(adapter.UpgradeBehavior) ? "InPlace" : adapter.UpgradeBehavior,
                         ExpectedExitCodesJson = adapter.ExpectedExitCodes is { Count: > 0 }
                             ? System.Text.Json.JsonSerializer.Serialize(adapter.ExpectedExitCodes)
@@ -1020,6 +1022,7 @@ public sealed class WorkloadsController : ControllerBase
                             InstallType = adapter.InstallType,
                             InstallArgs = adapter.InstallArgs,
                             UninstallArgs = adapter.UninstallArgs,
+                            UninstallCommand = adapter.UninstallCommand,
                             ExpectedExitCodesJson = adapter.ExpectedExitCodesJson,
                             TimeoutSeconds = adapter.TimeoutSeconds,
                             DetectionConfigJson = adapter.DetectionConfigJson ?? "",
@@ -1040,6 +1043,14 @@ public sealed class WorkloadsController : ControllerBase
                     }
                     else
                     {
+                        var adapter = await ResolvePlaceholderAdapter(packageId, version);
+                        if (string.IsNullOrEmpty(existingPackage.UninstallCommand) &&
+                            !string.IsNullOrEmpty(adapter.UninstallCommand))
+                        {
+                            existingPackage.UninstallCommand = adapter.UninstallCommand;
+                            existingPackage.UninstallArgs = adapter.UninstallArgs;
+                        }
+
                         revision.Packages.Add(new WorkloadPackageEntity
                         {
                             WorkloadPackageId = Guid.NewGuid(),

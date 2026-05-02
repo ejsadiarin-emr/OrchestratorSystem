@@ -183,12 +183,14 @@ The manifest (`.manifest.json`) is JSON with these fields:
     "type": "exe",
     "command": "Git-2.48.1-64-bit.exe",
     "arguments": "/VERYSILENT /NORESTART /NOCANCEL",
+    "uninstallCommand": "C:\\Program Files\\Git\\unins000.exe",
+    "uninstallArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
     "expectedExitCodes": [0],
     "timeoutSeconds": 300
   },
   "detection": {
-    "type": "version_manifest",
-    "path": "git",
+    "type": "registry",
+    "path": "Git",
     "expectedVersion": "2.48.1"
   },
   "policyTags": {
@@ -209,10 +211,12 @@ The manifest (`.manifest.json`) is JSON with these fields:
 | `installAdapter.command` | Yes | Filename or command to execute (e.g., `Git-2.48.1-64-bit.exe`) |
 | `installAdapter.type` | Yes | `exe` or `msi` |
 | `installAdapter.arguments` | No | Install command-line arguments |
+| `installAdapter.uninstallCommand` | No | Dedicated uninstall command (e.g., `unins000.exe`). If omitted, agent resolves from Windows registry |
+| `installAdapter.uninstallArgs` | No | Arguments for the uninstall command |
 | `installAdapter.expectedExitCodes` | No | Valid exit codes (default: `[0]`) |
 | `installAdapter.timeoutSeconds` | No | Install timeout (default: `300`) |
-| `detection.type` | No | `version_manifest` (default), `file`, or `registry` |
-| `detection.path` | No | Binary name, full file path, or registry path to check after install |
+| `detection.type` | No | `registry` (Windows uninstall registry), `version_manifest` (PATH scan, default), or `file` |
+| `detection.path` | No | DisplayName for registry, binary name for version_manifest, file path for file |
 | `detection.expectedVersion` | No | Expected version string (e.g., `==2.48.1`, `>=3.13.0`) |
 | `policyTags.riskLevel` | No | `low`, `medium`, `high`, or `critical` |
 | `policyTags.approvalRequired` | No | Whether a human must approve before deployment |
@@ -343,16 +347,57 @@ Create a new revision with changed packages, then run in **update** mode. The ag
 
 #### 5c. Uninstall
 
-Uninstall removes all packages in a revision from the target nodes.
+Uninstall removes all packages in a revision from the target nodes. In the Run Creator, the revision dropdown shows **installed revisions only** (fetched from node workload states), so you can only uninstall what's actually on the nodes.
 
 1. Navigate to **Workload Runs** → **Create Run**
 2. Select:
    - Workload
-   - Revision (published revision whose packages should be removed)
-   - Target nodes
-   - Mode: **uninstall**
+   - Mode: **uninstall** (revision dropdown switches to installed revisions)
+   - Revision (must be installed on the selected nodes)
+   - Target nodes (filtered to nodes with the selected revision installed)
 3. Click **Create Run**
 4. The agent uninstalls every package in the revision from the node in reverse order
+
+**How uninstall determines the command to run (3-tier resolution):**
+
+| Priority | Source | Example |
+|----------|--------|---------|
+| 1 | Explicit `UninstallCommand` | `"C:\Program Files\Git\unins000.exe" /VERYSILENT` |
+| 2 | Windows registry lookup | `MsiExec.exe /X{GUID} /quiet` (from `QuietUninstallString`) |
+| 3 | Skip with warning | No uninstall command available; package skipped |
+
+The agent queries all 4 Windows uninstall registry paths (`HKLM`/`HKCU` × 64-bit/32-bit) for `QuietUninstallString` or `UninstallString` by `DisplayName` match. If found, the resolved command is executed. If not found, the package is skipped — no artifact download, no failed execution.
+
+Artifact download during uninstall only occurs for MSI packages (which need the MSI file for `msiexec /x`) or when `{artifactPath}` appears in the uninstall command.
+
+#### 5d. Dry-run preview
+
+Before creating a run, preview what would happen using the dry-run endpoint:
+
+```
+GET /api/workload-runs/preview?workloadId=...&revisionId=...&mode=...&nodeIds=...
+```
+
+Returns a per-node breakdown:
+- `install` — packages in target but not currently installed
+- `update` — packages in both but with different versions
+- `uninstall` — packages currently installed but not in target (or all packages in uninstall mode)
+- `unchanged` — packages with matching versions (no action needed)
+
+This is read-only — no side effects, no database writes.
+
+#### 5e. Pre-checks (automatic)
+
+Pre-checks run automatically when a workload and revision are both selected in the Run Creator. A badge appears per node:
+- **pre-check passed** — all packages detected correctly
+- **pre-check: issues** — some packages are missing, wrong version, or not detected
+
+Hover the badge for per-package details. A manual "Run pre-check" button is also available to re-run on demand.
+
+The agent uses three detection strategies:
+- **Registry** — queries Windows uninstall registry for `DisplayName` and `DisplayVersion` match
+- **Version manifest** — searches PATH and Program Files for the binary
+- **File** — checks file existence and version at a specific path
 
 ### Step 6: Observe execution (agent-side)
 
@@ -400,8 +445,12 @@ After import, publish each workload's revision, then create runs in `install`, `
 | `/api/workloads/{id}/publish` | POST | Publish revision |
 | `/api/workload-runs` | POST | Create run |
 | `/api/workload-runs` | GET | List runs |
+| `/api/workload-runs/preview` | GET | Dry-run preview (per-node package diff) |
 | `/api/workload-runs/{id}/steps` | GET | Get run steps |
 | `/api/nodes` | GET | List nodes |
+| `/api/nodes/prechecks` | POST | Run pre-checks on nodes |
+| `/api/nodes/workload-states` | GET | List node workload states |
+| `/api/workloads/{id}/installed-revisions` | GET | List revisions installed on any node |
 | `/api/nodes/enroll` | POST | Issue enrollment token |
 | `/hubs/agent` | SignalR | Agent runtime hub (identify, send messages, heartbeats) |
 
@@ -459,3 +508,5 @@ cd apps/orchestrator/web && pnpm build
 - Implementation Tracker: `docs/implementation-tracker-phase1.md`
 - Architecture: `docs/03-architecture-and-design.md`
 - API Contracts: `docs/distributed-installer/10-core-contracts-pack.md`
+- ADRs: `docs/adr/` (architecture decision records)
+  - Uninstall pipeline: `docs/adr/0009-uninstall-pipeline-registry-resolution.md`

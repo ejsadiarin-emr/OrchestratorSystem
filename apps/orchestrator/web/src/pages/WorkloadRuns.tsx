@@ -108,6 +108,29 @@ export default function WorkloadRuns() {
     })
   }, [runs, selectedRun?.id])
 
+  useEffect(() => {
+    if (!form.workloadId || !form.revisionId) return
+    setPrecheckRunning(true)
+    setPrecheckResults(new Map())
+    const onlineIds = nodes.filter(n => n.status === 'online').map(n => n.id)
+    runNodesPreChecks(onlineIds, form.workloadId)
+      .then(results => {
+        const resultMap = new Map<string, NodePreCheckSummary>()
+        for (const r of results) {
+          if (r.summary) resultMap.set(r.nodeId, r.summary)
+        }
+        setPrecheckResults(resultMap)
+        return listNodeWorkloadStates()
+      })
+      .then(states => {
+        setNodeWorkloadStates(states)
+      })
+      .catch(() => {})
+      .finally(() => {
+        setPrecheckRunning(false)
+      })
+  }, [form.workloadId, form.revisionId])
+
   const openCreateModal = useCallback(() => {
     const defaultWorkload = workloads[0]
     setForm({
@@ -681,7 +704,7 @@ export default function WorkloadRuns() {
                           const isOnline = node.status === 'online'
                           const isSelected = form.targetNodeIds.includes(node.id)
                           const nodeState = nodeWorkloadStateByNodeId.get(node.id)
-                          const installedVersion = nodeState?.workloadRevision
+                          const installedVersion = nodeState?.currentRevisionId
                           const hasDrift = nodeState && nodeState.packageStatesJson
                             ? true
                             : false

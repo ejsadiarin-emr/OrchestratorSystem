@@ -1,4 +1,5 @@
 using DeploymentPoC.Contracts.Runtime.RunPayloads;
+using Microsoft.Win32;
 using System.Diagnostics;
 
 namespace DeploymentPoC.Agent.Steps;
@@ -84,8 +85,72 @@ public static class PackageDetector
 
     private static Task<PreCheckResult> DetectRegistryAsync(DetectionConfig config, CancellationToken ct)
     {
-        // PoC Phase 1: registry detection is a stub.
-        // Conservative fallback: assume not present so the package is actually installed.
+        if (string.IsNullOrWhiteSpace(config.Path))
+        {
+            return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent, Error = "missing_detection_path" });
+        }
+
+        var displayNameToMatch = config.Path;
+        var expectedVersion = config.ExpectedVersion;
+
+        var hives = new[] { RegistryHive.LocalMachine, RegistryHive.CurrentUser };
+        var views = new[] { RegistryView.Registry64, RegistryView.Registry32 };
+
+        foreach (var hive in hives)
+        {
+            foreach (var view in views)
+            {
+                try
+                {
+                    using var baseKey = RegistryKey.OpenBaseKey(hive, view);
+                    var subKeyPath = hive == RegistryHive.LocalMachine
+                        ? @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+                        : @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
+
+                    using var uninstallKey = baseKey.OpenSubKey(subKeyPath);
+                    if (uninstallKey is null)
+                        continue;
+
+                    foreach (var subKeyName in uninstallKey.GetSubKeyNames())
+                    {
+                        try
+                        {
+                            using var subKey = uninstallKey.OpenSubKey(subKeyName);
+                            if (subKey is null)
+                                continue;
+
+                            var displayName = subKey.GetValue("DisplayName") as string;
+                            if (string.IsNullOrWhiteSpace(displayName))
+                                continue;
+
+                            if (!string.Equals(displayName, displayNameToMatch, StringComparison.OrdinalIgnoreCase))
+                                continue;
+
+                            if (!string.IsNullOrWhiteSpace(expectedVersion))
+                            {
+                                var displayVersion = subKey.GetValue("DisplayVersion") as string;
+                                if (!string.IsNullOrWhiteSpace(displayVersion) && !VersionEquals(displayVersion, expectedVersion))
+                                {
+                                    return Task.FromResult(new PreCheckResult
+                                    {
+                                        Status = PreCheckStatus.WrongVersion,
+                                        ActualVersion = displayVersion,
+                                        Error = $"version_mismatch: expected {expectedVersion}, got {displayVersion}"
+                                    });
+                                }
+                            }
+
+                            return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied });
+                        }
+                        catch (UnauthorizedAccessException) { }
+                        catch (System.Security.SecurityException) { }
+                    }
+                }
+                catch (UnauthorizedAccessException) { }
+                catch (System.Security.SecurityException) { }
+            }
+        }
+
         return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent });
     }
 

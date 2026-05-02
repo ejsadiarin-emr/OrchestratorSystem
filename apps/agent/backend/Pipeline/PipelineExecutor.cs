@@ -151,11 +151,41 @@ public class PipelineExecutor
                     package.PackageId);
 
                 string? destinationPath = null;
-                var hasUninstallCommand = !string.IsNullOrWhiteSpace(package.InstallAdapter.UninstallCommand);
+                var effectiveConfig = package.InstallAdapter;
 
-                // Acquire artifact when no dedicated uninstall command is configured
-                // (the artifact itself may be executable or the Command field may reference it)
-                if (!hasUninstallCommand)
+                if (string.IsNullOrWhiteSpace(package.InstallAdapter.UninstallCommand))
+                {
+                    var resolved = UninstallPackage.ResolveRegistryUninstaller(package.Name);
+                    if (resolved.Command is not null)
+                    {
+                        effectiveConfig = new InstallAdapterConfig
+                        {
+                            Type = package.InstallAdapter.Type,
+                            Command = package.InstallAdapter.Command,
+                            Arguments = package.InstallAdapter.Arguments,
+                            UninstallCommand = resolved.Command,
+                            UninstallArgs = resolved.Arguments ?? string.Empty,
+                            ExpectedExitCodes = package.InstallAdapter.ExpectedExitCodes,
+                            TimeoutSeconds = package.InstallAdapter.TimeoutSeconds,
+                            UpgradeBehavior = package.InstallAdapter.UpgradeBehavior,
+                        };
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "No uninstall command configured or found in registry for {PackageName}. Skipping.",
+                            package.Name);
+                        await SendStepStatusAsync(sendMessageAsync, context, "UninstallSkippedNoCommand", package, true, "no_uninstall_command_available", stepCt);
+                        context.RecordStep("UninstallSkippedNoCommand", package.PackageIndex, package.PackageId, true, "no_uninstall_command_available");
+                        continue;
+                    }
+                }
+
+                var needsArtifact = string.Equals(effectiveConfig.Type, "msi", StringComparison.OrdinalIgnoreCase) ||
+                                    (effectiveConfig.UninstallCommand?.Contains("{artifactPath}", StringComparison.OrdinalIgnoreCase) == true) ||
+                                    (effectiveConfig.UninstallArgs?.Contains("{artifactPath}", StringComparison.OrdinalIgnoreCase) == true);
+
+                if (needsArtifact)
                 {
                     var artifactUrl = !string.IsNullOrEmpty(package.DownloadUrl)
                         ? $"{context.OrchestratorBaseUrl.TrimEnd('/')}{package.DownloadUrl}"
@@ -196,7 +226,7 @@ public class PipelineExecutor
                     }
                 }
 
-                var uninstallResult = await UninstallPackage.ExecuteAsync(package.InstallAdapter, destinationPath, stepCt);
+                var uninstallResult = await UninstallPackage.ExecuteAsync(effectiveConfig, destinationPath, stepCt);
                 await SendStepStatusAsync(sendMessageAsync, context, "UninstallPackage", package, uninstallResult.Success, uninstallResult.Error, stepCt);
                 context.RecordStep("UninstallPackage", package.PackageIndex, package.PackageId, uninstallResult.Success, uninstallResult.Error);
 
@@ -251,10 +281,41 @@ public class PipelineExecutor
                 var uninstallConfig = uninstallPackage.InstallAdapter;
 
                 string? destinationPath = null;
-                var hasUninstallCommand = !string.IsNullOrWhiteSpace(uninstallConfig.UninstallCommand);
+                var effectiveConfig = uninstallConfig;
 
-                // Only acquire artifact if no dedicated uninstall command is configured
-                if (!hasUninstallCommand)
+                if (string.IsNullOrWhiteSpace(uninstallConfig.UninstallCommand))
+                {
+                    var resolved2 = UninstallPackage.ResolveRegistryUninstaller(package.Name);
+                    if (resolved2.Command is not null)
+                    {
+                        effectiveConfig = new InstallAdapterConfig
+                        {
+                            Type = uninstallConfig.Type,
+                            Command = uninstallConfig.Command,
+                            Arguments = uninstallConfig.Arguments,
+                            UninstallCommand = resolved2.Command,
+                            UninstallArgs = resolved2.Arguments ?? string.Empty,
+                            ExpectedExitCodes = uninstallConfig.ExpectedExitCodes,
+                            TimeoutSeconds = uninstallConfig.TimeoutSeconds,
+                            UpgradeBehavior = uninstallConfig.UpgradeBehavior,
+                        };
+                    }
+                    else
+                    {
+                        _logger.LogWarning(
+                            "No uninstall command configured or found in registry for {PackageName}. Skipping.",
+                            package.Name);
+                        await SendStepStatusAsync(sendMessageAsync, context, "UninstallSkippedNoCommand", uninstallPackage, true, "no_uninstall_command_available", stepCt);
+                        context.RecordStep("UninstallSkippedNoCommand", uninstallPackage.PackageIndex, uninstallPackage.PackageId, true, "no_uninstall_command_available");
+                        continue;
+                    }
+                }
+
+                var needsArtifact = string.Equals(effectiveConfig.Type, "msi", StringComparison.OrdinalIgnoreCase) ||
+                                    (effectiveConfig.UninstallCommand?.Contains("{artifactPath}", StringComparison.OrdinalIgnoreCase) == true) ||
+                                    (effectiveConfig.UninstallArgs?.Contains("{artifactPath}", StringComparison.OrdinalIgnoreCase) == true);
+
+                if (needsArtifact)
                 {
                     var artifactUrl = !string.IsNullOrEmpty(uninstallPackage.DownloadUrl)
                         ? $"{context.OrchestratorBaseUrl.TrimEnd('/')}{uninstallPackage.DownloadUrl}"
@@ -295,7 +356,7 @@ public class PipelineExecutor
                     }
                 }
 
-                var uninstallResult = await UninstallPackage.ExecuteAsync(uninstallConfig, destinationPath, stepCt);
+                var uninstallResult = await UninstallPackage.ExecuteAsync(effectiveConfig, destinationPath, stepCt);
                 await SendStepStatusAsync(sendMessageAsync, context, "UninstallPackage", uninstallPackage, uninstallResult.Success, uninstallResult.Error, stepCt);
                 context.RecordStep("UninstallPackage", uninstallPackage.PackageIndex, uninstallPackage.PackageId, uninstallResult.Success, uninstallResult.Error);
 
@@ -609,18 +670,4 @@ public sealed class PipelineResult
     public int StepsExecuted { get; set; }
 }
 
-public sealed class StepStatusPayload
-{
-    public string StepName { get; set; } = string.Empty;
-    public int PackageIndex { get; set; }
-    public string PackageId { get; set; } = string.Empty;
-    public string Status { get; set; } = string.Empty;
-    public string? Error { get; set; }
-}
 
-public sealed class FinalizationPayload
-{
-    public string Result { get; set; } = string.Empty;
-    public string? Error { get; set; }
-    public int StepCount { get; set; }
-}

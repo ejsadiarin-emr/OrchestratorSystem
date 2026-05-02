@@ -1,4 +1,5 @@
 using DeploymentPoC.Contracts.Runtime.RunPayloads;
+using Microsoft.Win32;
 using System.ComponentModel;
 using System.Diagnostics;
 
@@ -24,19 +25,6 @@ public static class UninstallPackage
         if (!string.IsNullOrWhiteSpace(command))
         {
             command = ExpandEnvironmentVariables(command);
-        }
-
-        // fallback 1: use Command field if no UninstallCommand is set
-        if (string.IsNullOrWhiteSpace(command))
-        {
-            command = config.Command;
-        }
-
-        // fallback 2: if command is missing or is the placeholder itself, execute the artifact directly
-        if (string.IsNullOrWhiteSpace(command) ||
-            string.Equals(command, "{artifactPath}", StringComparison.OrdinalIgnoreCase))
-        {
-            command = artifactPath;
         }
 
         if (string.IsNullOrWhiteSpace(command))
@@ -114,6 +102,97 @@ public static class UninstallPackage
         {
             return new UninstallResult { Success = false, Error = "cancelled" };
         }
+    }
+
+    public static (string? Command, string? Arguments) ResolveRegistryUninstaller(string displayName)
+    {
+        if (string.IsNullOrWhiteSpace(displayName))
+            return default;
+
+        var hives = new[] { RegistryHive.LocalMachine, RegistryHive.CurrentUser };
+        var views = new[] { RegistryView.Registry64, RegistryView.Registry32 };
+
+        foreach (var hive in hives)
+        {
+            foreach (var view in views)
+            {
+                try
+                {
+                    using var baseKey = RegistryKey.OpenBaseKey(hive, view);
+                    var subKeyPath = hive == RegistryHive.LocalMachine
+                        ? @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+                        : @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
+
+                    using var uninstallKey = baseKey.OpenSubKey(subKeyPath);
+                    if (uninstallKey is null)
+                        continue;
+
+                    foreach (var subKeyName in uninstallKey.GetSubKeyNames())
+                    {
+                        try
+                        {
+                            using var subKey = uninstallKey.OpenSubKey(subKeyName);
+                            if (subKey is null)
+                                continue;
+
+                            var name = subKey.GetValue("DisplayName") as string;
+                            if (string.IsNullOrWhiteSpace(name))
+                                continue;
+
+                            if (!string.Equals(name, displayName, StringComparison.OrdinalIgnoreCase))
+                                continue;
+
+                            var quietUninstall = subKey.GetValue("QuietUninstallString") as string;
+                            var uninstall = subKey.GetValue("UninstallString") as string;
+                            var rawCommand = !string.IsNullOrWhiteSpace(quietUninstall) ? quietUninstall : uninstall;
+                            if (string.IsNullOrWhiteSpace(rawCommand))
+                                continue;
+
+                            return ParseCommandString(rawCommand);
+                        }
+                        catch (UnauthorizedAccessException) { }
+                        catch (System.Security.SecurityException) { }
+                    }
+                }
+                catch (UnauthorizedAccessException) { }
+                catch (System.Security.SecurityException) { }
+            }
+        }
+
+        return default;
+    }
+
+    private static (string Command, string Arguments) ParseCommandString(string rawCommand)
+    {
+        rawCommand = rawCommand.Trim();
+
+        if (rawCommand.Length == 0)
+            return (rawCommand, string.Empty);
+
+        var firstChar = rawCommand[0];
+        if (firstChar == '"')
+        {
+            var closingQuote = rawCommand.IndexOf('"', 1);
+            if (closingQuote > 1)
+            {
+                var path = rawCommand[1..closingQuote];
+                var args = closingQuote < rawCommand.Length - 1
+                    ? rawCommand[(closingQuote + 1)..].Trim()
+                    : string.Empty;
+                return (path, args);
+            }
+            return (rawCommand, string.Empty);
+        }
+
+        var firstSpace = rawCommand.IndexOf(' ');
+        if (firstSpace > 0)
+        {
+            var path = rawCommand[..firstSpace];
+            var args = rawCommand[(firstSpace + 1)..].Trim();
+            return (path, args);
+        }
+
+        return (rawCommand, string.Empty);
     }
 
     /// <summary>

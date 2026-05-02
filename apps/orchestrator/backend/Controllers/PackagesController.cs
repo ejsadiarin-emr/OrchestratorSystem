@@ -34,6 +34,8 @@ public class PackagesController : ControllerBase
                 SourcePath = p.SourcePath,
                 InstallType = p.InstallType,
                 InstallArgs = p.InstallArgs,
+                UninstallCommand = p.UninstallCommand,
+                UninstallArgs = p.UninstallArgs,
                 UpgradeBehavior = p.UpgradeBehavior,
                 CreatedAt = p.CreatedAtUtc
             })
@@ -55,6 +57,8 @@ public class PackagesController : ControllerBase
                 SourcePath = p.SourcePath,
                 InstallType = p.InstallType,
                 InstallArgs = p.InstallArgs,
+                UninstallCommand = p.UninstallCommand,
+                UninstallArgs = p.UninstallArgs,
                 UpgradeBehavior = p.UpgradeBehavior,
                 CreatedAt = p.CreatedAtUtc
             })
@@ -85,6 +89,8 @@ public class PackagesController : ControllerBase
             SourcePath = request.SourcePath,
             InstallType = request.InstallType,
             InstallArgs = request.InstallArgs,
+            UninstallCommand = request.UninstallCommand,
+            UninstallArgs = request.UninstallArgs,
             UpgradeBehavior = UpgradeBehaviorValidator.Normalize(request.UpgradeBehavior),
             CreatedAtUtc = DateTime.UtcNow
         };
@@ -100,6 +106,8 @@ public class PackagesController : ControllerBase
             SourcePath = request.SourcePath,
             InstallType = request.InstallType,
             InstallArgs = request.InstallArgs,
+            UninstallCommand = request.UninstallCommand,
+            UninstallArgs = request.UninstallArgs,
             UpgradeBehavior = entity.UpgradeBehavior,
             CreatedAt = entity.CreatedAtUtc
         };

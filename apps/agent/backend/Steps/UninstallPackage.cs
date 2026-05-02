@@ -20,6 +20,12 @@ public static class UninstallPackage
         var command = config.UninstallCommand;
         var arguments = config.UninstallArgs ?? string.Empty;
 
+        // Expand environment variables (e.g. %ProgramFiles%, $env:VAR) in command path
+        if (!string.IsNullOrWhiteSpace(command))
+        {
+            command = ExpandEnvironmentVariables(command);
+        }
+
         // fallback 1: use Command field if no UninstallCommand is set
         if (string.IsNullOrWhiteSpace(command))
         {
@@ -109,11 +115,32 @@ public static class UninstallPackage
             return new UninstallResult { Success = false, Error = "cancelled" };
         }
     }
-}
 
-public sealed class UninstallResult
-{
-    public bool Success { get; set; }
-    public string? Error { get; set; }
-    public string? StandardError { get; set; }
+    /// <summary>
+    /// Expands both Windows-style (%VAR%) and PowerShell-style ($env:VAR) environment variables.
+    /// </summary>
+    private static string ExpandEnvironmentVariables(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return input;
+
+        // Expand Windows-style %VAR% first
+        var expanded = Environment.ExpandEnvironmentVariables(input);
+
+        // Expand PowerShell-style $env:VAR
+        var psEnvPattern = System.Text.RegularExpressions.Regex.Replace(
+            expanded,
+            @"\$env:(\w+)",
+            m => Environment.GetEnvironmentVariable(m.Groups[1].Value) ?? m.Value,
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        return psEnvPattern;
+    }
+
+    public sealed class UninstallResult
+    {
+        public bool Success { get; set; }
+        public string? Error { get; set; }
+        public string? StandardError { get; set; }
+    }
 }

@@ -80,3 +80,31 @@ public sealed class TimelineEventRequest
     public string Status { get; set; } = string.Empty;
     public string? Message { get; set; }
 }
+
+public sealed class DryRunPreviewResponse
+{
+    public Guid WorkloadId { get; set; }
+    public string WorkloadName { get; set; } = string.Empty;
+    public Guid TargetRevisionId { get; set; }
+    public string TargetRevision { get; set; } = string.Empty;
+    public string Mode { get; set; } = string.Empty;
+    public List<DryRunNodePreview> Nodes { get; set; } = new();
+}
+
+public sealed class DryRunNodePreview
+{
+    public Guid NodeId { get; set; }
+    public string Hostname { get; set; } = string.Empty;
+    public bool IsOnline { get; set; }
+    public string CurrentRevision { get; set; } = string.Empty;
+    public Guid? CurrentRevisionId { get; set; }
+    public List<DryRunPackageAction> Actions { get; set; } = new();
+}
+
+public sealed class DryRunPackageAction
+{
+    public string PackageName { get; set; } = string.Empty;
+    public string Action { get; set; } = string.Empty;
+    public string? CurrentVersion { get; set; }
+    public string? TargetVersion { get; set; }
+}

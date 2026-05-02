@@ -385,7 +385,7 @@ export default function WorkloadRuns() {
       </section>
 
       <Modal open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-        <ModalContent className="w-[min(92vw,48rem)] max-h-[90vh] overflow-y-auto">
+        <ModalContent className="w-[min(92vw,56rem)] max-h-[90vh] overflow-y-auto">
           <ModalHeader>
             <ModalTitle>Create Workload Run</ModalTitle>
             <ModalDescription>Configure and launch a workload run across selected nodes.</ModalDescription>
@@ -486,17 +486,17 @@ export default function WorkloadRuns() {
                           <div key={n.id} className="flex items-center gap-2 text-xs">
                             <span className="font-medium text-[var(--text-strong)]">{n.hostname}</span>
                             {!installedVersion && (
-                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
                                 Fresh install
                               </span>
                             )}
                             {installedVersion && targetVersion && installedVersion !== targetVersion && (
-                              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
                                 Update: v{installedVersion} → v{targetVersion}
                               </span>
                             )}
                             {installedVersion && targetVersion && installedVersion === targetVersion && (
-                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
                                 Reinstall: v{targetVersion}
                               </span>
                             )}
@@ -684,14 +684,14 @@ export default function WorkloadRuns() {
                             setPrecheckRunning(false)
                           }
                         }}
-                        className="w-full rounded-lg border border-[var(--surface-border)] px-3 py-2 text-xs font-medium text-[var(--accent)] hover:bg-[var(--surface-subtle)] hover:border-[var(--accent)] disabled:opacity-50"
+                          className="w-full rounded-lg border border-[var(--surface-border)] px-3 py-2.5 text-xs font-medium text-[var(--accent)] hover:bg-[var(--surface-subtle)] hover:border-[var(--accent)] disabled:opacity-50"
                       >
                         {precheckRunning ? 'Running pre-checks...' : 'Run pre-check'}
                       </button>
                     )}
 
                     <div
-                      className={`max-h-48 overflow-y-auto rounded-lg border p-2 space-y-1 ${
+                      className={`max-h-64 overflow-y-auto rounded-lg border p-2 space-y-1 ${
                         formErrors.targetNodeIds ? 'border-rose-300' : 'border-[var(--surface-border)]'
                       }`}
                     >
@@ -743,27 +743,27 @@ export default function WorkloadRuns() {
                                 {node.displayName || node.hostname}
                               </span>
                               {node.osVersion && (
-                                <span className="rounded-full border border-[var(--surface-border)] bg-[var(--surface)] px-2 py-0.5 text-[10px] uppercase tracking-wide text-[var(--text-soft)]">
+                                <span className="rounded-full border border-[var(--surface-border)] bg-[var(--surface)] px-2 py-0.5 text-xs uppercase tracking-wide text-[var(--text-soft)]">
                                   {node.osVersion.split(' ')[0]}
                                 </span>
                               )}
                               {form.workloadId && installedVersion && isExactRevision && !hasDrift && (
-                                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-700">
+                                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
                                   v{installedVersion}
                                 </span>
                               )}
                               {form.workloadId && installedVersion && isExactRevision && hasDrift && (
-                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
                                   v{installedVersion}
                                 </span>
                               )}
                               {form.workloadId && installedVersion && !isExactRevision && (
-                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
                                   v{installedVersion}
                                 </span>
                               )}
                               {form.workloadId && !installedVersion && (
-                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
                                   not installed
                                 </span>
                               )}
@@ -777,7 +777,7 @@ export default function WorkloadRuns() {
                                     : 'Pre-checks found issues'
                                 return (
                                   <span
-                                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                                       summary.overallStatus === 'passed'
                                         ? 'bg-emerald-100 text-emerald-700'
                                         : summary.overallStatus === 'warning'
@@ -990,7 +990,7 @@ export default function WorkloadRuns() {
                         {item.status} &bull; {formatTimestamp(item.at)} &bull; {item.detail}
                       </p>
                       {item.status === 'failed' && item.detail && (item.stepId.startsWith('PreInit_') || item.stepId.startsWith('PostInit_') || item.stepId.startsWith('PreWorkload_') || item.stepId.startsWith('PostWorkload_')) && (
-                        <div className="mt-1.5 rounded bg-slate-950 px-2 py-1 font-mono text-[10px] text-slate-400 whitespace-pre-wrap max-h-24 overflow-y-auto">
+                        <div className="mt-1.5 rounded bg-slate-950 px-2 py-1 font-mono text-xs text-slate-400 whitespace-pre-wrap max-h-24 overflow-y-auto">
                           {item.detail}
                         </div>
                       )}

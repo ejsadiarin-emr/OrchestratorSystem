@@ -1,5 +1,6 @@
 using DeploymentPoC.Agent.Pipeline;
 using DeploymentPoC.Contracts.Runtime;
+using DeploymentPoC.Contracts.Runtime.RunPayloads;
 
 namespace DeploymentPoC.Agent.Steps;
 

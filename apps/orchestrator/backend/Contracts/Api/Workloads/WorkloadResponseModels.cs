@@ -58,3 +58,10 @@ public sealed class WorkloadPackageDto
     public List<string> PreInitSteps { get; set; } = new();
     public List<string> PostInitSteps { get; set; } = new();
 }
+
+public sealed class InstalledRevisionResponse
+{
+    public Guid RevisionId { get; set; }
+    public string Version { get; set; } = string.Empty;
+    public bool IsPublished { get; set; }
+}

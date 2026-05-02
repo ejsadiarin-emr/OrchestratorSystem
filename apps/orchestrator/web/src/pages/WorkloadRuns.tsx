@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   cancelWorkloadRun,
   createWorkloadRun,
+  getInstalledRevisions,
   getWorkload,
   getWorkloadRunSteps,
   listNodes,
@@ -50,6 +51,7 @@ export default function WorkloadRuns() {
   const [uninstallConfirmed, setUninstallConfirmed] = useState(false)
   const [precheckRunning, setPrecheckRunning] = useState(false)
   const [precheckResults, setPrecheckResults] = useState<Map<string, NodePreCheckSummary>>(new Map())
+  const [installedRevisions, setInstalledRevisions] = useState<WorkloadRevision[]>([])
 
   const unsubscribers = useRef<Map<string, () => void>>(new Map())
 
@@ -124,15 +126,18 @@ export default function WorkloadRuns() {
     setSuccess(null)
     setNodeWorkloadStates([])
     setUninstallConfirmed(false)
+    setInstalledRevisions([])
 
     if (defaultWorkload) {
       Promise.all([
         getWorkload(defaultWorkload.id),
         listNodeWorkloadStates(),
+        getInstalledRevisions(defaultWorkload.id),
       ])
-        .then(([w, states]) => {
+        .then(([w, states, installed]) => {
           setWorkloadDetails(w)
           setNodeWorkloadStates(states)
+          setInstalledRevisions(installed)
           const published = w.revisions
             .filter(r => r.state === 'published')
             .sort((a, b) => {
@@ -156,16 +161,19 @@ export default function WorkloadRuns() {
     setWorkloadDetails(null)
     setNodeWorkloadStates([])
     setPrecheckResults(new Map())
+    setInstalledRevisions([])
 
     if (!workloadId) return
 
     try {
-      const [w, states] = await Promise.all([
+      const [w, states, installed] = await Promise.all([
         getWorkload(workloadId),
         listNodeWorkloadStates(),
+        getInstalledRevisions(workloadId),
       ])
       setWorkloadDetails(w)
       setNodeWorkloadStates(states)
+      setInstalledRevisions(installed)
       const published = w.revisions
         .filter(r => r.state === 'published')
         .sort((a, b) => {
@@ -206,11 +214,17 @@ export default function WorkloadRuns() {
     const map = new Map<string, NodeWorkloadState>()
     for (const s of nodeWorkloadStates) {
       if (s.workloadId === form.workloadId) {
-        map.set(s.nodeId, s)
+        if (form.mode === 'uninstall' && form.revisionId) {
+          if (s.currentRevisionId === form.revisionId) {
+            map.set(s.nodeId, s)
+          }
+        } else {
+          map.set(s.nodeId, s)
+        }
       }
     }
     return map
-  }, [nodeWorkloadStates, form.workloadId])
+  }, [nodeWorkloadStates, form.workloadId, form.mode, form.revisionId])
 
   const uninstallNodes = useMemo(
     () => nodes.filter(n => n.status === 'online' && nodeWorkloadStateByNodeId.has(n.id)),
@@ -243,28 +257,18 @@ export default function WorkloadRuns() {
     return publishedRevisions.find(r => r.id === form.revisionId)
   }, [publishedRevisions, form.revisionId])
 
-  const revisionVersionById = useMemo(() => {
-    const map = new Map<string, string>()
-    if (workloadDetails) {
-      for (const r of workloadDetails.revisions) {
-        map.set(r.id, r.revision)
-      }
-    }
-    return map
-  }, [workloadDetails])
-
   const anySelectedNodeHasRevision = useMemo(() => {
     if (!selectedRevision) return false
     return form.targetNodeIds.some(nodeId => {
       const state = nodeWorkloadStateByNodeId.get(nodeId)
-      return state && state.workloadRevision === selectedRevision.id
+      return state && state.currentRevisionId === selectedRevision.id
     })
   }, [form.targetNodeIds, selectedRevision, nodeWorkloadStateByNodeId])
 
   const validateForm = useCallback((): boolean => {
     const errors: Record<string, string> = {}
     if (!form.workloadId) errors.workloadId = 'Select a workload'
-    if (form.mode === 'install' && !form.revisionId) errors.revisionId = 'Select a published revision'
+    if (!form.revisionId) errors.revisionId = form.mode === 'uninstall' ? 'Select an installed revision' : 'Select a published revision'
     if (selectedOnlineNodeIds.length === 0) errors.targetNodeIds = 'Select at least one online node'
     setFormErrors(errors)
     return Object.keys(errors).length === 0
@@ -380,11 +384,13 @@ export default function WorkloadRuns() {
                       {workloads.find(w => w.id === form.workloadId)?.name ?? form.workloadId}
                     </p>
                   </div>
-                  {form.mode === 'install' && (
+                  {(form.mode === 'install' || form.mode === 'uninstall') && (
                     <div>
                       <span className="text-[var(--text-soft)]">Revision:</span>
                       <p className="font-medium text-[var(--text-strong)]">
-                        {publishedRevisions.find(r => r.id === form.revisionId)?.revision ?? form.revisionId}
+                        {form.mode === 'uninstall'
+                          ? installedRevisions.find(r => r.id === form.revisionId)?.revision ?? form.revisionId
+                          : publishedRevisions.find(r => r.id === form.revisionId)?.revision ?? form.revisionId}
                       </p>
                     </div>
                   )}
@@ -423,9 +429,7 @@ export default function WorkloadRuns() {
                           .filter(n => form.targetNodeIds.includes(n.id))
                           .map(n => {
                             const state = nodeWorkloadStateByNodeId.get(n.id)
-                            const installedVersion = state
-                              ? revisionVersionById.get(state.workloadRevision)
-                              : undefined
+                            const installedVersion = state?.workloadRevision
                             const pkgs = (selectedRevision.packageSteps ?? [])
                               .map(p => `${p.packageName} ${p.packageVersion}`)
                               .join(', ')
@@ -453,9 +457,7 @@ export default function WorkloadRuns() {
                       .filter(n => form.targetNodeIds.includes(n.id))
                       .map(n => {
                         const state = nodeWorkloadStateByNodeId.get(n.id)
-                        const installedVersion = state
-                          ? revisionVersionById.get(state.workloadRevision)
-                          : undefined
+                        const installedVersion = state?.workloadRevision
                         const targetVersion = selectedRevision?.revision
                         return (
                           <div key={n.id} className="flex items-center gap-2 text-xs">
@@ -507,6 +509,7 @@ export default function WorkloadRuns() {
                         return {
                           ...current,
                           mode: 'uninstall',
+                          revisionId: installedRevisions[0]?.id ?? '',
                           targetNodeIds: current.targetNodeIds.filter(id => qualifyingIds.has(id)),
                         }
                       })
@@ -544,28 +547,40 @@ export default function WorkloadRuns() {
                       )}
                     </label>
 
-                    {form.mode === 'install' && (
+                    {(form.mode === 'install' || form.mode === 'uninstall') && (
                       <label className="block text-sm text-[var(--text-soft)]">
-                        Revision
+                        {form.mode === 'uninstall' ? 'Installed Revision' : 'Revision'}
                         <select
                           value={form.revisionId}
                           onChange={event => {
                             setForm(current => ({ ...current, revisionId: event.target.value }))
                             setFormErrors(current => ({ ...current, revisionId: '' }))
                           }}
-                          disabled={publishedRevisions.length === 0}
+                          disabled={form.mode === 'uninstall' ? installedRevisions.length === 0 : publishedRevisions.length === 0}
                           className={`mt-1 w-full rounded-lg border px-3 py-2 ${
                             formErrors.revisionId ? 'border-rose-300' : 'border-[var(--surface-border)]'
                           } disabled:opacity-50`}
                         >
-                          {publishedRevisions.length === 0 ? (
-                            <option value="">No published revisions</option>
+                          {form.mode === 'uninstall' ? (
+                            installedRevisions.length === 0 ? (
+                              <option value="">No installed revisions</option>
+                            ) : (
+                              installedRevisions.map(revision => (
+                                <option key={revision.id} value={revision.id}>
+                                  {revision.revision}
+                                </option>
+                              ))
+                            )
                           ) : (
-                            publishedRevisions.map(revision => (
-                              <option key={revision.id} value={revision.id}>
-                                {revision.revision}
-                              </option>
-                            ))
+                            publishedRevisions.length === 0 ? (
+                              <option value="">No published revisions</option>
+                            ) : (
+                              publishedRevisions.map(revision => (
+                                <option key={revision.id} value={revision.id}>
+                                  {revision.revision}
+                                </option>
+                              ))
+                            )
                           )}
                         </select>
                         {formErrors.revisionId && (
@@ -666,13 +681,11 @@ export default function WorkloadRuns() {
                           const isOnline = node.status === 'online'
                           const isSelected = form.targetNodeIds.includes(node.id)
                           const nodeState = nodeWorkloadStateByNodeId.get(node.id)
-                          const installedVersion = nodeState
-                            ? revisionVersionById.get(nodeState.workloadRevision)
-                            : undefined
+                          const installedVersion = nodeState?.workloadRevision
                           const hasDrift = nodeState && nodeState.packageStatesJson
                             ? true
                             : false
-                          const isExactRevision = nodeState?.workloadRevision === form.revisionId
+                          const isExactRevision = nodeState?.currentRevisionId === form.revisionId
 
                           return (
                             <label
@@ -731,20 +744,29 @@ export default function WorkloadRuns() {
                                   not installed
                                 </span>
                               )}
-                              {precheckResults.has(node.id) && (
-                                <span
-                                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                                    precheckResults.get(node.id)!.overallStatus === 'passed'
-                                      ? 'bg-emerald-100 text-emerald-700'
-                                      : precheckResults.get(node.id)!.overallStatus === 'warning'
-                                        ? 'bg-amber-100 text-amber-700'
-                                        : 'bg-red-100 text-red-700'
-                                  }`}
-                                  title={precheckResults.get(node.id)!.overallStatus === 'passed' ? 'All pre-checks passed' : 'Pre-checks found issues'}
-                                >
-                                  {precheckResults.get(node.id)!.overallStatus === 'passed' ? 'pre-check passed' : 'pre-check: issues'}
-                                </span>
-                              )}
+                              {precheckResults.has(node.id) && (() => {
+                                const summary = precheckResults.get(node.id)!
+                                const issueItems = summary.items.filter(i => i.status !== 'passed')
+                                const titleText = summary.overallStatus === 'passed'
+                                  ? 'All pre-checks passed'
+                                  : issueItems.length > 0
+                                    ? issueItems.map(i => `${i.name}: ${i.status}${i.detail ? ` — ${i.detail}` : ''}`).join('\n')
+                                    : 'Pre-checks found issues'
+                                return (
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                      summary.overallStatus === 'passed'
+                                        ? 'bg-emerald-100 text-emerald-700'
+                                        : summary.overallStatus === 'warning'
+                                          ? 'bg-amber-100 text-amber-700'
+                                          : 'bg-red-100 text-red-700'
+                                    }`}
+                                    title={titleText}
+                                  >
+                                    {summary.overallStatus === 'passed' ? 'pre-check passed' : 'pre-check: issues'}
+                                  </span>
+                                )
+                              })()}
                             </label>
                           )
                         })
@@ -777,7 +799,7 @@ export default function WorkloadRuns() {
               </button>
               <button
                 type="submit"
-                disabled={submitting || (form.mode === 'install' && publishedRevisions.length === 0) || (!showSummary && selectedOnlineNodeIds.length === 0) || (showSummary && form.mode === 'uninstall' && !uninstallConfirmed)}
+                disabled={submitting || (form.mode === 'install' && publishedRevisions.length === 0) || (form.mode === 'uninstall' && installedRevisions.length === 0) || (!showSummary && selectedOnlineNodeIds.length === 0) || (showSummary && form.mode === 'uninstall' && !uninstallConfirmed)}
                 title={form.mode === 'uninstall' && uninstallNodes.length === 0 && form.workloadId ? "No nodes have this workload installed" : undefined}
                 className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
               >

@@ -964,6 +964,26 @@ export async function listWorkloadRevisions(workloadId: string): Promise<Workloa
   }))
 }
 
+export async function getInstalledRevisions(workloadId: string): Promise<WorkloadRevision[]> {
+  const response = await fetch(`/api/workloads/${workloadId}/installed-revisions`)
+  if (!response.ok) {
+    throw new Error(`Failed to load installed revisions: ${response.status}`)
+  }
+  const data = await response.json() as Array<{
+    revisionId: string
+    version: string
+    isPublished: boolean
+  }>
+  return data.map(r => ({
+    id: r.revisionId,
+    workloadId,
+    revision: r.version,
+    state: r.isPublished ? ('published' as const) : ('draft' as const),
+    createdAt: '',
+    packageSteps: [],
+  }))
+}
+
 export async function createWorkloadDefinitionDraft(
   request: CreateWorkloadDefinitionRequest,
 ): Promise<WorkloadDefinition> {
@@ -1435,8 +1455,9 @@ export async function listNodeWorkloadStates(): Promise<NodeWorkloadState[]> {
   return data.map((s: any) => ({
     nodeId: s.nodeId ?? s.node_id,
     workloadId: s.workloadId ?? s.workload_id,
-    workloadRevision: s.currentRevisionId ?? s.current_revision_id,
-    runId: s.runId ?? '',
+    workloadRevision: s.workloadRevision ?? s.workload_revision ?? '',
+    currentRevisionId: s.currentRevisionId ?? s.current_revision_id ?? null,
+    runId: s.runId ?? s.run_id,
     status: s.state ?? s.status ?? 'queued',
     updatedAt: s.updatedAt ?? new Date().toISOString(),
     packageStatesJson: s.packageStatesJson ?? s.package_states_json ?? null,

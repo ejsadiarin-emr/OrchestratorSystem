@@ -153,14 +153,47 @@ public class PipelineExecutor
                 string? destinationPath = null;
                 var hasUninstallCommand = !string.IsNullOrWhiteSpace(package.InstallAdapter.UninstallCommand);
 
+                // Acquire artifact when no dedicated uninstall command is configured
+                // (the artifact itself may be executable or the Command field may reference it)
                 if (!hasUninstallCommand)
                 {
-                    _logger.LogError(
-                        "Pipeline halted: UninstallCommand is required for package {PackageName} in uninstall mode",
-                        package.Name);
-                    await SendStepStatusAsync(sendMessageAsync, context, "UninstallPackage", package, false, "missing_uninstall_command", stepCt);
-                    context.RecordStep("UninstallPackage", package.PackageIndex, package.PackageId, false, "missing_uninstall_command");
-                    return await FinalizeAsync(sendMessageAsync, context, ct);
+                    var artifactUrl = !string.IsNullOrEmpty(package.DownloadUrl)
+                        ? $"{context.OrchestratorBaseUrl.TrimEnd('/')}{package.DownloadUrl}"
+                        : $"{context.OrchestratorBaseUrl.TrimEnd('/')}/api/artifacts/{package.PackageId}/download";
+                    var destFileName = !string.IsNullOrEmpty(package.ArtifactFileName)
+                        ? $"{package.PackageId}-{package.Version}-{package.ArtifactFileName}"
+                        : $"{package.PackageId}-{package.Version}";
+                    destinationPath = Path.Combine(Path.GetTempPath(), "agent-artifacts", context.RunId, destFileName);
+
+                    _logger.LogInformation(
+                        "Step AcquireArtifactForUninstall: PackageIndex={PackageIndex}, PackageId={PackageId}, Url={ArtifactUrl}",
+                        package.PackageIndex,
+                        package.PackageId,
+                        artifactUrl);
+
+                    var chunkSizeBytes = _configuration.GetValue<int?>("Agent:ChunkSizeBytes") ?? 2 * 1024 * 1024;
+                    var useChunkedDownload = _configuration.GetValue<bool?>("Agent:UseChunkedDownload") ?? true;
+
+                    var acquireResult = await acquire.ExecuteAsync(new AcquireArtifactRequest
+                    {
+                        ArtifactUrl = artifactUrl,
+                        DestinationPath = destinationPath,
+                        ChunkSizeBytes = chunkSizeBytes,
+                        UseChunkedDownload = useChunkedDownload,
+                        ExpectedSha256 = package.ExpectedSha256
+                    }, stepCt);
+
+                    await SendStepStatusAsync(sendMessageAsync, context, "AcquireArtifactForUninstall", package, acquireResult.Success, acquireResult.Error, stepCt);
+                    context.RecordStep("AcquireArtifactForUninstall", package.PackageIndex, package.PackageId, acquireResult.Success, acquireResult.Error);
+
+                    if (!acquireResult.Success)
+                    {
+                        _logger.LogError(
+                            "Pipeline halted at AcquireArtifactForUninstall: PackageIndex={PackageIndex}, Error={Error}",
+                            package.PackageIndex,
+                            acquireResult.Error);
+                        return await FinalizeAsync(sendMessageAsync, context, ct);
+                    }
                 }
 
                 var uninstallResult = await UninstallPackage.ExecuteAsync(package.InstallAdapter, destinationPath, stepCt);

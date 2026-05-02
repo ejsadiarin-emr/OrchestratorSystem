@@ -1,7 +1,6 @@
 ﻿{
     "detection":  {
                       "path":  "dbeaver",
-                      "expectedVersion":  "26.0.3",
                       "type":  "version_manifest"
                   },
     "verificationResult":  "pass",

@@ -69,7 +69,7 @@ public class NodesPreCheckReconciliationTests
 
     private static (Guid workloadId, Guid revisionId, Guid nodeId, Guid packageId, Guid stateId) SeedScenarioBase(
         InstallerDbContext db,
-        string detectionConfigJson = "{\"Type\":\"version_manifest\",\"Path\":\"cmd\",\"ExpectedVersion\":\"1.0.0\"}",
+        string detectionConfigJson = "{\"Type\":\"version_manifest\",\"Path\":\"cmd\"}",
         string? packageStatesJson = "{}")
     {
         var workloadId = Guid.NewGuid();
@@ -305,7 +305,7 @@ public class NodesPreCheckReconciliationTests
 
         _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity { WorkloadId = workloadId, Name = "fresh-workload" });
         _db.WorkloadRevisions.Add(new WorkloadRevisionEntity { RevisionId = revisionId, WorkloadId = workloadId, Version = "1.0.0", IsPublished = true });
-        _db.Packages.Add(new PackageEntity { PackageId = packageId, Name = "fresh-pkg", Version = "1.0.0", DetectionConfigJson = "{\"Type\":\"version_manifest\",\"Path\":\"fresh\",\"ExpectedVersion\":\"1.0.0\"}" });
+        _db.Packages.Add(new PackageEntity { PackageId = packageId, Name = "fresh-pkg", Version = "1.0.0", DetectionConfigJson = "{\"Type\":\"version_manifest\",\"Path\":\"fresh\"}" });
         _db.WorkloadPackages.Add(new WorkloadPackageEntity { WorkloadPackageId = Guid.NewGuid(), RevisionId = revisionId, PackageId = packageId, PackageIndex = 0 });
         _db.Nodes.Add(new NodeEntity { NodeId = nodeId, Hostname = "fresh-node", IpAddress = "10.0.0.4", OsVersion = "Windows", AgentVersion = "1.0" });
         await _db.SaveChangesAsync();
@@ -381,7 +381,7 @@ public class NodesPreCheckReconciliationTests
         var (workloadId, revisionId, nodeId, packageId, _) = SeedScenarioBase(_db);
 
         var secondPackageId = Guid.NewGuid();
-        _db.Packages.Add(new PackageEntity { PackageId = secondPackageId, Name = "pkg-b", Version = "1.0.0", DetectionConfigJson = "{\"Type\":\"version_manifest\",\"Path\":\"pkgb\",\"ExpectedVersion\":\"1.0.0\"}" });
+        _db.Packages.Add(new PackageEntity { PackageId = secondPackageId, Name = "pkg-b", Version = "1.0.0", DetectionConfigJson = "{\"Type\":\"version_manifest\",\"Path\":\"pkgb\"}" });
         _db.WorkloadPackages.Add(new WorkloadPackageEntity { WorkloadPackageId = Guid.NewGuid(), RevisionId = revisionId, PackageId = secondPackageId, PackageIndex = 1 });
         await _db.SaveChangesAsync();
 
@@ -418,7 +418,7 @@ public class NodesPreCheckReconciliationTests
         var (workloadId, revisionId, nodeId, packageId, _) = SeedScenarioBase(_db);
 
         var secondPackageId = Guid.NewGuid();
-        _db.Packages.Add(new PackageEntity { PackageId = secondPackageId, Name = "pkg-partial", Version = "1.0.0", DetectionConfigJson = "{\"Type\":\"version_manifest\",\"Path\":\"partial\",\"ExpectedVersion\":\"1.0.0\"}" });
+        _db.Packages.Add(new PackageEntity { PackageId = secondPackageId, Name = "pkg-partial", Version = "1.0.0", DetectionConfigJson = "{\"Type\":\"version_manifest\",\"Path\":\"partial\"}" });
         _db.WorkloadPackages.Add(new WorkloadPackageEntity { WorkloadPackageId = Guid.NewGuid(), RevisionId = revisionId, PackageId = secondPackageId, PackageIndex = 1 });
         await _db.SaveChangesAsync();
 

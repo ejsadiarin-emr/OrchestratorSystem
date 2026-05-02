@@ -40,8 +40,7 @@ public sealed class WorkloadImportService
                 Detection = new DetectionConfig
                 {
                     Type = manifest.Detection.Type,
-                    Path = manifest.Detection.Path,
-                    ExpectedVersion = manifest.Detection.ExpectedVersion
+                    Path = manifest.Detection.Path
                 }
             }
         ];

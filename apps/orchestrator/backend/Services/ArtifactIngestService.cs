@@ -229,8 +229,7 @@ public sealed class ArtifactIngestService
             return new Detection
             {
                 Type = manifest.Detection?.Type ?? string.Empty,
-                Path = manifest.Detection?.Path ?? string.Empty,
-                ExpectedVersion = manifest.Detection?.ExpectedVersion ?? string.Empty
+                Path = manifest.Detection?.Path ?? string.Empty
             };
         }
 
@@ -239,16 +238,14 @@ public sealed class ArtifactIngestService
             return new Detection
             {
                 Type = string.IsNullOrWhiteSpace(manifest.Detection.Type) ? "version_manifest" : manifest.Detection.Type.Trim(),
-                Path = string.IsNullOrWhiteSpace(manifest.Detection.Path) ? manifest.PackageId ?? string.Empty : manifest.Detection.Path.Trim(),
-                ExpectedVersion = manifest.Detection.ExpectedVersion?.Trim() ?? string.Empty
+                Path = string.IsNullOrWhiteSpace(manifest.Detection.Path) ? manifest.PackageId ?? string.Empty : manifest.Detection.Path.Trim()
             };
         }
 
         return new Detection
         {
             Type = "version_manifest",
-            Path = manifest.PackageId ?? string.Empty,
-            ExpectedVersion = $"=={manifest.Version}"
+            Path = manifest.PackageId ?? string.Empty
         };
     }
 
@@ -397,8 +394,6 @@ public sealed class ArtifactIngestService
                 errors.Add(new ValidationFieldError { Field = "resolvedManifest.detection.type", Error = "detection.type is required" });
             if (string.IsNullOrWhiteSpace(manifest.Detection.Path))
                 errors.Add(new ValidationFieldError { Field = "resolvedManifest.detection.path", Error = "detection.path is required" });
-            if (string.IsNullOrWhiteSpace(manifest.Detection.ExpectedVersion))
-                errors.Add(new ValidationFieldError { Field = "resolvedManifest.detection.expectedVersion", Error = "detection.expectedVersion is required" });
         }
 
         if (manifest.OriginMetadata is null)
@@ -480,10 +475,6 @@ public sealed class ArtifactIngestService
         {
             errors.Add(new ValidationFieldError { Field = "manifest.detection.path", Error = "detection.path is required when detection cannot be resolved" });
         }
-        if (string.IsNullOrWhiteSpace(manifest.Detection.ExpectedVersion))
-        {
-            errors.Add(new ValidationFieldError { Field = "manifest.detection.expectedVersion", Error = "detection.expectedVersion is required when detection cannot be resolved" });
-        }
 
         return errors;
     }
@@ -517,7 +508,6 @@ public sealed class DetectionInput
 {
     public string? Type { get; set; }
     public string? Path { get; set; }
-    public string? ExpectedVersion { get; set; }
 }
 
 public sealed class PolicyTagsInput
@@ -583,7 +573,6 @@ public sealed class Detection
 {
     public string Type { get; set; } = string.Empty;
     public string Path { get; set; } = string.Empty;
-    public string ExpectedVersion { get; set; } = string.Empty;
 }
 
 public sealed class OriginMetadata
@@ -630,7 +619,6 @@ public sealed class DetectionSourceBreakdown
 {
     public string Type { get; set; } = "default";
     public string Path { get; set; } = "default";
-    public string ExpectedVersion { get; set; } = "default";
 }
 
 public sealed class PolicyTagSourceBreakdown

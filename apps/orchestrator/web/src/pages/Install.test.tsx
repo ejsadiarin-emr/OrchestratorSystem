@@ -87,7 +87,7 @@ describe('Install page flow', () => {
               channel: 'stable',
               artifactType: 'msi',
               installAdapter: { type: 'msi', command: 'msiexec', arguments: '/quiet /norestart', expectedExitCodes: [0], timeoutSeconds: 300 },
-              detection: { type: 'registry', path: 'HKLM\\Software\\EJ-Installer', expectedVersion: '2.0.0' },
+              detection: { type: 'registry', path: 'HKLM\\Software\\EJ-Installer' },
               policyTags: { retryabilityClass: 'retryable', idempotencyMode: 'enforced', riskLevel: 'low', approvalRequired: false },
               originMetadata: { source: 'test', publisher: 'test', ingestedBy: 'anonymous', ingestedAtUtc: '2026-01-01T00:00:00Z', verificationResult: 'derived' },
             },

@@ -201,9 +201,9 @@ export default function NodeDetailsModal({ nodeId, open, onClose }: NodeDetailsM
                               <td className="px-4 py-2 text-sm text-[var(--text-strong)]">{item.name}</td>
                               <td className="px-4 py-2 text-xs text-[var(--text-soft)]">
                                 {item.detail && <div>{item.detail}</div>}
-                                {(item.expectedVersion || item.actualVersion) && (
+                                {item.actualVersion && (
                                   <div className="mt-0.5 font-mono text-[10px]">
-                                    Expected: {item.expectedVersion ?? '—'} / Actual: {item.actualVersion ?? '—'}
+                                    Version: {item.actualVersion}
                                   </div>
                                 )}
                               </td>

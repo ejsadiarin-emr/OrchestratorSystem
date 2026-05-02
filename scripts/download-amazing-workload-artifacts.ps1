@@ -155,7 +155,6 @@ $DbeaverManifestOlder = @{
     detection = @{
         type = "version_manifest"
         path = "dbeaver"
-        expectedVersion = $DbeaverVersionOlder
     }
     policyTags = @{
         retryabilityClass = "non-idempotent"
@@ -218,7 +217,6 @@ $SqlServerManifestOlder = @{
     detection = @{
         type = "file"
         path = "C:\Program Files\Microsoft SQL Server\MSSQL15.SQLEXPRESS\MSSQL\Binn\sqlservr.exe"
-        expectedVersion = $null
     }
     policyTags = @{
         retryabilityClass = "non-idempotent"
@@ -252,7 +250,6 @@ $DbeaverManifestNewer = @{
     detection = @{
         type = "version_manifest"
         path = "dbeaver"
-        expectedVersion = $DbeaverVersionNewer
     }
     policyTags = @{
         retryabilityClass = "non-idempotent"
@@ -315,7 +312,6 @@ $SqlServerManifestNewer = @{
     detection = @{
         type = "file"
         path = "C:\Program Files\Microsoft SQL Server\MSSQL17.SQLEXPRESS\MSSQL\Binn\sqlservr.exe"
-        expectedVersion = $null
     }
     policyTags = @{
         retryabilityClass = "non-idempotent"

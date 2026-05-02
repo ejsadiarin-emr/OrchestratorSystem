@@ -48,7 +48,6 @@ public class PackagesController : ControllerBase
                 UpgradeBehavior = p.UpgradeBehavior,
                 DetectionType = detectionConfig.Type,
                 DetectionPath = detectionConfig.Path,
-                ExpectedVersion = detectionConfig.ExpectedVersion,
                 CreatedAt = p.CreatedAtUtc
             };
         }).ToList();
@@ -85,7 +84,6 @@ public class PackagesController : ControllerBase
             UpgradeBehavior = entity.UpgradeBehavior,
             DetectionType = detectionConfig.Type,
             DetectionPath = detectionConfig.Path,
-            ExpectedVersion = detectionConfig.ExpectedVersion,
             CreatedAt = entity.CreatedAtUtc
         };
 
@@ -112,13 +110,12 @@ public class PackagesController : ControllerBase
             UninstallCommand = request.UninstallCommand,
             UninstallArgs = request.UninstallArgs,
             UpgradeBehavior = UpgradeBehaviorValidator.Normalize(request.UpgradeBehavior),
-            DetectionConfigJson = string.IsNullOrWhiteSpace(request.DetectionType) && string.IsNullOrWhiteSpace(request.DetectionPath) && string.IsNullOrWhiteSpace(request.ExpectedVersion)
+            DetectionConfigJson = string.IsNullOrWhiteSpace(request.DetectionType) && string.IsNullOrWhiteSpace(request.DetectionPath)
                 ? string.Empty
                 : System.Text.Json.JsonSerializer.Serialize(new DetectionConfig
                 {
                     Type = request.DetectionType,
-                    Path = request.DetectionPath,
-                    ExpectedVersion = request.ExpectedVersion
+                    Path = request.DetectionPath
                 }),
             CreatedAtUtc = DateTime.UtcNow
         };
@@ -139,7 +136,6 @@ public class PackagesController : ControllerBase
             UpgradeBehavior = entity.UpgradeBehavior,
             DetectionType = request.DetectionType,
             DetectionPath = request.DetectionPath,
-            ExpectedVersion = request.ExpectedVersion,
             CreatedAt = entity.CreatedAtUtc
         };
 

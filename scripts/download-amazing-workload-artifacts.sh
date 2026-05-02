@@ -80,8 +80,7 @@ cat > "${DBEAVER_BASE_OLDER}.manifest.json" <<EOF
   },
   "detection": {
     "type": "version_manifest",
-    "path": "dbeaver",
-    "expectedVersion": "${DBEAVER_VERSION_OLDER}"
+    "path": "dbeaver"
   },
   "policyTags": {
     "retryabilityClass": "non-idempotent",
@@ -139,8 +138,7 @@ cat > "${DBEAVER_BASE_NEWER}.manifest.json" <<EOF
   },
   "detection": {
     "type": "version_manifest",
-    "path": "dbeaver",
-    "expectedVersion": "${DBEAVER_VERSION_NEWER}"
+    "path": "dbeaver"
   },
   "policyTags": {
     "retryabilityClass": "non-idempotent",

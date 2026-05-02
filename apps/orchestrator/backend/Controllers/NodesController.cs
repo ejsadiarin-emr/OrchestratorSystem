@@ -627,7 +627,6 @@ public class NodesController : ControllerBase
             states[cfg.PackageId.ToString()] = new Dictionary<string, object>
             {
                 ["name"] = cfg.Name,
-                ["expectedVersion"] = cfg.Version,
                 ["actualVersion"] = agentResult?.ActualVersion ?? "",
                 ["status"] = agentResult?.Status.ToString() ?? "Unknown",
                 ["updatedAt"] = DateTime.UtcNow.ToString("O")
@@ -657,7 +656,6 @@ public class NodesController : ControllerBase
             {
                 Category = "package",
                 Name = cfg.Name,
-                ExpectedVersion = cfg.Version,
                 ActualVersion = agentResult?.ActualVersion ?? "",
                 Status = status,
                 Detail = agentResult?.Status switch
@@ -800,7 +798,6 @@ public class NodesController : ControllerBase
                 {
                     Category = "package",
                     Name = state.Workload?.Name ?? state.WorkloadId.ToString(),
-                    ExpectedVersion = state.CurrentRevision?.Version ?? "",
                     ActualVersion = state.CurrentRevision?.Version ?? "",
                     Status = status,
                     Detail = detail
@@ -812,7 +809,6 @@ public class NodesController : ControllerBase
                 {
                     Category = "package",
                     Name = state.Workload?.Name ?? state.WorkloadId.ToString(),
-                    ExpectedVersion = state.CurrentRevision?.Version ?? "",
                     ActualVersion = state.CurrentRevision?.Version ?? "",
                     Status = "unknown",
                     Detail = "Run pre-check to probe agent"

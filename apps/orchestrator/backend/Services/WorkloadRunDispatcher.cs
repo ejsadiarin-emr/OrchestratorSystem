@@ -251,8 +251,7 @@ public sealed class WorkloadRunDispatcher
         return new DetectionConfig
         {
             Type = "version_manifest",
-            Path = pkg?.Name ?? "",
-            ExpectedVersion = pkg?.Version ?? ""
+            Path = pkg?.Name ?? ""
         };
     }
 

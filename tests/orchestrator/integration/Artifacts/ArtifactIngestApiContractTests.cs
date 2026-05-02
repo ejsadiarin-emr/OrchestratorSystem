@@ -206,7 +206,6 @@ public sealed class ArtifactIngestApiContractTests
         Assert.That(body.Errors.Any(e => e.Field == "manifest.installAdapter.timeoutSeconds"), Is.True);
         Assert.That(body.Errors.Any(e => e.Field == "manifest.detection.type"), Is.True);
         Assert.That(body.Errors.Any(e => e.Field == "manifest.detection.path"), Is.True);
-        Assert.That(body.Errors.Any(e => e.Field == "manifest.detection.expectedVersion"), Is.True);
     }
 
     private sealed class ValidationErrorResponse
@@ -253,7 +252,6 @@ public sealed class ArtifactIngestApiContractTests
     {
         public string Type { get; set; } = string.Empty;
         public string Path { get; set; } = string.Empty;
-        public string ExpectedVersion { get; set; } = string.Empty;
     }
 
     private sealed class OriginMetadataResponse
@@ -302,7 +300,6 @@ public sealed class ArtifactIngestApiContractTests
     {
         public string Type { get; set; } = string.Empty;
         public string Path { get; set; } = string.Empty;
-        public string ExpectedVersion { get; set; } = string.Empty;
     }
 
     [Test]
@@ -344,7 +341,6 @@ public sealed class ArtifactIngestApiContractTests
         Assert.That(body.ResolvedManifest.Detection, Is.Not.Null);
         Assert.That(body.ResolvedManifest.Detection.Type, Is.Not.Null.Or.Empty);
         Assert.That(body.ResolvedManifest.Detection.Path, Is.Not.Null.Or.Empty);
-        Assert.That(body.ResolvedManifest.Detection.ExpectedVersion, Is.Not.Null.Or.Empty);
 
         Assert.That(body.ResolvedManifest.OriginMetadata, Is.Not.Null);
         Assert.That(body.ResolvedManifest.OriginMetadata.Source, Is.Not.Null.Or.Empty);

@@ -1,7 +1,6 @@
 ﻿{
     "detection":  {
                       "path":  "C:\\Program Files\\Microsoft SQL Server\\MSSQL17.SQLEXPRESS\\MSSQL\\Binn\\sqlservr.exe",
-                      "expectedVersion":  null,
                       "type":  "file"
                   },
     "verificationResult":  "pass",

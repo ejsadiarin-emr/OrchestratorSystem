@@ -164,8 +164,7 @@ public sealed class WorkloadRunsRiskTests
                 },
                 "detection": {
                     "type": "version_manifest",
-                    "path": "{{packageId}}",
-                    "expectedVersion": "=={{version}}"
+                    "path": "{{packageId}}"
                 },
                 "policyTags": {
                     "riskLevel": "{{riskLevel}}",

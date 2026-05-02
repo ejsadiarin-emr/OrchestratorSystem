@@ -85,15 +85,13 @@ public sealed class WorkloadImportServiceTests : IDisposable
         manifest.Detection = new Detection
         {
             Type = "version_manifest",
-            Path = "pkg-sqlserver",
-            ExpectedVersion = "==2022.1.0"
+            Path = "pkg-sqlserver"
         };
 
         var assignments = _service.MapToPackageAssignments(manifest);
 
         Assert.That(assignments[0].Detection.Type, Is.EqualTo("version_manifest"));
         Assert.That(assignments[0].Detection.Path, Is.EqualTo("pkg-sqlserver"));
-        Assert.That(assignments[0].Detection.ExpectedVersion, Is.EqualTo("==2022.1.0"));
     }
 
     [Test]
@@ -198,8 +196,7 @@ public sealed class WorkloadImportServiceTests : IDisposable
             Detection = new Detection
             {
                 Type = "version_manifest",
-                Path = packageId,
-                ExpectedVersion = $"=={version}"
+                Path = packageId
             },
             OriginMetadata = new OriginMetadata
             {

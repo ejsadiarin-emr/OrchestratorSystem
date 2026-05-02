@@ -80,7 +80,6 @@ const artifacts: ArtifactRecord[] = [
       detection: {
         type: 'registry',
         path: 'HKLM\\Software\\EJ',
-        expectedVersion: '1.12.0',
       },
       policyTags: {
         retryabilityClass: 'retryable',
@@ -323,7 +322,6 @@ export function suggestManifestFromFile(fileName: string, _fileSizeBytes: number
     detection: {
       type: 'registry',
       path: `HKLM\\Software\\${packageId}`,
-      expectedVersion: version,
     },
     policyTags: {
       retryabilityClass: 'retryable',
@@ -724,7 +722,6 @@ export async function listArtifacts(): Promise<ArtifactRecord[]> {
         ? {
             type: item.detectionType,
             path: item.detectionPath ?? '',
-            expectedVersion: item.version,
           }
         : undefined,
       policyTags: item.riskLevel

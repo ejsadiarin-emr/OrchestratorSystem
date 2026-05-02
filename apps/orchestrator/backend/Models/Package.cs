@@ -13,6 +13,9 @@ public class Package
     public string UninstallCommand { get; set; } = string.Empty;
     public string UninstallArgs { get; set; } = string.Empty;
     public string UpgradeBehavior { get; set; } = string.Empty;
+    public string DetectionType { get; set; } = string.Empty;
+    public string DetectionPath { get; set; } = string.Empty;
+    public string ExpectedVersion { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }
 
@@ -46,4 +49,13 @@ public class CreatePackageRequest
     [Required]
     [StringLength(64)]
     public string UpgradeBehavior { get; set; } = string.Empty;
+
+    [StringLength(64)]
+    public string DetectionType { get; set; } = string.Empty;
+
+    [StringLength(1024)]
+    public string DetectionPath { get; set; } = string.Empty;
+
+    [StringLength(64)]
+    public string ExpectedVersion { get; set; } = string.Empty;
 }

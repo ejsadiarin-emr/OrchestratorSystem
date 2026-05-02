@@ -32,6 +32,7 @@ public sealed class WorkloadImportService
                     Command = manifest.InstallAdapter.Command,
                     Arguments = manifest.InstallAdapter.Arguments,
                     UninstallArgs = manifest.InstallAdapter.UninstallArgs,
+                    UninstallCommand = manifest.InstallAdapter.UninstallCommand,
                     UpgradeBehavior = manifest.InstallAdapter.UpgradeBehavior,
                     ExpectedExitCodes = manifest.InstallAdapter.ExpectedExitCodes,
                     TimeoutSeconds = manifest.InstallAdapter.TimeoutSeconds
@@ -66,6 +67,7 @@ public sealed class WorkloadImportService
             InstallType = manifest.InstallAdapter?.Type ?? "exe",
             InstallArgs = manifest.InstallAdapter?.Arguments ?? string.Empty,
             UninstallArgs = manifest.InstallAdapter?.UninstallArgs ?? string.Empty,
+            UninstallCommand = manifest.InstallAdapter?.UninstallCommand ?? string.Empty,
             UpgradeBehavior = manifest.InstallAdapter?.UpgradeBehavior ?? "InPlace",
             DetectionConfigJson = System.Text.Json.JsonSerializer.Serialize(manifest.Detection),
             CreatedAtUtc = DateTime.UtcNow

@@ -9,7 +9,7 @@
 
     Features:
     - Caches installers locally to avoid redundant downloads.
-    - Outputs manifests and final zip archives directly to test-artifacts/.
+    - Outputs manifests and final zip archives directly to dist/artifacts/.
     - Re-creates zip archives only when source manifests or installers change.
 
     Note: SQL Server Express installers are web installers that download
@@ -21,10 +21,12 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $ProjectDir = Split-Path -Parent $ScriptDir
-$OutputDir = Join-Path $ProjectDir "test-artifacts"
+$OutputDir = Join-Path (Join-Path $ProjectDir "dist") "artifacts"
+$WorkloadsDir = Join-Path (Join-Path $ProjectDir "dist") "workloads"
 $CacheDir = Join-Path $ProjectDir ".artifact-cache"
 
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+New-Item -ItemType Directory -Path $WorkloadsDir -Force | Out-Null
 New-Item -ItemType Directory -Path $CacheDir -Force | Out-Null
 
 # --- Older versions (from workloads-older.json) ---
@@ -367,3 +369,11 @@ if (Test-ZipNeedsRebuild -ZipPath $V2ZipPath -SourcePaths $V2Sources) {
 Write-Host ""
 Write-Host "Done. Zip archives in: $OutputDir"
 Get-ChildItem -Path $OutputDir -Filter "*amazing*" -ErrorAction SilentlyContinue
+
+# Copy workload definitions to dist/workloads for runtime import
+$TestWorkloadsDir = Join-Path $ProjectDir "test-workloads"
+if (Test-Path $TestWorkloadsDir) {
+    Copy-Item -Path (Join-Path $TestWorkloadsDir "*.json") -Destination $WorkloadsDir -Force
+    Write-Host ""
+    Write-Host "Copied workload definitions to: $WorkloadsDir"
+}

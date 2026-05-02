@@ -154,4 +154,61 @@ public sealed class DiffEngineTests
         Assert.Single(diff.Unchanged);
         Assert.Equal("pkg-c", diff.Unchanged[0].Name);
     }
+
+    [Fact]
+    public void ComputeDiff_UninstallMode_ChangedBecomeRemoved()
+    {
+        var current = new List<PackageAssignment>
+        {
+            new() { Name = "dbeaver", Version = "24.0.0" },
+            new() { Name = "python", Version = "3.13.0" }
+        };
+        var target = new List<PackageAssignment>
+        {
+            new() { Name = "dbeaver", Version = "26.0.0" },
+            new() { Name = "python", Version = "3.14.0" }
+        };
+
+        var diff = DiffEngine.ComputeDiff(current, target, null, "uninstall");
+
+        Assert.Equal(2, diff.Removed.Count);
+        Assert.Empty(diff.Changed);
+        Assert.Empty(diff.Added);
+        Assert.Empty(diff.Unchanged);
+    }
+
+    [Fact]
+    public void ComputeDiff_UninstallMode_RemainsRemoved()
+    {
+        var current = new List<PackageAssignment>
+        {
+            new() { Name = "dbeaver", Version = "24.0.0" }
+        };
+        var target = new List<PackageAssignment>();
+
+        var diff = DiffEngine.ComputeDiff(current, target, null, "uninstall");
+
+        Assert.Single(diff.Removed);
+        Assert.Empty(diff.Changed);
+        Assert.Empty(diff.Added);
+        Assert.Empty(diff.Unchanged);
+    }
+
+    [Fact]
+    public void ComputeDiff_InstallMode_ChangedStayChanged()
+    {
+        var current = new List<PackageAssignment>
+        {
+            new() { Name = "dbeaver", Version = "24.0.0" }
+        };
+        var target = new List<PackageAssignment>
+        {
+            new() { Name = "dbeaver", Version = "26.0.0" }
+        };
+
+        var diff = DiffEngine.ComputeDiff(current, target, null, "install");
+
+        Assert.Single(diff.Changed);
+        Assert.Empty(diff.Removed);
+    }
 }

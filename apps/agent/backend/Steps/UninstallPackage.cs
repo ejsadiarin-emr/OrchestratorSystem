@@ -16,19 +16,39 @@ public static class UninstallPackage
             return new UninstallResult { Success = false, Error = "invalid_config" };
         }
 
-        if (string.IsNullOrWhiteSpace(config.Command))
+        // Prefer dedicated uninstall command if specified (avoids artifact download)
+        var command = config.UninstallCommand;
+        var arguments = config.UninstallArgs ?? string.Empty;
+
+        // fallback 1: use Command field if no UninstallCommand is set
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            command = config.Command;
+        }
+
+        // fallback 2: if command is missing or is the placeholder itself, execute the artifact directly
+        if (string.IsNullOrWhiteSpace(command) ||
+            string.Equals(command, "{artifactPath}", StringComparison.OrdinalIgnoreCase))
+        {
+            command = artifactPath;
+        }
+
+        if (string.IsNullOrWhiteSpace(command))
         {
             return new UninstallResult { Success = false, Error = "missing_command" };
         }
 
-        var command = config.Command;
-        var arguments = config.UninstallArgs ?? string.Empty;
+        // MSI files cannot be executed directly; invoke via msiexec for uninstall
+        if (string.Equals(config.Type, "msi", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrEmpty(artifactPath) &&
+            string.Equals(command, artifactPath, StringComparison.OrdinalIgnoreCase))
+        {
+            command = "msiexec";
+            arguments = $"/x \"{artifactPath}\" {arguments}".Trim();
+        }
 
         // Expand placeholder {artifactPath} in arguments
-        if (arguments.Contains("{artifactPath}", StringComparison.OrdinalIgnoreCase))
-        {
-            arguments = arguments.Replace("{artifactPath}", artifactPath ?? string.Empty, StringComparison.OrdinalIgnoreCase);
-        }
+        arguments = arguments.Replace("{artifactPath}", artifactPath, StringComparison.OrdinalIgnoreCase);
 
         var expectedExitCodes = config.ExpectedExitCodes is { Count: > 0 }
             ? config.ExpectedExitCodes

@@ -17,6 +17,35 @@ using System.Linq;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var distRoot = ResolveDistRoot();
+
+// Resolve absolute paths for data assets relative to the dist root
+var configuredInstallerDb = builder.Configuration.GetConnectionString("InstallerDb");
+var connectionString = !string.IsNullOrWhiteSpace(configuredInstallerDb)
+    ? configuredInstallerDb
+    : $"Data Source={Path.Combine(distRoot, "deployment-poc.db")}";
+builder.Configuration["ConnectionStrings:InstallerDb"] = connectionString;
+
+var artifactStorePath = builder.Configuration["ArtifactStore:RootPath"]
+    ?? Path.Combine(distRoot, "artifacts");
+if (!Path.IsPathRooted(artifactStorePath))
+{
+    artifactStorePath = Path.GetFullPath(Path.Combine(distRoot, artifactStorePath));
+}
+builder.Configuration["ArtifactStore:RootPath"] = artifactStorePath;
+
+var agentExePath = builder.Configuration["AgentDownload:AgentExePath"]
+    ?? Path.Combine(distRoot, "agent.exe");
+if (!Path.IsPathRooted(agentExePath))
+{
+    agentExePath = Path.GetFullPath(Path.Combine(distRoot, agentExePath));
+}
+builder.Configuration["AgentDownload:AgentExePath"] = agentExePath;
+
+// Ensure directories exist
+Directory.CreateDirectory(distRoot);
+Directory.CreateDirectory(artifactStorePath);
+
 var allowedCorsOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
     .Get<string[]>()
@@ -49,14 +78,6 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 builder.Logging.AddConsole();
-
-var configuredInstallerDb = builder.Configuration.GetConnectionString("InstallerDb");
-var fallbackDataDirectory = Path.Combine(builder.Environment.ContentRootPath, "data");
-Directory.CreateDirectory(fallbackDataDirectory);
-var fallbackDbPath = Path.Combine(fallbackDataDirectory, "deployment-poc.db");
-var connectionString = !string.IsNullOrWhiteSpace(configuredInstallerDb)
-    ? configuredInstallerDb
-    : $"Data Source={fallbackDbPath}";
 
 builder.Services.AddDbContext<InstallerDbContext>(options =>
     options.UseSqlite(connectionString));
@@ -95,9 +116,7 @@ app.Urls.Clear();
 app.Urls.Add("http://0.0.0.0:5000");
 
 // startup cleanup: purge stale temp upload directories
-var artifactRoot = builder.Configuration["ArtifactStore:RootPath"]
-    ?? Path.Combine(AppContext.BaseDirectory, "artifacts");
-var tempRoot = Path.Combine(Path.GetFullPath(artifactRoot), "_temp");
+var tempRoot = Path.Combine(artifactStorePath, "_temp");
 if (Directory.Exists(tempRoot))
 {
     foreach (var dir in Directory.GetDirectories(tempRoot))
@@ -136,3 +155,37 @@ app.MapHealthChecks("/health");
 app.MapFallbackToFile("index.html");
 
 app.Run();
+
+static string ResolveDistRoot()
+{
+    // Check if we're running as a published single-file exe from dist/
+    var exePath = Environment.ProcessPath;
+    if (!string.IsNullOrEmpty(exePath))
+    {
+        var exeDir = Path.GetDirectoryName(exePath)!;
+        // If the exe directory looks like our dist folder (contains either exe)
+        if (File.Exists(Path.Combine(exeDir, "DeploymentPoC.Orchestrator.exe")) ||
+            File.Exists(Path.Combine(exeDir, "DeploymentPoC.Agent.exe")) ||
+            File.Exists(Path.Combine(exeDir, "orchestrator.exe")) ||
+            File.Exists(Path.Combine(exeDir, "agent.exe")))
+        {
+            return exeDir;
+        }
+    }
+
+    // Development: find project root by looking for .sln file
+    var currentDir = AppContext.BaseDirectory;
+    while (!string.IsNullOrEmpty(currentDir))
+    {
+        if (File.Exists(Path.Combine(currentDir, "DeploymentPoC.sln")))
+        {
+            return Path.Combine(currentDir, "dist");
+        }
+        var parent = Directory.GetParent(currentDir);
+        if (parent is null) break;
+        currentDir = parent.FullName;
+    }
+
+    // Fallback: current working directory + dist
+    return Path.Combine(Directory.GetCurrentDirectory(), "dist");
+}

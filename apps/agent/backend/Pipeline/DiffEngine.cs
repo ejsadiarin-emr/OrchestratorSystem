@@ -6,12 +6,19 @@ namespace DeploymentPoC.Agent.Pipeline;
 public static class DiffEngine
 {
     public static DiffResult ComputeDiff(List<PackageAssignment> current, List<PackageAssignment> target)
-        => ComputeDiff(current, target, null);
+        => ComputeDiff(current, target, null, null);
 
     public static DiffResult ComputeDiff(
         List<PackageAssignment> current,
         List<PackageAssignment> target,
         Dictionary<string, PreCheckResult>? preCheckResults)
+        => ComputeDiff(current, target, preCheckResults, null);
+
+    public static DiffResult ComputeDiff(
+        List<PackageAssignment> current,
+        List<PackageAssignment> target,
+        Dictionary<string, PreCheckResult>? preCheckResults,
+        string? mode)
     {
         var currentByName = current.ToDictionary(p => p.Name);
         var targetByName = target.ToDictionary(p => p.Name);
@@ -20,6 +27,15 @@ public static class DiffEngine
         var removed = current.Where(p => !targetByName.ContainsKey(p.Name)).ToList();
         var changed = target.Where(p => currentByName.TryGetValue(p.Name, out var c) && c.Version != p.Version).ToList();
         var unchanged = target.Where(p => currentByName.TryGetValue(p.Name, out var c) && c.Version == p.Version).ToList();
+
+        // In uninstall mode, all target packages represent what to remove.
+        // Packages with different versions should be reported as Removed, not Changed.
+        if (string.Equals(mode, "uninstall", StringComparison.OrdinalIgnoreCase))
+        {
+            removed = removed.Concat(changed).ToList();
+            changed = new List<PackageAssignment>();
+            added = new List<PackageAssignment>();
+        }
 
         if (preCheckResults is not null && preCheckResults.Count > 0)
         {

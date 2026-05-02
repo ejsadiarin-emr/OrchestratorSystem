@@ -79,6 +79,11 @@ public static class UninstallPackage
 
             if (!expectedExitCodes.Contains(process.ExitCode))
             {
+                if (process.ExitCode == 1603 || process.ExitCode == -1)
+                {
+                    return await ExecuteWithElevationAsync(command, arguments, artifactPath, expectedExitCodes, timeout, ct);
+                }
+
                 var stderr = await process.StandardError.ReadToEndAsync(ct);
                 return new UninstallResult
                 {
@@ -89,6 +94,10 @@ public static class UninstallPackage
             }
 
             return new UninstallResult { Success = true };
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == 740)
+        {
+            return await ExecuteWithElevationAsync(command, arguments, artifactPath, expectedExitCodes, timeout, ct);
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == 2)
         {
@@ -160,6 +169,63 @@ public static class UninstallPackage
         }
 
         return default;
+    }
+
+    private static async Task<UninstallResult> ExecuteWithElevationAsync(
+        string command,
+        string arguments,
+        string? artifactPath,
+        List<int> expectedExitCodes,
+        TimeSpan timeout,
+        CancellationToken ct)
+    {
+        try
+        {
+            using var elevatedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            elevatedCts.CancelAfter(timeout);
+
+            using var elevatedProcess = new Process();
+            elevatedProcess.StartInfo.FileName = command;
+            elevatedProcess.StartInfo.Arguments = arguments;
+            elevatedProcess.StartInfo.UseShellExecute = true;
+            elevatedProcess.StartInfo.Verb = "runas";
+            elevatedProcess.StartInfo.CreateNoWindow = false;
+            if (artifactPath is not null)
+            {
+                elevatedProcess.StartInfo.WorkingDirectory = Path.GetDirectoryName(Path.GetFullPath(artifactPath)) ?? Directory.GetCurrentDirectory();
+            }
+
+            elevatedProcess.Start();
+
+            try
+            {
+                await elevatedProcess.WaitForExitAsync(elevatedCts.Token);
+            }
+            catch (OperationCanceledException) when (elevatedCts.Token.IsCancellationRequested && !ct.IsCancellationRequested)
+            {
+                try { elevatedProcess.Kill(); } catch { }
+                return new UninstallResult { Success = false, Error = "uninstall_timeout" };
+            }
+
+            if (!expectedExitCodes.Contains(elevatedProcess.ExitCode))
+            {
+                return new UninstallResult
+                {
+                    Success = false,
+                    Error = $"exit_code_{elevatedProcess.ExitCode}"
+                };
+            }
+
+            return new UninstallResult { Success = true };
+        }
+        catch (Win32Exception retryEx) when (retryEx.NativeErrorCode == 1223)
+        {
+            return new UninstallResult { Success = false, Error = "elevation_denied" };
+        }
+        catch (Win32Exception retryEx)
+        {
+            return new UninstallResult { Success = false, Error = $"win32_error_{retryEx.NativeErrorCode}" };
+        }
     }
 
     private static (string Command, string Arguments) ParseCommandString(string rawCommand)

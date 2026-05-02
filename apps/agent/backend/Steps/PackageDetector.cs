@@ -247,7 +247,24 @@ public static class PackageDetector
     {
         var a = NormalizeVersion(actual);
         var b = NormalizeVersion(expected);
-        return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+
+        if (string.Equals(a, b, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Prefix match by dot-separated segments: expected must be a prefix of actual
+        var aSegs = a.Split('.');
+        var bSegs = b.Split('.');
+
+        if (bSegs.Length > aSegs.Length)
+            return false;
+
+        for (int i = 0; i < bSegs.Length; i++)
+        {
+            if (!string.Equals(aSegs[i], bSegs[i], StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+
+        return true;
     }
 
     private static string NormalizeVersion(string version)
@@ -265,6 +282,13 @@ public static class PackageDetector
         while (v.EndsWith(".0", StringComparison.Ordinal) && v.Count(c => c == '.') > 1)
         {
             v = v[..^2];
+        }
+
+        // Strip parenthetical metadata (e.g. " ((SQLServer).190924-2033)")
+        var parenIdx = v.IndexOf(" (", StringComparison.Ordinal);
+        if (parenIdx >= 0)
+        {
+            v = v[..parenIdx];
         }
 
         return v;

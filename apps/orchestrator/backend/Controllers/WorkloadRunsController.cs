@@ -722,6 +722,318 @@ public sealed class WorkloadRunsController : ControllerBase
         });
     }
 
+    [HttpGet("preview")]
+    public async Task<ActionResult<DryRunPreviewResponse>> Preview(
+        [FromQuery] Guid workloadId,
+        [FromQuery] Guid revisionId,
+        [FromQuery] string mode,
+        [FromQuery] string nodeIds)
+    {
+        var errors = new List<ValidationFieldError>();
+        if (!TryNormalizeMode(mode, out var normalizedMode))
+        {
+            errors.Add(new ValidationFieldError
+            {
+                Field = "mode",
+                Error = "Mode must be one of: install, update, uninstall"
+            });
+        }
+
+        var parsedNodeIds = ParseNodeIds(nodeIds);
+        if (parsedNodeIds.Count == 0 || parsedNodeIds.Any(n => n == Guid.Empty))
+        {
+            errors.Add(new ValidationFieldError
+            {
+                Field = "nodeIds",
+                Error = "NodeIds must be a comma-separated list of non-empty GUIDs"
+            });
+        }
+
+        var workload = await _db.WorkloadDefinitions.AsNoTracking().SingleOrDefaultAsync(w => w.WorkloadId == workloadId);
+        if (workload is null)
+        {
+            errors.Add(new ValidationFieldError
+            {
+                Field = "workloadId",
+                Error = $"Workload {workloadId} not found"
+            });
+        }
+
+        WorkloadRevisionEntity? revision = null;
+        if (workload is not null)
+        {
+            revision = await _db.WorkloadRevisions
+                .AsNoTracking()
+                .Include(r => r.Packages)
+                .SingleOrDefaultAsync(r => r.RevisionId == revisionId && r.WorkloadId == workloadId);
+            if (revision is null)
+            {
+                errors.Add(new ValidationFieldError
+                {
+                    Field = "revisionId",
+                    Error = $"Revision {revisionId} not found for workload {workloadId}"
+                });
+            }
+            else if (!revision.IsPublished)
+            {
+                errors.Add(new ValidationFieldError
+                {
+                    Field = "revisionId",
+                    Error = "Cannot create a run for an unpublished revision"
+                });
+            }
+        }
+
+        if (parsedNodeIds.Count > 0)
+        {
+            var existingNodeCount = await _db.Nodes.AsNoTracking().CountAsync(n => parsedNodeIds.Contains(n.NodeId));
+            if (existingNodeCount != parsedNodeIds.Count)
+            {
+                errors.Add(new ValidationFieldError
+                {
+                    Field = "nodeIds",
+                    Error = "One or more node ids were not found"
+                });
+            }
+        }
+
+        if (normalizedMode == "uninstall" && revision is not null)
+        {
+            var nodesWithoutRevision = await _db.NodeWorkloadStates
+                .AsNoTracking()
+                .Where(s => s.WorkloadId == workloadId
+                    && parsedNodeIds.Contains(s.NodeId)
+                    && s.CurrentRevisionId != revisionId)
+                .Select(s => s.NodeId)
+                .ToListAsync();
+
+            if (nodesWithoutRevision.Count > 0)
+            {
+                errors.Add(new ValidationFieldError
+                {
+                    Field = "nodeIds",
+                    Error = $"One or more nodes do not have revision {revisionId} installed"
+                });
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            return BadRequest(new ValidationErrorResponse { Errors = errors });
+        }
+
+        var targetPackageIds = revision!.Packages.Select(p => p.PackageId).ToList();
+        var targetPackageEntities = await _db.Packages
+            .AsNoTracking()
+            .Where(p => targetPackageIds.Contains(p.PackageId))
+            .ToDictionaryAsync(p => p.PackageId);
+
+        var targetPackageDict = revision.Packages
+            .OrderBy(p => p.PackageIndex)
+            .GroupBy(p => {
+                var pkg = targetPackageEntities.GetValueOrDefault(p.PackageId);
+                return pkg?.Name ?? "";
+            })
+            .Select(g => g.First())
+            .ToDictionary(
+                p => {
+                    var pkg = targetPackageEntities.GetValueOrDefault(p.PackageId);
+                    return pkg?.Name ?? "";
+                },
+                p => {
+                    var pkg = targetPackageEntities.GetValueOrDefault(p.PackageId);
+                    return new { p.PackageId, Name = pkg?.Name ?? "", Version = pkg?.Version ?? "" };
+                },
+                StringComparer.OrdinalIgnoreCase);
+
+        var targetPackageList = targetPackageDict.Values
+            .OrderBy(t => revision.Packages
+                .First(p => targetPackageEntities.GetValueOrDefault(p.PackageId)?.Name == t.Name).PackageIndex)
+            .ToList();
+
+        var nodeEntities = await _db.Nodes
+            .AsNoTracking()
+            .Where(n => parsedNodeIds.Contains(n.NodeId))
+            .ToDictionaryAsync(n => n.NodeId);
+
+        var nodeWorkloadStates = await _db.NodeWorkloadStates
+            .AsNoTracking()
+            .Where(s => s.WorkloadId == workloadId && parsedNodeIds.Contains(s.NodeId))
+            .ToDictionaryAsync(s => s.NodeId);
+
+        var currentRevisionIds = nodeWorkloadStates.Values
+            .Where(s => s.CurrentRevisionId.HasValue && s.CurrentRevisionId.Value != Guid.Empty)
+            .Select(s => s.CurrentRevisionId!.Value)
+            .Distinct()
+            .ToList();
+
+        var currentRevisions = await _db.WorkloadRevisions
+            .AsNoTracking()
+            .Where(r => currentRevisionIds.Contains(r.RevisionId))
+            .ToDictionaryAsync(r => r.RevisionId);
+
+        var currentWorkloadPackages = await _db.WorkloadPackages
+            .AsNoTracking()
+            .Where(wp => currentRevisionIds.Contains(wp.RevisionId))
+            .ToListAsync();
+
+        var currentPackageIds = currentWorkloadPackages.Select(wp => wp.PackageId).Distinct().ToList();
+        var currentPackageEntities = await _db.Packages
+            .AsNoTracking()
+            .Where(p => currentPackageIds.Contains(p.PackageId))
+            .ToDictionaryAsync(p => p.PackageId);
+
+        var nodePreviews = new List<DryRunNodePreview>();
+        foreach (var nodeId in parsedNodeIds)
+        {
+            var node = nodeEntities.GetValueOrDefault(nodeId);
+            var nodePreview = new DryRunNodePreview
+            {
+                NodeId = nodeId,
+                Hostname = node?.Hostname ?? "",
+                IsOnline = string.Equals(node?.Status, "Online", StringComparison.OrdinalIgnoreCase)
+            };
+
+            nodeWorkloadStates.TryGetValue(nodeId, out var nodeState);
+            var currentRevId = nodeState?.CurrentRevisionId;
+            if (currentRevId.HasValue && currentRevId.Value == Guid.Empty) currentRevId = null;
+
+            nodePreview.CurrentRevisionId = currentRevId;
+            nodePreview.CurrentRevision = currentRevId.HasValue
+                ? currentRevisions.GetValueOrDefault(currentRevId.Value)?.Version ?? ""
+                : "";
+
+            if (normalizedMode == "uninstall")
+            {
+                var currentPkgsForNode = currentWorkloadPackages
+                    .Where(wp => wp.RevisionId == currentRevId)
+                    .OrderBy(wp => wp.PackageIndex)
+                    .ToList();
+
+                nodePreview.Actions = currentPkgsForNode
+                    .Select(wp =>
+                    {
+                        var pkg = currentPackageEntities.GetValueOrDefault(wp.PackageId);
+                        return new DryRunPackageAction
+                        {
+                            PackageName = pkg?.Name ?? "",
+                            Action = "uninstall",
+                            CurrentVersion = pkg?.Version,
+                            TargetVersion = null
+                        };
+                    })
+                    .ToList();
+            }
+            else if (currentRevId == null)
+            {
+                nodePreview.Actions = targetPackageList
+                    .Select(t => new DryRunPackageAction
+                    {
+                        PackageName = t.Name,
+                        Action = "install",
+                        CurrentVersion = null,
+                        TargetVersion = t.Version
+                    })
+                    .ToList();
+            }
+            else
+            {
+                var currentPkgsForNode = currentWorkloadPackages
+                    .Where(wp => wp.RevisionId == currentRevId.Value)
+                    .OrderBy(wp => wp.PackageIndex)
+                    .ToList();
+
+                var currentPkgData = currentPkgsForNode
+                    .Select(wp =>
+                    {
+                        var pkg = currentPackageEntities.GetValueOrDefault(wp.PackageId);
+                        return new { Name = pkg?.Name ?? "", Version = pkg?.Version ?? "" };
+                    })
+                    .Where(x => x.Name.Length > 0)
+                    .GroupBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(g => g.First())
+                    .ToList();
+
+                var currentByName = currentPkgData.ToDictionary(x => x.Name, x => x.Version, StringComparer.OrdinalIgnoreCase);
+                var targetNames = targetPackageList.Select(t => t.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                var actions = new List<DryRunPackageAction>();
+
+                foreach (var t in targetPackageList)
+                {
+                    if (!currentByName.TryGetValue(t.Name, out var curVer))
+                    {
+                        actions.Add(new DryRunPackageAction
+                        {
+                            PackageName = t.Name,
+                            Action = "install",
+                            CurrentVersion = null,
+                            TargetVersion = t.Version
+                        });
+                    }
+                    else if (!string.Equals(curVer, t.Version, StringComparison.Ordinal))
+                    {
+                        actions.Add(new DryRunPackageAction
+                        {
+                            PackageName = t.Name,
+                            Action = "update",
+                            CurrentVersion = curVer,
+                            TargetVersion = t.Version
+                        });
+                    }
+                    else
+                    {
+                        actions.Add(new DryRunPackageAction
+                        {
+                            PackageName = t.Name,
+                            Action = "unchanged",
+                            CurrentVersion = curVer,
+                            TargetVersion = t.Version
+                        });
+                    }
+                }
+
+                foreach (var c in currentPkgData)
+                {
+                    if (!targetNames.Contains(c.Name))
+                    {
+                        actions.Add(new DryRunPackageAction
+                        {
+                            PackageName = c.Name,
+                            Action = "uninstall",
+                            CurrentVersion = c.Version,
+                            TargetVersion = null
+                        });
+                    }
+                }
+
+                nodePreview.Actions = actions;
+            }
+
+            nodePreviews.Add(nodePreview);
+        }
+
+        return Ok(new DryRunPreviewResponse
+        {
+            WorkloadId = workload!.WorkloadId,
+            WorkloadName = workload.Name,
+            TargetRevisionId = revision.RevisionId,
+            TargetRevision = revision.Version,
+            Mode = normalizedMode,
+            Nodes = nodePreviews
+        });
+    }
+
+    private static List<Guid> ParseNodeIds(string? nodeIds)
+    {
+        if (string.IsNullOrWhiteSpace(nodeIds))
+            return new List<Guid>();
+
+        return nodeIds.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => Guid.TryParse(s.Trim(), out var g) ? g : Guid.Empty)
+            .ToList();
+    }
+
     private static bool TryNormalizeMode(string? mode, out string normalized)
     {
         normalized = (mode ?? string.Empty).Trim().ToLowerInvariant();

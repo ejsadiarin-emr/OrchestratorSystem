@@ -174,6 +174,7 @@ export interface NodeWorkloadState {
   nodeId: string
   workloadId: string
   workloadRevision: string
+  currentRevisionId?: string | null
   runId: string
   status: WorkloadRunStatus
   updatedAt: string

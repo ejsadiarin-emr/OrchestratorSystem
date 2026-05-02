@@ -94,6 +94,26 @@ public sealed class WorkloadRunsController : ControllerBase
             });
         }
 
+        if (mode == "uninstall")
+        {
+            var nodesWithoutRevision = await _db.NodeWorkloadStates
+                .AsNoTracking()
+                .Where(s => s.WorkloadId == request.WorkloadId
+                    && distinctNodeIds.Contains(s.NodeId)
+                    && s.CurrentRevisionId != request.RevisionId)
+                .Select(s => s.NodeId)
+                .ToListAsync();
+
+            if (nodesWithoutRevision.Count > 0)
+            {
+                errors.Add(new ValidationFieldError
+                {
+                    Field = "nodeIds",
+                    Error = $"One or more nodes do not have revision {request.RevisionId} installed"
+                });
+            }
+        }
+
         if (errors.Count > 0)
         {
             return BadRequest(new ValidationErrorResponse { Errors = errors });

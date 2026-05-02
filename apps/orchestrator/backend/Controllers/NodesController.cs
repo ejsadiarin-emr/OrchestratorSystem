@@ -206,6 +206,7 @@ public class NodesController : ControllerBase
                 NodeId = s.NodeId,
                 WorkloadId = s.WorkloadId,
                 WorkloadRevision = s.CurrentRevision != null ? s.CurrentRevision.Version : "",
+                CurrentRevisionId = s.CurrentRevisionId,
                 RunId = Guid.Empty,
                 Status = InferStatus(s),
                 UpdatedAt = s.UpdatedAtUtc.ToString("O")

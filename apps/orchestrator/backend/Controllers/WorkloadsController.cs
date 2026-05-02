@@ -524,6 +524,41 @@ public sealed class WorkloadsController : ControllerBase
         return Ok(MapWorkloadDetail(workload, revisions, packages));
     }
 
+    [HttpGet("{workloadId:guid}/installed-revisions")]
+    public async Task<ActionResult<List<InstalledRevisionResponse>>> GetInstalledRevisions(Guid workloadId)
+    {
+        var workload = await _db.WorkloadDefinitions.SingleOrDefaultAsync(w => w.WorkloadId == workloadId);
+        if (workload is null)
+        {
+            return NotFound(new { message = $"Workload {workloadId} not found" });
+        }
+
+        var installedRevisions = await _db.NodeWorkloadStates
+            .AsNoTracking()
+            .Where(s => s.WorkloadId == workloadId && s.CurrentRevisionId != null)
+            .Select(s => s.CurrentRevisionId!.Value)
+            .Distinct()
+            .ToListAsync();
+
+        if (installedRevisions.Count == 0)
+        {
+            return Ok(new List<InstalledRevisionResponse>());
+        }
+
+        var revisionDetails = await _db.WorkloadRevisions
+            .AsNoTracking()
+            .Where(r => installedRevisions.Contains(r.RevisionId))
+            .Select(r => new InstalledRevisionResponse
+            {
+                RevisionId = r.RevisionId,
+                Version = r.Version,
+                IsPublished = r.IsPublished
+            })
+            .ToListAsync();
+
+        return Ok(revisionDetails);
+    }
+
     [HttpDelete("{workloadId:guid}")]
     public async Task<ActionResult> Delete(Guid workloadId)
     {

@@ -272,9 +272,9 @@ public class NodesController : ControllerBase
             .ThenInclude(s => s.CurrentRevision)
             .ToListAsync();
 
-        var workloadDetectionConfigs = request.WorkloadId.HasValue
+        var sharedConfigs = request.WorkloadId.HasValue
             ? await LoadDetectionConfigsByWorkloadAsync(request.WorkloadId)
-            : new Dictionary<Guid, List<DetectionConfigDto>>();
+            : null;
 
         var timeoutSeconds = _configuration.GetValue<int>("AgentProbeTimeoutSeconds", 30);
         var client = _httpClientFactory.CreateClient();
@@ -284,6 +284,8 @@ public class NodesController : ControllerBase
 
         foreach (var node in nodes)
         {
+            var nodeConfigs = sharedConfigs ?? await LoadDetectionConfigsByWorkloadAsync(null, node);
+
             var nodeResult = new NodePreCheckResponse
             {
                 NodeId = node.NodeId,
@@ -295,7 +297,7 @@ public class NodesController : ControllerBase
 
             try
             {
-                var allPackageRequests = workloadDetectionConfigs
+                var allPackageRequests = nodeConfigs
                     .SelectMany(kvp => kvp.Value)
                     .Select(c => new PackageDetectionRequest
                     {
@@ -369,7 +371,7 @@ public class NodesController : ControllerBase
                 continue;
             }
 
-            nodeResult.Summary = await ReconcileProbeResults(node, agentResponse, workloadDetectionConfigs);
+            nodeResult.Summary = await ReconcileProbeResults(node, agentResponse, nodeConfigs);
 
             results.Add(nodeResult);
         }
@@ -393,7 +395,7 @@ public class NodesController : ControllerBase
 
         var workloadDetectionConfigs = workloadId.HasValue
             ? await LoadDetectionConfigsByWorkloadAsync(workloadId)
-            : new Dictionary<Guid, List<DetectionConfigDto>>();
+            : await LoadDetectionConfigsByWorkloadAsync(null, node);
 
         var timeoutSeconds = _configuration.GetValue<int>("AgentProbeTimeoutSeconds", 30);
         var client = _httpClientFactory.CreateClient();
@@ -547,7 +549,20 @@ public class NodesController : ControllerBase
 
             if (existingState is null)
             {
-                // Workload not assigned to this node — do not report or create phantom state
+                // Unassigned workload — report probe results without creating DB state
+                var presentCount = detectionConfigs.Count(d =>
+                    agentResultMap.TryGetValue(d.PackageId, out var r) &&
+                    r.Status != PreCheckStatus.NotPresent);
+                var totalCount = detectionConfigs.Count;
+
+                items.AddRange(BuildPerPackageItems(detectionConfigs, agentResultMap, ""));
+                items.Add(new PreCheckItem
+                {
+                    Category = "package",
+                    Name = $"drift: {presentCount}/{totalCount} packages present",
+                    Status = presentCount == totalCount ? "passed" : "warning",
+                    Detail = presentCount == totalCount ? "all packages present" : "drift detected"
+                });
             }
             else
             {
@@ -580,7 +595,10 @@ public class NodesController : ControllerBase
 
                     if (allMatch)
                     {
-                        // Scenario A — Match
+                        // Scenario A — Match; update PackageStatesJson so
+                        // BuildReadOnlyPreCheckSummary reflects current good state
+                        existingState.PackageStatesJson = BuildPackageStatesJson(detectionConfigs, agentResultMap);
+                        existingState.UpdatedAtUtc = DateTime.UtcNow;
                         items.AddRange(BuildPerPackageItems(detectionConfigs, agentResultMap, dbVersion));
                     }
                     else
@@ -671,7 +689,8 @@ public class NodesController : ControllerBase
         return items;
     }
 
-    private async Task<Dictionary<Guid, List<DetectionConfigDto>>> LoadDetectionConfigsByWorkloadAsync(Guid? workloadId)
+    private async Task<Dictionary<Guid, List<DetectionConfigDto>>> LoadDetectionConfigsByWorkloadAsync(
+        Guid? workloadId, NodeEntity? node = null)
     {
         IQueryable<WorkloadRevisionEntity> revisionQuery = _db.WorkloadRevisions
             .Include(r => r.Packages);
@@ -683,9 +702,25 @@ public class NodesController : ControllerBase
 
         var revisions = await revisionQuery.ToListAsync();
 
-        var publishedRevisions = revisions.Where(r => r.IsPublished).ToList();
+        List<WorkloadRevisionEntity> effectiveRevisions;
 
-        var packageIds = publishedRevisions
+        if (node is not null && !workloadId.HasValue)
+        {
+            var assignedRevisionIds = node.NodeWorkloadStates
+                .Where(s => s.CurrentRevisionId.HasValue)
+                .Select(s => s.CurrentRevisionId!.Value)
+                .ToHashSet();
+
+            effectiveRevisions = revisions
+                .Where(r => assignedRevisionIds.Contains(r.RevisionId))
+                .ToList();
+        }
+        else
+        {
+            effectiveRevisions = revisions.Where(r => r.IsPublished).ToList();
+        }
+
+        var packageIds = effectiveRevisions
             .SelectMany(r => r.Packages)
             .Select(p => p.PackageId)
             .Distinct()
@@ -699,7 +734,7 @@ public class NodesController : ControllerBase
 
         var result = new Dictionary<Guid, List<DetectionConfigDto>>();
 
-        foreach (var rev in publishedRevisions)
+        foreach (var rev in effectiveRevisions)
         {
             var configs = new List<DetectionConfigDto>();
             foreach (var wp in rev.Packages)

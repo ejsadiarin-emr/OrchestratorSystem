@@ -64,3 +64,7 @@ run-frontend:
 clean:
 	Write-Host "Cleaning dist folder..." -ForegroundColor Cyan
 	if (Test-Path .\dist) { Get-ChildItem -Path .\dist -Exclude .gitignore | Remove-Item -Recurse -Force }
+
+# FULL WIPE
+full: clean stop-processes build-frontend publish-orchestrator publish-agent download-artifacts copy-workloads 
+	Write-Host "=== Publish complete. Artifacts in .\dist ===" -ForegroundColor Green

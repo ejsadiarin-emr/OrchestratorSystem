@@ -1052,6 +1052,10 @@ public sealed class WorkloadsController : ControllerBase
                         {
                             existingPackage.UninstallArgs = adapter.UninstallArgs;
                         }
+                        if (string.IsNullOrWhiteSpace(existingPackage.UpgradeBehavior) || existingPackage.UpgradeBehavior == "InPlace")
+                        {
+                            existingPackage.UpgradeBehavior = adapter.UpgradeBehavior;
+                        }
 
                         revision.Packages.Add(new WorkloadPackageEntity
                         {

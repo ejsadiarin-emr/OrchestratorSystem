@@ -545,4 +545,239 @@ public class WorkloadRunsControllerCurrentPackagesTests
         var payload = (AssignRunPayload)_capturedEnvelopes[0].Payload;
         Assert.That(payload.CurrentPackages[0].InstallAdapter.UninstallArgs, Is.EqualTo("--remove --force"));
     }
+
+    [Test]
+    public async Task Create_AllowsUpdate_WhenNodeHasDriftOnDifferentRevision()
+    {
+        var workloadId = Guid.NewGuid();
+        var revisionId = Guid.NewGuid();
+        var currentRevisionId = Guid.NewGuid();
+        var nodeId = Guid.NewGuid();
+        var packageId = Guid.NewGuid();
+
+        _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity
+        {
+            WorkloadId = workloadId,
+            Name = "test-workload"
+        });
+
+        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
+        {
+            RevisionId = revisionId,
+            WorkloadId = workloadId,
+            Version = "2.0",
+            IsPublished = true
+        });
+
+        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
+        {
+            RevisionId = currentRevisionId,
+            WorkloadId = workloadId,
+            Version = "1.0",
+            IsPublished = true
+        });
+
+        _db.Packages.Add(new PackageEntity
+        {
+            PackageId = packageId,
+            Name = "new-package",
+            Version = "2.0",
+            InstallType = "exe",
+            InstallArgs = "/silent",
+            UninstallArgs = "/uninstall"
+        });
+
+        _db.WorkloadPackages.Add(new WorkloadPackageEntity
+        {
+            WorkloadPackageId = Guid.NewGuid(),
+            RevisionId = revisionId,
+            PackageId = packageId,
+            PackageIndex = 0
+        });
+
+        _db.Nodes.Add(new NodeEntity
+        {
+            NodeId = nodeId,
+            Hostname = "test-node",
+            DisplayName = "Test Node"
+        });
+
+        _db.NodeWorkloadStates.Add(new NodeWorkloadStateEntity
+        {
+            NodeWorkloadStateId = Guid.NewGuid(),
+            NodeId = nodeId,
+            WorkloadId = workloadId,
+            CurrentRevisionId = currentRevisionId,
+            PackageStatesJson = "{\"pkg1\":{\"status\":\"NotPresent\"}}"
+        });
+
+        await _db.SaveChangesAsync();
+
+        var controller = CreateController();
+        var request = new CreateWorkloadRunRequest
+        {
+            WorkloadId = workloadId,
+            RevisionId = revisionId,
+            Mode = "install",
+            IdempotencyKey = Guid.NewGuid().ToString(),
+            NodeIds = new List<Guid> { nodeId }
+        };
+
+        var result = await controller.Create(request);
+
+        Assert.That(result.Result, Is.TypeOf<CreatedAtActionResult>());
+    }
+
+    [Test]
+    public async Task Create_BlocksInstall_WhenNodeHasDriftOnSameRevisionAndReinstallIsFalse()
+    {
+        var workloadId = Guid.NewGuid();
+        var revisionId = Guid.NewGuid();
+        var nodeId = Guid.NewGuid();
+        var packageId = Guid.NewGuid();
+
+        _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity
+        {
+            WorkloadId = workloadId,
+            Name = "test-workload"
+        });
+
+        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
+        {
+            RevisionId = revisionId,
+            WorkloadId = workloadId,
+            Version = "1.0",
+            IsPublished = true
+        });
+
+        _db.Packages.Add(new PackageEntity
+        {
+            PackageId = packageId,
+            Name = "package",
+            Version = "1.0",
+            InstallType = "exe",
+            InstallArgs = "/silent",
+            UninstallArgs = "/uninstall"
+        });
+
+        _db.WorkloadPackages.Add(new WorkloadPackageEntity
+        {
+            WorkloadPackageId = Guid.NewGuid(),
+            RevisionId = revisionId,
+            PackageId = packageId,
+            PackageIndex = 0
+        });
+
+        _db.Nodes.Add(new NodeEntity
+        {
+            NodeId = nodeId,
+            Hostname = "test-node",
+            DisplayName = "Test Node"
+        });
+
+        _db.NodeWorkloadStates.Add(new NodeWorkloadStateEntity
+        {
+            NodeWorkloadStateId = Guid.NewGuid(),
+            NodeId = nodeId,
+            WorkloadId = workloadId,
+            CurrentRevisionId = revisionId,
+            PackageStatesJson = "{\"pkg1\":{\"status\":\"NotPresent\"}}"
+        });
+
+        await _db.SaveChangesAsync();
+
+        var controller = CreateController();
+        var request = new CreateWorkloadRunRequest
+        {
+            WorkloadId = workloadId,
+            RevisionId = revisionId,
+            Mode = "install",
+            IdempotencyKey = Guid.NewGuid().ToString(),
+            NodeIds = new List<Guid> { nodeId },
+            Reinstall = false
+        };
+
+        var result = await controller.Create(request);
+
+        Assert.That(result.Result, Is.TypeOf<ConflictObjectResult>());
+        var conflictResult = (ConflictObjectResult)result.Result!;
+        var messageProperty = conflictResult.Value!.GetType().GetProperty("message");
+        Assert.That(messageProperty, Is.Not.Null);
+        var message = messageProperty!.GetValue(conflictResult.Value) as string;
+        Assert.That(message, Does.Contain("package drift"));
+    }
+
+    [Test]
+    public async Task Create_AllowsInstall_WhenNodeHasDriftOnSameRevisionAndReinstallIsTrue()
+    {
+        var workloadId = Guid.NewGuid();
+        var revisionId = Guid.NewGuid();
+        var nodeId = Guid.NewGuid();
+        var packageId = Guid.NewGuid();
+
+        _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity
+        {
+            WorkloadId = workloadId,
+            Name = "test-workload"
+        });
+
+        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
+        {
+            RevisionId = revisionId,
+            WorkloadId = workloadId,
+            Version = "1.0",
+            IsPublished = true
+        });
+
+        _db.Packages.Add(new PackageEntity
+        {
+            PackageId = packageId,
+            Name = "package",
+            Version = "1.0",
+            InstallType = "exe",
+            InstallArgs = "/silent",
+            UninstallArgs = "/uninstall"
+        });
+
+        _db.WorkloadPackages.Add(new WorkloadPackageEntity
+        {
+            WorkloadPackageId = Guid.NewGuid(),
+            RevisionId = revisionId,
+            PackageId = packageId,
+            PackageIndex = 0
+        });
+
+        _db.Nodes.Add(new NodeEntity
+        {
+            NodeId = nodeId,
+            Hostname = "test-node",
+            DisplayName = "Test Node"
+        });
+
+        _db.NodeWorkloadStates.Add(new NodeWorkloadStateEntity
+        {
+            NodeWorkloadStateId = Guid.NewGuid(),
+            NodeId = nodeId,
+            WorkloadId = workloadId,
+            CurrentRevisionId = revisionId,
+            PackageStatesJson = "{\"pkg1\":{\"status\":\"NotPresent\"}}"
+        });
+
+        await _db.SaveChangesAsync();
+
+        var controller = CreateController();
+        var request = new CreateWorkloadRunRequest
+        {
+            WorkloadId = workloadId,
+            RevisionId = revisionId,
+            Mode = "install",
+            IdempotencyKey = Guid.NewGuid().ToString(),
+            NodeIds = new List<Guid> { nodeId },
+            Reinstall = true
+        };
+
+        var result = await controller.Create(request);
+
+        Assert.That(result.Result, Is.TypeOf<CreatedAtActionResult>());
+    }
 }

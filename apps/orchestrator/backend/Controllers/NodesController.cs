@@ -714,6 +714,16 @@ public class NodesController : ControllerBase
             effectiveRevisions = revisions
                 .Where(r => assignedRevisionIds.Contains(r.RevisionId))
                 .ToList();
+
+            _logger.LogInformation(
+                "LoadDetectionConfigs: using ASSIGNED revisions for node {NodeId}. " +
+                "AssignedRevisionIds=[{AssignedIds}], EffectiveIds=[{EffectiveIds}], " +
+                "TotalRevisions={TotalRevs}, IsPublishedFilterCount={PublishedCount}",
+                node.NodeId,
+                string.Join(",", assignedRevisionIds.Select(id => id.ToString()[..8])),
+                string.Join(",", effectiveRevisions.Select(r => r.RevisionId.ToString()[..8])),
+                revisions.Count,
+                revisions.Count(r => r.IsPublished));
         }
         else
         {

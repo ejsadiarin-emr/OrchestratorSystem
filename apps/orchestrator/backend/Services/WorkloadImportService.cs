@@ -65,6 +65,11 @@ public sealed class WorkloadImportService
                 existing.UninstallArgs = manifest.InstallAdapter?.UninstallArgs ?? string.Empty;
                 hasUpdates = true;
             }
+            if (string.IsNullOrWhiteSpace(existing.UpgradeBehavior) || existing.UpgradeBehavior == "InPlace")
+            {
+                existing.UpgradeBehavior = manifest.InstallAdapter?.UpgradeBehavior ?? "InPlace";
+                hasUpdates = true;
+            }
             if (hasUpdates)
             {
                 await _db.SaveChangesAsync();

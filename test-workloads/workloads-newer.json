@@ -192,7 +192,7 @@
   {
     "name": "Amazing Workload",
     "slug": "amazing-workload",
-    "description": "A workload that includes a database management tool, a programming language, and SQL Server Express for a complete development environment.",
+    "description": "A workload that includes a database management tool and a programming language.",
     "version": "2.0.0",
     "preWorkloadSteps": [
       "Write-Host 'Amazing Workload pre-workload: preparing development environment...'",
@@ -200,7 +200,7 @@
     ],
     "postWorkloadSteps": [
       "Write-Host 'Amazing Workload post-workload: development environment ready'",
-      "Write-Host 'Summary: DBeaver + Python + SQL Server Express installed and verified'"
+      "Write-Host 'Summary: DBeaver + Python + SSMS installed and verified'"
     ],
     "defaultShell": "powershell",
     "packages": [
@@ -228,19 +228,35 @@
           "$pyPath = Get-Command python -ErrorAction SilentlyContinue",
           "if ($pyPath) { python --version } else { Write-Error 'python command not found' }"
         ]
-      },
+      }
+    ]
+  },
+  {
+    "name": "SSMS Workload",
+    "slug": "ssms-workload",
+    "description": "Workload focused on SQL Server Management Studio with a GUI installer for interactive testing.",
+    "version": "2.0.0",
+    "preWorkloadSteps": [
+      "Write-Host 'SSMS Workload pre-workload: preparing environment...'",
+      "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force"
+    ],
+    "postWorkloadSteps": [
+      "Write-Host 'SSMS Workload post-workload: SSMS ready'",
+      "Write-Host 'Summary: SSMS installed and verified'"
+    ],
+    "defaultShell": "powershell",
+    "packages": [
       {
-      "name": "sqlserver-2025",
+      "name": "ssms-20.2",
       "preInitSteps": [
-        "Write-Host 'Checking for conflicting ODBC drivers...'; try { $odbc = Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' | Where-Object { $_.DisplayName -eq 'Microsoft ODBC Driver 18 for SQL Server' } | Select-Object -First 1; if ($odbc) { Write-Host \"Removing: $($odbc.DisplayName)\"; Start-Process msiexec.exe -ArgumentList \"/x $($odbc.PSChildName) /quiet /norestart\" -Wait -NoNewWindow; Write-Host \"Removed: $($odbc.DisplayName)\" } else { Write-Host 'No conflicting ODBC drivers found' } } catch { Write-Host \"ODBC check skipped (non-critical): $_\" }; exit 0",
-        "Write-Host 'Checking for existing SQL Server instances...'",
-          "$sqlSvc = Get-Service -Name MSSQL`$SQLEXPRESS -ErrorAction SilentlyContinue",
-          "if ($sqlSvc) { Write-Host \"SQL Server Express service found: $($sqlSvc.Status)\" } else { Write-Host 'No existing SQL instance - proceeding with fresh install' }"
+        "Write-Host 'Checking for existing SSMS installations...'",
+          "$ssmsExe = \"$env:ProgramFiles(x86)\\Microsoft SQL Server Management Studio 20\\Common7\\IDE\\Ssms.exe\"",
+          "if (Test-Path $ssmsExe) { Write-Host \"Existing SSMS 20 found at: $ssmsExe\" } else { Write-Host 'No existing SSMS 20 installation - proceeding with fresh install' }"
         ],
         "postInitSteps": [
-          "Write-Host 'Verifying SQL Server Express installation...'",
-          "$sqlSvc = Get-Service -Name MSSQL`$SQLEXPRESS -ErrorAction SilentlyContinue",
-          "if ($sqlSvc) { Write-Host \"SQL Server Express running: $($sqlSvc.Status)\" } else { Write-Warning 'SQL Server Express service not found' }"
+          "Write-Host 'Verifying SSMS installation...'",
+          "$ssmsExe = \"$env:ProgramFiles(x86)\\Microsoft SQL Server Management Studio 20\\Common7\\IDE\\Ssms.exe\"",
+          "if (Test-Path $ssmsExe) { Write-Host 'SSMS 20.2 installed successfully' } else { Write-Warning 'SSMS 20.2 not found at expected path' }"
         ]
       }
     ]

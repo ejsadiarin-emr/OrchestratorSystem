@@ -1,0 +1,28 @@
+{
+    "detection": {
+        "path": "C:\\Program Files (x86)\\Microsoft SQL Server Management Studio 19\\Common7\\IDE\\Ssms.exe",
+        "type": "file"
+    },
+    "verificationResult": "pass",
+    "channel": "stable",
+    "policyTags": {
+        "idempotencyMode": "none",
+        "riskLevel": "medium",
+        "retryabilityClass": "non-idempotent",
+        "approvalRequired": false
+    },
+    "version": "19.3",
+    "installAdapter": {
+        "upgradeBehavior": "UninstallFirst",
+        "arguments": "/install /quiet /norestart",
+        "timeoutSeconds": 600,
+        "uninstallArgs": "/uninstall /quiet",
+        "command": "SSMS-Setup-ENU-19.3.exe",
+        "type": "exe",
+        "expectedExitCodes": [
+            0
+        ]
+    },
+    "packageId": "ssms",
+    "artifactType": "exe"
+}

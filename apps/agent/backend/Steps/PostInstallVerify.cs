@@ -7,20 +7,22 @@ public static class PostInstallVerify
     public static async Task<VerifyResult> ExecuteAsync(DetectionConfig config, CancellationToken ct)
     {
         var result = await PackageDetector.DetectAsync(config, ct);
-        return result.Status switch
+
+        var hasExpectedVersion = !string.IsNullOrWhiteSpace(config.ExpectedVersion);
+        var versionMatches = result.Status == PreCheckStatus.AlreadySatisfied
+            && (!hasExpectedVersion || VersionComparer.Matches(config.ExpectedVersion, result.ActualVersion));
+
+        if (versionMatches)
         {
-            PreCheckStatus.AlreadySatisfied => new VerifyResult { Success = true },
-            PreCheckStatus.WrongVersion => new VerifyResult
-            {
-                Success = false,
-                Error = result.Error ?? "version_mismatch"
-            },
-            PreCheckStatus.NotPresent => new VerifyResult
-            {
-                Success = false,
-                Error = result.Error ?? "not_detected"
-            },
-            _ => new VerifyResult { Success = false, Error = "unknown_detection_result" }
+            return new VerifyResult { Success = true };
+        }
+
+        return new VerifyResult
+        {
+            Success = false,
+            Error = result.Status == PreCheckStatus.NotPresent
+                ? "not_detected"
+                : $"version_mismatch (expected {config.ExpectedVersion}, actual {result.ActualVersion})"
         };
     }
 }

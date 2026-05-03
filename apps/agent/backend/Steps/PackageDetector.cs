@@ -49,7 +49,7 @@ public static class PackageDetector
         if (!File.Exists(config.Path))
             return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent, Error = "file_not_found" });
 
-        return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied });
+        return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied, ActualVersion = null });
     }
 
     private static Task<PreCheckResult> DetectRegistryAsync(DetectionConfig config, CancellationToken ct)
@@ -94,7 +94,21 @@ public static class PackageDetector
                             if (!string.Equals(displayName, displayNameToMatch, StringComparison.OrdinalIgnoreCase))
                                 continue;
 
-                            return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied });
+                            var displayVersion = subKey.GetValue("DisplayVersion") as string;
+                            if (string.IsNullOrWhiteSpace(displayVersion) || string.IsNullOrWhiteSpace(config.ExpectedVersion))
+                            {
+                                return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied, ActualVersion = displayVersion });
+                            }
+
+                            var versionMatches = VersionComparer.Matches(config.ExpectedVersion, displayVersion);
+                            if (versionMatches)
+                            {
+                                return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied, ActualVersion = displayVersion });
+                            }
+                            else
+                            {
+                                return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.WrongVersion, ActualVersion = displayVersion });
+                            }
                         }
                         catch (UnauthorizedAccessException) { }
                         catch (System.Security.SecurityException) { }
@@ -116,83 +130,146 @@ public static class PackageDetector
         }
 
         var path = config.Path;
+        string? resolvedPath = null;
 
         // If it's a full path, do a simple file check.
         if (path.Contains(Path.DirectorySeparatorChar) || path.Contains(Path.AltDirectorySeparatorChar))
         {
             if (File.Exists(path))
             {
-                return DetectFileAsync(config, ct);
+                resolvedPath = path;
             }
-            return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent, Error = "file_not_found" });
-        }
-
-        // It's a command name — search PATH and common install directories dynamically.
-        // No package-specific paths or aliases are hardcoded; manifests must specify
-        // the exact binary name in detection.path (e.g. "node" not "nodejs").
-        var namesToSearch = new List<string> { path };
-        if (OperatingSystem.IsWindows())
-        {
-            namesToSearch.Add(path + ".exe");
-        }
-
-        // 1. Search PATH
-        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
-        foreach (var dir in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
-        {
-            foreach (var name in namesToSearch)
+            else
             {
-                var fullPath = Path.Combine(dir, name);
-                if (File.Exists(fullPath))
-                {
-                    return DetectFileAsync(new DetectionConfig
-                    {
-                        Type = config.Type,
-                        Path = fullPath
-                    }, ct);
-                }
+                return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent, Error = "file_not_found" });
             }
         }
-
-        // 2. Search common Windows install roots and their immediate subdirectories.
-        // This covers GUI installers that drop into C:\Program Files\{ProductName}.
-        if (OperatingSystem.IsWindows())
+        else
         {
-            var searchRoots = new[]
+            // It's a command name — search PATH and common install directories dynamically.
+            // No package-specific paths or aliases are hardcoded; manifests must specify
+            // the exact binary name in detection.path (e.g. "node" not "nodejs").
+            var namesToSearch = new List<string> { path };
+            if (OperatingSystem.IsWindows())
             {
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs")
-            };
+                namesToSearch.Add(path + ".exe");
+            }
 
-            foreach (var root in searchRoots.Where(r => !string.IsNullOrWhiteSpace(r) && Directory.Exists(r)))
+            // 1. Search PATH
+            var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
+            foreach (var dir in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
             {
-                var directoriesToSearch = new List<string> { root };
-                try
+                foreach (var name in namesToSearch)
                 {
-                    directoriesToSearch.AddRange(Directory.GetDirectories(root));
-                }
-                catch { /* ignore permission errors */ }
-
-                foreach (var dir in directoriesToSearch)
-                {
-                    foreach (var name in namesToSearch)
+                    var fullPath = Path.Combine(dir, name);
+                    if (File.Exists(fullPath))
                     {
-                        var fullPath = Path.Combine(dir, name);
-                        if (File.Exists(fullPath))
-                        {
-                            return DetectFileAsync(new DetectionConfig
-                            {
-                                Type = config.Type,
-                                Path = fullPath
-                            }, ct);
-                        }
+                        resolvedPath = fullPath;
+                        break;
                     }
                 }
+                if (resolvedPath is not null)
+                    break;
+            }
+
+            // 2. Search common Windows install roots and their immediate subdirectories.
+            // This covers GUI installers that drop into C:\Program Files\{ProductName}.
+            if (resolvedPath is null && OperatingSystem.IsWindows())
+            {
+                var searchRoots = new[]
+                {
+                    Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                    Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs")
+                };
+
+                foreach (var root in searchRoots.Where(r => !string.IsNullOrWhiteSpace(r) && Directory.Exists(r)))
+                {
+                    var directoriesToSearch = new List<string> { root };
+                    try
+                    {
+                        directoriesToSearch.AddRange(Directory.GetDirectories(root));
+                    }
+                    catch { /* ignore permission errors */ }
+
+                    foreach (var dir in directoriesToSearch)
+                    {
+                        foreach (var name in namesToSearch)
+                        {
+                            var fullPath = Path.Combine(dir, name);
+                            if (File.Exists(fullPath))
+                            {
+                                resolvedPath = fullPath;
+                                break;
+                            }
+                        }
+                        if (resolvedPath is not null)
+                            break;
+                    }
+                    if (resolvedPath is not null)
+                        break;
+                }
             }
         }
 
-        return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent });
+        if (resolvedPath is null)
+        {
+            return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent });
+        }
+
+        // Run the binary with --version and parse the output
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = resolvedPath,
+                Arguments = "--version",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(psi);
+            if (process is null)
+            {
+                return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied, ActualVersion = null });
+            }
+
+            var stdout = process.StandardOutput.ReadToEnd();
+            process.WaitForExit(5000);
+
+            var parsedVersion = VersionComparer.NormalizeVersion(stdout).Length > 0
+                ? stdout.Trim()
+                : null;
+
+            if (string.IsNullOrWhiteSpace(parsedVersion))
+            {
+                return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied, ActualVersion = parsedVersion });
+            }
+
+            var firstVersionMatch = System.Text.RegularExpressions.Regex.Match(parsedVersion, @"\d+(?:\.\d+)*");
+            var versionString = firstVersionMatch.Success ? firstVersionMatch.Value : parsedVersion;
+
+            if (string.IsNullOrWhiteSpace(config.ExpectedVersion))
+            {
+                return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied, ActualVersion = versionString });
+            }
+
+            var versionMatches = VersionComparer.Matches(config.ExpectedVersion, versionString);
+            if (versionMatches)
+            {
+                return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied, ActualVersion = versionString });
+            }
+            else
+            {
+                return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.WrongVersion, ActualVersion = versionString });
+            }
+        }
+        catch
+        {
+            return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied, ActualVersion = null });
+        }
     }
 
 

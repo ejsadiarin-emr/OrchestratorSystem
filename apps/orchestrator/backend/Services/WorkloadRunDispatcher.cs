@@ -236,23 +236,29 @@ public sealed class WorkloadRunDispatcher
 
     private static DetectionConfig BuildDetectionConfig(PackageEntity? pkg)
     {
+        DetectionConfig? config = null;
+
         if (!string.IsNullOrWhiteSpace(pkg?.DetectionConfigJson))
         {
             try
             {
-                return System.Text.Json.JsonSerializer.Deserialize<DetectionConfig>(pkg.DetectionConfigJson)
-                    ?? new DetectionConfig();
+                config = System.Text.Json.JsonSerializer.Deserialize<DetectionConfig>(pkg.DetectionConfigJson);
             }
             catch
             {
             }
         }
 
-        return new DetectionConfig
+        config ??= new DetectionConfig
         {
             Type = "version_manifest",
             Path = pkg?.Name ?? ""
         };
+
+        // Always populate ExpectedVersion from the canonical package version
+        config.ExpectedVersion = pkg?.Version ?? "";
+
+        return config;
     }
 
     private static List<string> DeserializeStringList(string? json)

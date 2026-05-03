@@ -1,20 +1,21 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Downloads "Amazing Workload" installer binaries and generates manifests.
+    Downloads "Amazing Workload" and "SSMS Workload" installer binaries and generates manifests.
 .DESCRIPTION
     Downloads both older and newer versions of the packages defined in the
-    "Amazing Workload" workload (DBeaver, Python, and SQL Server Express) and
-    generates manifest files for each version.
+    "Amazing Workload" workload (DBeaver and Python) and the separate
+    "SSMS Workload" workload, and generates manifest files for each version.
 
     Features:
     - Caches installers locally to avoid redundant downloads.
     - Outputs manifests and final zip archives directly to dist/artifacts/.
     - Re-creates zip archives only when source manifests or installers change.
+    - Creates separate zip archives for Amazing Workload and SSMS Workload.
 
-    Note: SQL Server Express installers are web installers that download
-    additional payload during installation; internet access is required on
-    the target machine during the Install step.
+    Note: SSMS installers are bootstrappers that download additional payload
+    during installation; internet access is required on the target machine
+    during the Install step.
 #>
 
 $ErrorActionPreference = "Stop"
@@ -32,30 +33,30 @@ New-Item -ItemType Directory -Path $CacheDir -Force | Out-Null
 # --- Older versions (from workloads-older.json) ---
 $DbeaverVersionOlder = "24.3.0"
 $PythonVersionOlder = "3.13.3"
-$SqlServerVersionOlder = "2019"
+$SsmsVersionOlder = "19.3"
 
 # --- Newer versions (from workloads-newer.json) ---
 $DbeaverVersionNewer = "26.0.3"
 $PythonVersionNewer = "3.14.4"
-$SqlServerVersionNewer = "2025"
+$SsmsVersionNewer = "20.2"
 
 # Filenames
 $DbeaverExeOlder = "dbeaver-ce-${DbeaverVersionOlder}-x86_64-setup.exe"
 $PythonExeOlder = "python-${PythonVersionOlder}-amd64.exe"
-$SqlServerExeOlder = "SQL${SqlServerVersionOlder}-SSEI-Expr.exe"
+$SsmsExeOlder = "SSMS-Setup-ENU-${SsmsVersionOlder}.exe"
 
 $DbeaverExeNewer = "dbeaver-ce-${DbeaverVersionNewer}-windows-x86_64.exe"
 $PythonExeNewer = "python-${PythonVersionNewer}-amd64.exe"
-$SqlServerExeNewer = "SQL${SqlServerVersionNewer}-SSEI-Expr.exe"
+$SsmsExeNewer = "SSMS-Setup-ENU-${SsmsVersionNewer}.exe"
 
 # Download URLs
 $DbeaverUrlOlder = "https://github.com/dbeaver/dbeaver/releases/download/${DbeaverVersionOlder}/${DbeaverExeOlder}"
 $PythonUrlOlder = "https://www.python.org/ftp/python/${PythonVersionOlder}/${PythonExeOlder}"
-$SqlServerUrlOlder = "https://download.microsoft.com/download/7/f/8/7f8a9c43-8c8a-4f7c-9f92-83c18d96b681/${SqlServerExeOlder}"
+$SsmsUrlOlder = "https://go.microsoft.com/fwlink/?linkid=2257624&clcid=0x409"
 
 $DbeaverUrlNewer = "https://github.com/dbeaver/dbeaver/releases/download/${DbeaverVersionNewer}/${DbeaverExeNewer}"
 $PythonUrlNewer = "https://www.python.org/ftp/python/${PythonVersionNewer}/${PythonExeNewer}"
-$SqlServerUrlNewer = "https://go.microsoft.com/fwlink/p/?linkid=2216019&clcid=0x409&culture=en-us&country=us"
+$SsmsUrlNewer = "https://go.microsoft.com/fwlink/?linkid=2313753&clcid=0x409"
 
 function Get-CachedFilePath {
     param([string]$FileName)
@@ -114,23 +115,41 @@ function Test-ZipNeedsRebuild {
     return $false
 }
 
-Write-Host "=== Downloading Amazing Workload artifacts (cached to $CacheDir) ==="
+function New-ZipArchive {
+    param(
+        [string]$ZipPath,
+        [string[]]$SourcePaths
+    )
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [System.IO.Compression.ZipFile]::Open($ZipPath, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($src in $SourcePaths) {
+            $entryName = Split-Path -Leaf $src
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $src, $entryName)
+        }
+    } finally {
+        $archive.Dispose()
+    }
+}
+
+Write-Host "=== Downloading Amazing Workload and SSMS Workload artifacts (cached to $CacheDir) ==="
 
 $CachedDbeaverOlder = Get-CachedFilePath $DbeaverExeOlder
 $CachedPythonOlder = Get-CachedFilePath $PythonExeOlder
-$CachedSqlServerOlder = Get-CachedFilePath $SqlServerExeOlder
+$CachedSsmsOlder = Get-CachedFilePath $SsmsExeOlder
 
 $CachedDbeaverNewer = Get-CachedFilePath $DbeaverExeNewer
 $CachedPythonNewer = Get-CachedFilePath $PythonExeNewer
-$CachedSqlServerNewer = Get-CachedFilePath $SqlServerExeNewer
+$CachedSsmsNewer = Get-CachedFilePath $SsmsExeNewer
 
 Download-File -Url $DbeaverUrlOlder -Destination $CachedDbeaverOlder
 Download-File -Url $PythonUrlOlder -Destination $CachedPythonOlder
-Download-File -Url $SqlServerUrlOlder -Destination $CachedSqlServerOlder
+Download-File -Url $SsmsUrlOlder -Destination $CachedSsmsOlder
 
 Download-File -Url $DbeaverUrlNewer -Destination $CachedDbeaverNewer
 Download-File -Url $PythonUrlNewer -Destination $CachedPythonNewer
-Download-File -Url $SqlServerUrlNewer -Destination $CachedSqlServerNewer
+Download-File -Url $SsmsUrlNewer -Destination $CachedSsmsNewer
 
 Write-Host ""
 Write-Host "=== Generating manifest files in $OutputDir ==="
@@ -197,38 +216,38 @@ $PythonManifestPathOlder = Join-Path $OutputDir "${PythonBaseOlder}.manifest.jso
 $PythonManifestJsonOlder = $PythonManifestOlder | ConvertTo-Json -Depth 10
 Set-ContentIfChanged -Path $PythonManifestPathOlder -Value $PythonManifestJsonOlder
 
-# SQL Server older manifest
-$SqlServerManifestOlder = @{
-    packageId = "sqlserver"
-    version = $SqlServerVersionOlder
+# SSMS older manifest
+$SsmsManifestOlder = @{
+    packageId = "ssms"
+    version = $SsmsVersionOlder
     channel = "stable"
     artifactType = "exe"
     verificationResult = "pass"
     installAdapter = @{
         type = "exe"
-        command = $SqlServerExeOlder
-        arguments = '/ACTION=Install /Q /IACCEPTSQLSERVERLICENSETERMS'
-        uninstallArgs = "/ACTION=Uninstall /FEATURES=SQLEngine /INSTANCENAME=SQLEXPRESS /Q /IACCEPTSQLSERVERLICENSETERMS"
-        uninstallCommand = "%ProgramFiles%\Microsoft SQL Server\150\Setup Bootstrap\SQL2019\setup.exe"
+        command = $SsmsExeOlder
+        arguments = '/install /quiet /norestart'
+        uninstallArgs = "/uninstall /quiet"
+        uninstallCommand = "%ProgramFiles(x86)%\Microsoft SQL Server Management Studio 19\Common7\IDE\Ssms.exe"
         upgradeBehavior = "UninstallFirst"
-        expectedExitCodes = @(0, 3010)
-        timeoutSeconds = 1800
+        expectedExitCodes = @(0)
+        timeoutSeconds = 600
     }
     detection = @{
         type = "file"
-        path = "C:\Program Files\Microsoft SQL Server\MSSQL15.SQLEXPRESS\MSSQL\Binn\sqlservr.exe"
+        path = "C:\Program Files (x86)\Microsoft SQL Server Management Studio 19\Common7\IDE\Ssms.exe"
     }
     policyTags = @{
         retryabilityClass = "non-idempotent"
         idempotencyMode = "none"
-        riskLevel = "high"
-        approvalRequired = $true
+        riskLevel = "medium"
+        approvalRequired = $false
     }
 }
-$SqlServerBaseOlder = [System.IO.Path]::GetFileNameWithoutExtension($SqlServerExeOlder)
-$SqlServerManifestPathOlder = Join-Path $OutputDir "${SqlServerBaseOlder}.manifest.json"
-$SqlServerManifestJsonOlder = $SqlServerManifestOlder | ConvertTo-Json -Depth 10
-Set-ContentIfChanged -Path $SqlServerManifestPathOlder -Value $SqlServerManifestJsonOlder
+$SsmsBaseOlder = [System.IO.Path]::GetFileNameWithoutExtension($SsmsExeOlder)
+$SsmsManifestPathOlder = Join-Path $OutputDir "${SsmsBaseOlder}.manifest.json"
+$SsmsManifestJsonOlder = $SsmsManifestOlder | ConvertTo-Json -Depth 10
+Set-ContentIfChanged -Path $SsmsManifestPathOlder -Value $SsmsManifestJsonOlder
 
 # DBeaver newer manifest
 $DbeaverManifestNewer = @{
@@ -292,85 +311,112 @@ $PythonManifestPathNewer = Join-Path $OutputDir "${PythonBaseNewer}.manifest.jso
 $PythonManifestJsonNewer = $PythonManifestNewer | ConvertTo-Json -Depth 10
 Set-ContentIfChanged -Path $PythonManifestPathNewer -Value $PythonManifestJsonNewer
 
-# SQL Server newer manifest
-$SqlServerManifestNewer = @{
-    packageId = "sqlserver"
-    version = $SqlServerVersionNewer
+# SSMS newer manifest
+$SsmsManifestNewer = @{
+    packageId = "ssms"
+    version = $SsmsVersionNewer
     channel = "stable"
     artifactType = "exe"
     verificationResult = "pass"
     installAdapter = @{
         type = "exe"
-        command = $SqlServerExeNewer
-        arguments = '/ACTION=Install /Q /IACCEPTSQLSERVERLICENSETERMS /SUPPRESSPRIVACYSTATEMENTNOTICE'
-        uninstallArgs = "/ACTION=Uninstall /FEATURES=SQLEngine /INSTANCENAME=SQLEXPRESS /Q /IACCEPTSQLSERVERLICENSETERMS"
-        uninstallCommand = "%ProgramFiles%\Microsoft SQL Server\170\Setup Bootstrap\SQL2025\setup.exe"
+        command = $SsmsExeNewer
+        arguments = '/install /quiet /norestart'
+        uninstallArgs = "/uninstall /quiet"
+        uninstallCommand = "%ProgramFiles(x86)%\Microsoft SQL Server Management Studio 20\Common7\IDE\Ssms.exe"
         upgradeBehavior = "UninstallFirst"
-        expectedExitCodes = @(0, 3010)
-        timeoutSeconds = 1800
+        expectedExitCodes = @(0)
+        timeoutSeconds = 600
     }
     detection = @{
         type = "file"
-        path = "C:\Program Files\Microsoft SQL Server\MSSQL17.SQLEXPRESS\MSSQL\Binn\sqlservr.exe"
+        path = "C:\Program Files (x86)\Microsoft SQL Server Management Studio 20\Common7\IDE\Ssms.exe"
     }
     policyTags = @{
         retryabilityClass = "non-idempotent"
         idempotencyMode = "none"
-        riskLevel = "high"
-        approvalRequired = $true
+        riskLevel = "medium"
+        approvalRequired = $false
     }
 }
-$SqlServerBaseNewer = [System.IO.Path]::GetFileNameWithoutExtension($SqlServerExeNewer)
-$SqlServerManifestPathNewer = Join-Path $OutputDir "${SqlServerBaseNewer}.manifest.json"
-$SqlServerManifestJsonNewer = $SqlServerManifestNewer | ConvertTo-Json -Depth 10
-Set-ContentIfChanged -Path $SqlServerManifestPathNewer -Value $SqlServerManifestJsonNewer
+$SsmsBaseNewer = [System.IO.Path]::GetFileNameWithoutExtension($SsmsExeNewer)
+$SsmsManifestPathNewer = Join-Path $OutputDir "${SsmsBaseNewer}.manifest.json"
+$SsmsManifestJsonNewer = $SsmsManifestNewer | ConvertTo-Json -Depth 10
+Set-ContentIfChanged -Path $SsmsManifestPathNewer -Value $SsmsManifestJsonNewer
 
 Write-Host "Manifests generated."
 Write-Host ""
 Write-Host "=== Creating zip archives (skipping if up-to-date) ==="
 
-$V1ZipName = "amazing-workload-artifacts-v1.zip"
-$V2ZipName = "amazing-workload-artifacts-v2.zip"
-$V1ZipPath = Join-Path $OutputDir $V1ZipName
-$V2ZipPath = Join-Path $OutputDir $V2ZipName
+$AmazingV1ZipName = "amazing-workload-artifacts-v1.zip"
+$AmazingV2ZipName = "amazing-workload-artifacts-v2.zip"
+$SsmsV1ZipName = "ssms-workload-artifacts-v1.zip"
+$SsmsV2ZipName = "ssms-workload-artifacts-v2.zip"
 
-# Build v1 zip (older versions + installers)
-$V1Sources = @(
+$AmazingV1ZipPath = Join-Path $OutputDir $AmazingV1ZipName
+$AmazingV2ZipPath = Join-Path $OutputDir $AmazingV2ZipName
+$SsmsV1ZipPath = Join-Path $OutputDir $SsmsV1ZipName
+$SsmsV2ZipPath = Join-Path $OutputDir $SsmsV2ZipName
+
+# Build Amazing Workload v1 zip (older DBeaver + Python + manifests)
+$AmazingV1Sources = @(
     $DbeaverManifestPathOlder,
     $PythonManifestPathOlder,
-    $SqlServerManifestPathOlder,
     $CachedDbeaverOlder,
-    $CachedPythonOlder,
-    $CachedSqlServerOlder
+    $CachedPythonOlder
 )
 
-if (Test-ZipNeedsRebuild -ZipPath $V1ZipPath -SourcePaths $V1Sources) {
-    Compress-Archive -Path $V1Sources -DestinationPath $V1ZipPath -Force
-    Write-Host "Created $V1ZipName"
+if (Test-ZipNeedsRebuild -ZipPath $AmazingV1ZipPath -SourcePaths $AmazingV1Sources) {
+    New-ZipArchive -ZipPath $AmazingV1ZipPath -SourcePaths $AmazingV1Sources
+    Write-Host "Created $AmazingV1ZipName"
 } else {
-    Write-Host "Skipped $V1ZipName (up-to-date)"
+    Write-Host "Skipped $AmazingV1ZipName (up-to-date)"
 }
 
-# Build v2 zip (newer versions + installers)
-$V2Sources = @(
-    $DbeaverManifestPathNewer,
-    $PythonManifestPathNewer,
-    $SqlServerManifestPathNewer,
-    $CachedDbeaverNewer,
-    $CachedPythonNewer,
-    $CachedSqlServerNewer
+# Build SSMS Workload v1 zip (older SSMS + manifest)
+$SsmsV1Sources = @(
+    $SsmsManifestPathOlder,
+    $CachedSsmsOlder
 )
 
-if (Test-ZipNeedsRebuild -ZipPath $V2ZipPath -SourcePaths $V2Sources) {
-    Compress-Archive -Path $V2Sources -DestinationPath $V2ZipPath -Force
-    Write-Host "Created $V2ZipName"
+if (Test-ZipNeedsRebuild -ZipPath $SsmsV1ZipPath -SourcePaths $SsmsV1Sources) {
+    New-ZipArchive -ZipPath $SsmsV1ZipPath -SourcePaths $SsmsV1Sources
+    Write-Host "Created $SsmsV1ZipName"
 } else {
-    Write-Host "Skipped $V2ZipName (up-to-date)"
+    Write-Host "Skipped $SsmsV1ZipName (up-to-date)"
+}
+
+# Build Amazing Workload v2 zip (newer DBeaver + Python + manifests)
+$AmazingV2Sources = @(
+    $DbeaverManifestPathNewer,
+    $PythonManifestPathNewer,
+    $CachedDbeaverNewer,
+    $CachedPythonNewer
+)
+
+if (Test-ZipNeedsRebuild -ZipPath $AmazingV2ZipPath -SourcePaths $AmazingV2Sources) {
+    New-ZipArchive -ZipPath $AmazingV2ZipPath -SourcePaths $AmazingV2Sources
+    Write-Host "Created $AmazingV2ZipName"
+} else {
+    Write-Host "Skipped $AmazingV2ZipName (up-to-date)"
+}
+
+# Build SSMS Workload v2 zip (newer SSMS + manifest)
+$SsmsV2Sources = @(
+    $SsmsManifestPathNewer,
+    $CachedSsmsNewer
+)
+
+if (Test-ZipNeedsRebuild -ZipPath $SsmsV2ZipPath -SourcePaths $SsmsV2Sources) {
+    New-ZipArchive -ZipPath $SsmsV2ZipPath -SourcePaths $SsmsV2Sources
+    Write-Host "Created $SsmsV2ZipName"
+} else {
+    Write-Host "Skipped $SsmsV2ZipName (up-to-date)"
 }
 
 Write-Host ""
 Write-Host "Done. Zip archives in: $OutputDir"
-Get-ChildItem -Path $OutputDir -Filter "*amazing*" -ErrorAction SilentlyContinue
+Get-ChildItem -Path $OutputDir -Filter "*workload*" -ErrorAction SilentlyContinue
 
 # Copy workload definitions to dist/workloads for runtime import
 $TestWorkloadsDir = Join-Path $ProjectDir "test-workloads"

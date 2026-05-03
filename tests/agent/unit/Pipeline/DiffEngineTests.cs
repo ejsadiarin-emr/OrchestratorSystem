@@ -34,7 +34,7 @@ public class DiffEngineTests
     }
 
     [Fact]
-    public void ComputeDiff_ChangedPackageAlreadySatisfied_PreCheckOverridesToUnchanged()
+    public void ComputeDiff_ChangedPackageAlreadySatisfied_RemainsChanged()
     {
         var current = new List<PackageAssignment>
         {
@@ -53,10 +53,10 @@ public class DiffEngineTests
 
         Assert.Empty(diff.Added);
         Assert.Empty(diff.Removed);
-        Assert.Empty(diff.Changed);
-        Assert.Single(diff.Unchanged);
-        Assert.Equal("python", diff.Unchanged[0].Name);
-        Assert.Equal("3.14.4", diff.Unchanged[0].Version);
+        Assert.Single(diff.Changed);
+        Assert.Empty(diff.Unchanged);
+        Assert.Equal("python", diff.Changed[0].Name);
+        Assert.Equal("3.14.4", diff.Changed[0].Version);
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class DiffEngineTests
     }
 
     [Fact]
-    public void ComputeDiff_AddedPackageAlreadySatisfied_OverridesToUnchanged()
+    public void ComputeDiff_AddedPackageAlreadySatisfied_RemainsAdded()
     {
         var current = new List<PackageAssignment>();
         var target = new List<PackageAssignment>
@@ -120,10 +120,11 @@ public class DiffEngineTests
 
         var diff = DiffEngine.ComputeDiff(current, target, preCheck);
 
-        Assert.Empty(diff.Added);
+        Assert.Single(diff.Added);
         Assert.Empty(diff.Removed);
         Assert.Empty(diff.Changed);
-        Assert.Single(diff.Unchanged);
+        Assert.Empty(diff.Unchanged);
+        Assert.Equal("newpkg", diff.Added[0].Name);
     }
 
     [Fact]

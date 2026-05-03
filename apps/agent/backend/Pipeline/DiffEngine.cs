@@ -57,15 +57,10 @@ public static class DiffEngine
         List<PackageAssignment> unchanged,
         Dictionary<string, PreCheckResult> preCheckResults)
     {
-        var addedToUnchanged = added
-            .Where(p => preCheckResults.TryGetValue(p.Name, out var r) && r.Status == PreCheckStatus.AlreadySatisfied)
-            .ToList();
-
-        foreach (var package in addedToUnchanged)
-        {
-            added.Remove(package);
-            unchanged.Add(package);
-        }
+        // NOTE: We intentionally do NOT move added→unchanged or changed→unchanged
+        // based on PreCheckStatus.AlreadySatisfied. The detectors only verify
+        // existence (not version), so AlreadySatisfied is unreliable for versioned
+        // packages. Only conservative overrides (that add work) are safe here.
 
         var unchangedToChanged = unchanged
             .Where(p => preCheckResults.TryGetValue(p.Name, out var r) && (r.Status == PreCheckStatus.WrongVersion || r.Status == PreCheckStatus.NotPresent))
@@ -95,16 +90,6 @@ public static class DiffEngine
         {
             changed.Remove(package);
             added.Add(package);
-        }
-
-        var changedToUnchanged = changed
-            .Where(p => preCheckResults.TryGetValue(p.Name, out var r) && r.Status == PreCheckStatus.AlreadySatisfied)
-            .ToList();
-
-        foreach (var package in changedToUnchanged)
-        {
-            changed.Remove(package);
-            unchanged.Add(package);
         }
     }
 }

@@ -1044,10 +1044,12 @@ public sealed class WorkloadsController : ControllerBase
                     else
                     {
                         var adapter = await ResolvePlaceholderAdapter(packageId, version);
-                        if (string.IsNullOrEmpty(existingPackage.UninstallCommand) &&
-                            !string.IsNullOrEmpty(adapter.UninstallCommand))
+                        if (string.IsNullOrEmpty(existingPackage.UninstallCommand))
                         {
                             existingPackage.UninstallCommand = adapter.UninstallCommand;
+                        }
+                        if (string.IsNullOrEmpty(existingPackage.UninstallArgs))
+                        {
                             existingPackage.UninstallArgs = adapter.UninstallArgs;
                         }
 

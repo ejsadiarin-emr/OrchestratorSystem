@@ -142,10 +142,25 @@ public class NodeWorkloadStateServiceRevisionTests
     }
 
     [Test]
-    public async Task Complete_DoesUpdateCurrentRevisionId_ToRunRevision()
+    public async Task Complete_DoesUpdateCurrentRevisionId_WhenWorkWasDone()
     {
         var existingRevisionId = Guid.NewGuid();
         var (runId, nodeId, workloadId, revisionId) = await SeedRunAndStateAsync(withExistingState: true, currentRevisionId: existingRevisionId);
+
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<InstallerDbContext>();
+        db.WorkloadRunTimelines.Add(new WorkloadRunTimelineEntity
+        {
+            TimelineId = Guid.NewGuid(),
+            RunId = runId,
+            NodeId = nodeId,
+            MessageType = MessageTypes.StepStatus,
+            Sequence = 1,
+            StepName = "InstallOrUpgrade",
+            Status = "success",
+            AtUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
 
         var service = CreateService();
         var envelope = new MessageEnvelope
@@ -163,6 +178,46 @@ public class NodeWorkloadStateServiceRevisionTests
         var state = await assertDb.NodeWorkloadStates.FirstOrDefaultAsync(s => s.NodeId == nodeId && s.WorkloadId == workloadId);
         Assert.That(state, Is.Not.Null);
         Assert.That(state!.CurrentRevisionId, Is.EqualTo(revisionId));
+    }
+
+    [Test]
+    public async Task Complete_DoesNotUpdateCurrentRevisionId_WhenNoWorkWasDone()
+    {
+        var existingRevisionId = Guid.NewGuid();
+        var (runId, nodeId, workloadId, revisionId) = await SeedRunAndStateAsync(withExistingState: true, currentRevisionId: existingRevisionId);
+
+        // No InstallOrUpgrade or UninstallPackage timeline entries — only pre-checks
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<InstallerDbContext>();
+        db.WorkloadRunTimelines.Add(new WorkloadRunTimelineEntity
+        {
+            TimelineId = Guid.NewGuid(),
+            RunId = runId,
+            NodeId = nodeId,
+            MessageType = MessageTypes.StepStatus,
+            Sequence = 1,
+            StepName = "PreCheckProbe",
+            Status = "success",
+            AtUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var service = CreateService();
+        var envelope = new MessageEnvelope
+        {
+            MessageType = MessageTypes.Complete,
+            RunId = runId.ToString(),
+            AgentId = nodeId.ToString(),
+            Sequence = 2
+        };
+
+        await service.ProcessMessageAsync(envelope, "conn-1");
+
+        using var assertScope = _serviceProvider.CreateScope();
+        var assertDb = assertScope.ServiceProvider.GetRequiredService<InstallerDbContext>();
+        var state = await assertDb.NodeWorkloadStates.FirstOrDefaultAsync(s => s.NodeId == nodeId && s.WorkloadId == workloadId);
+        Assert.That(state, Is.Not.Null);
+        Assert.That(state!.CurrentRevisionId, Is.EqualTo(existingRevisionId));
     }
 
     [Test]

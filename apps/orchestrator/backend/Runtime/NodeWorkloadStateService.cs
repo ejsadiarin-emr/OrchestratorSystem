@@ -99,6 +99,12 @@ public sealed class NodeWorkloadStateService
             runId, nodeId, payload.StepName, payload.PackageId, payload.Status);
     }
 
+    private static readonly HashSet<string> WorkStepNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "InstallOrUpgrade",
+        "UninstallPackage"
+    };
+
     private async Task HandleCompleteAsync(InstallerDbContext db, MessageEnvelope envelope)
     {
         if (!TryParseRunId(envelope.RunId, out var runId) || !TryParseAgentId(envelope.AgentId, out var nodeId))
@@ -115,10 +121,29 @@ public sealed class NodeWorkloadStateService
             run.UpdatedAtUtc = DateTime.UtcNow;
         }
 
-        await UpdateNodeWorkloadStateStatusAsync(db, nodeId, runId, "completed", setCurrentRevision: true);
-        await AddTimelineEntryAsync(db, runId, nodeId, MessageTypes.Complete, envelope.Sequence, detail: "Run completed successfully");
+        var hadWork = await db.WorkloadRunTimelines
+            .AnyAsync(t => t.RunId == runId
+                && t.NodeId == nodeId
+                && t.StepName != null
+                && WorkStepNames.Contains(t.StepName)
+                && t.Status == "success");
 
-        _logger.LogInformation("Complete processed: RunId={RunId}, NodeId={NodeId}", runId, nodeId);
+        if (hadWork)
+        {
+            await UpdateNodeWorkloadStateStatusAsync(db, nodeId, runId, "completed", setCurrentRevision: true);
+            _logger.LogInformation(
+                "Complete processed with work done: RunId={RunId}, NodeId={NodeId}, RevisionId={RevisionId} set as current",
+                runId, nodeId);
+        }
+        else
+        {
+            await UpdateNodeWorkloadStateStatusAsync(db, nodeId, runId, "completed", setCurrentRevision: false);
+            _logger.LogInformation(
+                "Complete processed with no work done: RunId={RunId}, NodeId={NodeId}, CurrentRevisionId unchanged",
+                runId, nodeId);
+        }
+
+        await AddTimelineEntryAsync(db, runId, nodeId, MessageTypes.Complete, envelope.Sequence, detail: "Run completed successfully");
     }
 
     private async Task HandleFailAsync(InstallerDbContext db, MessageEnvelope envelope)

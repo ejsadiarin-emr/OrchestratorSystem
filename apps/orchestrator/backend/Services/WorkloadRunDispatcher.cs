@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging;
 
 namespace DeploymentPoC.Orchestrator.Services;
 
+// NOTE: SignalR push is currently disabled; agents use HTTP polling. This dispatcher is retained for future push enablement.
 public sealed class WorkloadRunDispatcher
 {
     private readonly InstallerDbContext _db;

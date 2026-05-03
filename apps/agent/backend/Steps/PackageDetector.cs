@@ -155,6 +155,17 @@ public static class PackageDetector
                 namesToSearch.Add(path + ".exe");
             }
 
+            var candidatePaths = new List<string>();
+            var seenCandidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void AddCandidate(string candidate)
+            {
+                if (!string.IsNullOrWhiteSpace(candidate) && seenCandidates.Add(candidate))
+                {
+                    candidatePaths.Add(candidate);
+                }
+            }
+
             // 1. Search PATH
             var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
             foreach (var dir in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
@@ -164,17 +175,14 @@ public static class PackageDetector
                     var fullPath = Path.Combine(dir, name);
                     if (File.Exists(fullPath))
                     {
-                        resolvedPath = fullPath;
-                        break;
+                        AddCandidate(fullPath);
                     }
                 }
-                if (resolvedPath is not null)
-                    break;
             }
 
             // 2. Search common Windows install roots and their immediate subdirectories.
             // This covers GUI installers that drop into C:\Program Files\{ProductName}.
-            if (resolvedPath is null && OperatingSystem.IsWindows())
+            if (OperatingSystem.IsWindows())
             {
                 var searchRoots = new[]
                 {
@@ -199,17 +207,38 @@ public static class PackageDetector
                             var fullPath = Path.Combine(dir, name);
                             if (File.Exists(fullPath))
                             {
-                                resolvedPath = fullPath;
-                                break;
+                                AddCandidate(fullPath);
                             }
                         }
-                        if (resolvedPath is not null)
-                            break;
                     }
-                    if (resolvedPath is not null)
-                        break;
                 }
             }
+
+            if (candidatePaths.Count == 0)
+            {
+                return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.NotPresent });
+            }
+
+            if (!string.IsNullOrWhiteSpace(config.ExpectedVersion))
+            {
+                foreach (var candidate in candidatePaths)
+                {
+                    var candidateVersion = TryGetVersionFromBinary(candidate);
+                    if (string.IsNullOrWhiteSpace(candidateVersion))
+                        continue;
+
+                    if (VersionComparer.Matches(config.ExpectedVersion, candidateVersion))
+                    {
+                        return Task.FromResult(new PreCheckResult
+                        {
+                            Status = PreCheckStatus.AlreadySatisfied,
+                            ActualVersion = candidateVersion
+                        });
+                    }
+                }
+            }
+
+            resolvedPath = candidatePaths[0];
         }
 
         if (resolvedPath is null)
@@ -220,36 +249,11 @@ public static class PackageDetector
         // Run the binary with --version and parse the output
         try
         {
-            var psi = new ProcessStartInfo
-            {
-                FileName = resolvedPath,
-                Arguments = "--version",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-
-            using var process = Process.Start(psi);
-            if (process is null)
+            var versionString = TryGetVersionFromBinary(resolvedPath);
+            if (string.IsNullOrWhiteSpace(versionString))
             {
                 return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied, ActualVersion = null });
             }
-
-            var stdout = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(5000);
-
-            var parsedVersion = VersionComparer.NormalizeVersion(stdout).Length > 0
-                ? stdout.Trim()
-                : null;
-
-            if (string.IsNullOrWhiteSpace(parsedVersion))
-            {
-                return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied, ActualVersion = parsedVersion });
-            }
-
-            var firstVersionMatch = System.Text.RegularExpressions.Regex.Match(parsedVersion, @"\d+(?:\.\d+)*");
-            var versionString = firstVersionMatch.Success ? firstVersionMatch.Value : parsedVersion;
 
             if (string.IsNullOrWhiteSpace(config.ExpectedVersion))
             {
@@ -269,6 +273,47 @@ public static class PackageDetector
         catch
         {
             return Task.FromResult(new PreCheckResult { Status = PreCheckStatus.AlreadySatisfied, ActualVersion = null });
+        }
+    }
+
+    private static string? TryGetVersionFromBinary(string binaryPath)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = binaryPath,
+                Arguments = "--version",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(psi);
+            if (process is null)
+            {
+                return null;
+            }
+
+            var stdout = process.StandardOutput.ReadToEnd();
+            process.WaitForExit(5000);
+
+            var parsedVersion = VersionComparer.NormalizeVersion(stdout).Length > 0
+                ? stdout.Trim()
+                : null;
+
+            if (string.IsNullOrWhiteSpace(parsedVersion))
+            {
+                return null;
+            }
+
+            var firstVersionMatch = System.Text.RegularExpressions.Regex.Match(parsedVersion, @"\d+(?:\.\d+)*");
+            return firstVersionMatch.Success ? firstVersionMatch.Value : parsedVersion;
+        }
+        catch
+        {
+            return null;
         }
     }
 

@@ -168,7 +168,7 @@ public sealed class WorkloadRunsController : ControllerBase
                 .Where(s => s.WorkloadId == request.WorkloadId
                     && distinctNodeIds.Contains(s.NodeId)
                     && s.CurrentRevisionId != null
-                    && s.CurrentRevisionId != request.RevisionId)
+                    && s.CurrentRevisionId == request.RevisionId)
                 .ToListAsync();
 
             foreach (var state in driftNodes)
@@ -1119,6 +1119,9 @@ public sealed class WorkloadRunsController : ControllerBase
         try { detection = string.IsNullOrWhiteSpace(pkg?.DetectionConfigJson) ? null : JsonSerializer.Deserialize<DetectionConfig>(pkg.DetectionConfigJson); }
         catch { detection = null; }
         detection ??= new DetectionConfig { Type = "version_manifest", Path = pkg?.Name ?? "" };
+
+        // Always populate ExpectedVersion from the canonical package version
+        detection.ExpectedVersion = pkg?.Version ?? "";
 
         var hasArtifact = pkg is not null && _artifactStore.HasArtifactFile(pkg.Name, pkg.Version);
         if (!hasArtifact && !isCurrentPackage)

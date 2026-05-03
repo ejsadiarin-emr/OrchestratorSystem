@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 
 namespace DeploymentPoC.Orchestrator.Hubs;
 
+// NOTE: SignalR hub remains available, but the active control path is HTTP polling.
 public sealed class AgentRuntimeHub : Hub
 {
     private readonly NodeWorkloadStateService _stateService;

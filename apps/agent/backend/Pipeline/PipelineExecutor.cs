@@ -60,6 +60,30 @@ public class PipelineExecutor
                 await SendStepStatusAsync(sendMessageAsync, context, "PreCheckProbe", package, true, probeResult.Error, stepCt);
                 context.RecordStep("PreCheckProbe", package.PackageIndex, package.PackageId, true, probeResult.Error);
             }
+
+            // Log delta summary
+            _logger.LogInformation("[PreCheckProbe] === Delta Summary ===");
+            foreach (var package in packagesToProbe)
+            {
+                if (preCheckResults.TryGetValue(package.Name, out var result))
+                {
+                    var action = result.Status switch
+                    {
+                        PreCheckStatus.AlreadySatisfied => string.IsNullOrWhiteSpace(package.Detection.ExpectedVersion) || VersionComparer.Matches(package.Detection.ExpectedVersion, result.ActualVersion)
+                            ? "Unchanged"
+                            : "InstallOrUpgrade",
+                        PreCheckStatus.WrongVersion => "InstallOrUpgrade",
+                        PreCheckStatus.NotPresent => "InstallOrUpgrade",
+                        _ => "Unknown"
+                    };
+                    _logger.LogInformation(
+                        "[PreCheckProbe] {PackageName}: Expected={ExpectedVersion}, Actual={ActualVersion}, Action={Action}",
+                        package.Name,
+                        package.Detection.ExpectedVersion,
+                        result.ActualVersion,
+                        action);
+                }
+            }
         }
 
         var diff = DiffEngine.ComputeDiff(context.CurrentPackages, targetPackages, preCheckResults, context.Payload.Mode);
@@ -382,16 +406,31 @@ public class PipelineExecutor
         {
             var stepCt = ct;
 
-            if (preCheckResults?.TryGetValue(package.Name, out var preCheck) == true && preCheck.Status == PreCheckStatus.AlreadySatisfied)
+            if (preCheckResults?.TryGetValue(package.Name, out var preCheck) == true
+                && preCheck.Status == PreCheckStatus.AlreadySatisfied
+                && (string.IsNullOrWhiteSpace(package.Detection.ExpectedVersion) || VersionComparer.Matches(package.Detection.ExpectedVersion, preCheck.ActualVersion)))
             {
                 _logger.LogInformation(
-                    "Step PreCheckSkipped: PackageIndex={PackageIndex}, PackageId={PackageId}",
+                    "Step PreCheckSkipped: PackageIndex={PackageIndex}, PackageId={PackageId}, Reason=version_matches (Expected={ExpectedVersion}, Actual={ActualVersion})",
                     package.PackageIndex,
-                    package.PackageId);
+                    package.PackageId,
+                    package.Detection.ExpectedVersion,
+                    preCheck.ActualVersion);
 
                 await SendStepStatusAsync(sendMessageAsync, context, "PreCheckSkipped", package, true, null, stepCt);
                 context.RecordStep("PreCheckSkipped", package.PackageIndex, package.PackageId, true, null);
                 continue;
+            }
+            else if (preCheckResults?.TryGetValue(package.Name, out preCheck) == true && preCheck.Status == PreCheckStatus.AlreadySatisfied)
+            {
+                // AlreadySatisfied but version mismatch — this means old version is installed, need update
+                _logger.LogInformation(
+                    "Step PreCheckWrongVersion: PackageIndex={PackageIndex}, PackageId={PackageId}, Expected={ExpectedVersion}, Actual={ActualVersion}",
+                    package.PackageIndex,
+                    package.PackageId,
+                    package.Detection.ExpectedVersion,
+                    preCheck.ActualVersion);
+                // DON'T skip — fall through to install
             }
 
             // Step 0.1: Pre-init steps (per package)

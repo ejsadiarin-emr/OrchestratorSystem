@@ -261,6 +261,7 @@ export interface OrchestratorHomeData {
   events: ImportantEvent[]
   selectedNodeId: string
   logsByNodeId: Record<string, MiniLogLine[]>
+  workloads: WorkloadDefinition[]
 }
 
 export interface AgentLocalSummary {

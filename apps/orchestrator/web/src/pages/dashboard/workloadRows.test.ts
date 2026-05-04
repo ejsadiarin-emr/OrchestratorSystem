@@ -19,6 +19,7 @@ function makeHomeData(nodes: OrchestratorHomeData['nodes']): OrchestratorHomeDat
     events: [],
     selectedNodeId: '',
     logsByNodeId: {},
+    workloads: [],
   }
 }
 

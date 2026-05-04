@@ -1620,6 +1620,7 @@ export async function getOrchestratorHomeData(): Promise<OrchestratorHomeData> {
     events,
     selectedNodeId: dashboardNodes[0]?.nodeId ?? '',
     logsByNodeId: {},
+    workloads,
   }
 }
 

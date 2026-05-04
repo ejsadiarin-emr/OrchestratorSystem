@@ -19,6 +19,19 @@ export function buildWorkloadRows(data: OrchestratorHomeData | null): WorkloadRo
     }
   >()
 
+  // Seed rows from all workload definitions so unassigned workloads still appear
+  data.workloads?.forEach(workload => {
+    rows.set(workload.name, {
+      name: workload.name,
+      revisions: new Set<string>(),
+      nodesAssigned: 0,
+      runningNodes: 0,
+      nodesWithRevisionUpdates: 0,
+      nodesWithPackageUpdates: 0,
+      packageUpdateSignals: 0,
+    })
+  })
+
   data.nodes.forEach(node => {
     if (!node.assignedWorkload) {
       return

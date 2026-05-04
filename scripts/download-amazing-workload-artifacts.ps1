@@ -38,7 +38,7 @@ $SsmsVersionOlder = "19.3"
 # --- Newer versions (from workloads-newer.json) ---
 $DbeaverVersionNewer = "26.0.3"
 $PythonVersionNewer = "3.14.4"
-$SsmsVersionNewer = "20.2"
+$SsmsVersionNewer = "22.5.2"
 
 # Filenames
 $DbeaverExeOlder = "dbeaver-ce-${DbeaverVersionOlder}-x86_64-setup.exe"
@@ -47,7 +47,7 @@ $SsmsExeOlder = "SSMS-Setup-ENU-${SsmsVersionOlder}.exe"
 
 $DbeaverExeNewer = "dbeaver-ce-${DbeaverVersionNewer}-windows-x86_64.exe"
 $PythonExeNewer = "python-${PythonVersionNewer}-amd64.exe"
-$SsmsExeNewer = "SSMS-Setup-ENU-${SsmsVersionNewer}.exe"
+$SsmsExeNewer = "vs_SSMS-${SsmsVersionNewer}.exe"
 
 # Download URLs
 $DbeaverUrlOlder = "https://github.com/dbeaver/dbeaver/releases/download/${DbeaverVersionOlder}/${DbeaverExeOlder}"
@@ -56,7 +56,7 @@ $SsmsUrlOlder = "https://go.microsoft.com/fwlink/?linkid=2257624&clcid=0x409"
 
 $DbeaverUrlNewer = "https://github.com/dbeaver/dbeaver/releases/download/${DbeaverVersionNewer}/${DbeaverExeNewer}"
 $PythonUrlNewer = "https://www.python.org/ftp/python/${PythonVersionNewer}/${PythonExeNewer}"
-$SsmsUrlNewer = "https://go.microsoft.com/fwlink/?linkid=2313753&clcid=0x409"
+$SsmsUrlNewer = "https://aka.ms/ssms/22/release/vs_SSMS.exe"
 
 function Get-CachedFilePath {
     param([string]$FileName)
@@ -122,6 +122,9 @@ function New-ZipArchive {
     )
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
+    if (Test-Path $ZipPath) {
+        Remove-Item $ZipPath -Force
+    }
     $archive = [System.IO.Compression.ZipFile]::Open($ZipPath, [System.IO.Compression.ZipArchiveMode]::Create)
     try {
         foreach ($src in $SourcePaths) {
@@ -230,7 +233,7 @@ $SsmsManifestOlder = @{
         uninstallArgs = "/uninstall /quiet"
         uninstallCommand = "%ProgramFiles(x86)%\Microsoft SQL Server Management Studio 19\Common7\IDE\Ssms.exe"
         upgradeBehavior = "UninstallFirst"
-        expectedExitCodes = @(0)
+        expectedExitCodes = @(0, 3010)
         timeoutSeconds = 600
     }
     detection = @{
@@ -321,16 +324,16 @@ $SsmsManifestNewer = @{
     installAdapter = @{
         type = "exe"
         command = $SsmsExeNewer
-        arguments = '/install /quiet /norestart'
-        uninstallArgs = "/uninstall /quiet"
-        uninstallCommand = "%ProgramFiles(x86)%\Microsoft SQL Server Management Studio 20\Common7\IDE\Ssms.exe"
+        arguments = '--quiet --norestart --wait'
+        uninstallArgs = "uninstall --quiet --norestart"
+        uninstallCommand = $SsmsExeNewer
         upgradeBehavior = "UninstallFirst"
-        expectedExitCodes = @(0)
+        expectedExitCodes = @(0, 3010)
         timeoutSeconds = 600
     }
     detection = @{
         type = "file"
-        path = "C:\Program Files (x86)\Microsoft SQL Server Management Studio 20\Common7\IDE\Ssms.exe"
+        path = "C:\Program Files\Microsoft SQL Server Management Studio 22\Release\Common7\IDE\Ssms.exe"
     }
     policyTags = @{
         retryabilityClass = "non-idempotent"

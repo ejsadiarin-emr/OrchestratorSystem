@@ -247,16 +247,16 @@
     "defaultShell": "powershell",
     "packages": [
       {
-      "name": "ssms-20.2",
+      "name": "ssms-22.5.2",
       "preInitSteps": [
         "Write-Host 'Checking for existing SSMS installations...'",
-          "$ssmsExe = \"$env:ProgramFiles(x86)\\Microsoft SQL Server Management Studio 20\\Common7\\IDE\\Ssms.exe\"",
-          "if (Test-Path $ssmsExe) { Write-Host \"Existing SSMS 20 found at: $ssmsExe\" } else { Write-Host 'No existing SSMS 20 installation - proceeding with fresh install' }"
+          "$ssmsExe = \"$env:ProgramFiles\\Microsoft SQL Server Management Studio 22\\Release\\Common7\\IDE\\Ssms.exe\"",
+          "if (Test-Path $ssmsExe) { Write-Host \"Existing SSMS 22 found at: $ssmsExe\" } else { Write-Host 'No existing SSMS 22 installation - proceeding with fresh install' }"
         ],
         "postInitSteps": [
           "Write-Host 'Verifying SSMS installation...'",
-          "$ssmsExe = \"$env:ProgramFiles(x86)\\Microsoft SQL Server Management Studio 20\\Common7\\IDE\\Ssms.exe\"",
-          "if (Test-Path $ssmsExe) { Write-Host 'SSMS 20.2 installed successfully' } else { Write-Warning 'SSMS 20.2 not found at expected path' }"
+          "$ssmsExe = \"$env:ProgramFiles\\Microsoft SQL Server Management Studio 22\\Release\\Common7\\IDE\\Ssms.exe\"",
+          "if (Test-Path $ssmsExe) { Write-Host 'SSMS 22.5.2 installed successfully' } else { Write-Warning 'SSMS 22.5.2 not found at expected path' }"
         ]
       }
     ]

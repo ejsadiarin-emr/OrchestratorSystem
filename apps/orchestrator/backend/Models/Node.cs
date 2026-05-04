@@ -109,3 +109,35 @@ public class NodePreCheckResponse
     public string? Error { get; set; }
     public NodePreCheckSummary Summary { get; set; } = new();
 }
+
+public class RunPreCheckSummaryRequest
+{
+    public List<Guid> NodeIds { get; set; } = new();
+    public Guid WorkloadId { get; set; }
+    public Guid RevisionId { get; set; }
+}
+
+public class PreCheckSummaryResponse
+{
+    public List<PreCheckSummaryNode> Nodes { get; set; } = new();
+}
+
+public class PreCheckSummaryNode
+{
+    public Guid NodeId { get; set; }
+    public string Hostname { get; set; } = string.Empty;
+    public string WorkloadStatus { get; set; } = string.Empty; // "Current", "Drifted", "Absent", "Unknown"
+    public string Action { get; set; } = string.Empty; // "Skip", "FreshInstall", "Update", "InstallMissing", "Reinstall", "BlockedDowngrade"
+    public string? ActionDetail { get; set; }
+    public List<PreCheckSummaryPackage> Packages { get; set; } = new();
+}
+
+public class PreCheckSummaryPackage
+{
+    public Guid PackageId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty; // "AlreadySatisfied", "WrongVersion", "NotPresent"
+    public string? Comparison { get; set; }
+    public string? ActualVersion { get; set; }
+    public string? ExpectedVersion { get; set; }
+}

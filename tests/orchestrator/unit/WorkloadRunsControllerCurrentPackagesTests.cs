@@ -780,4 +780,181 @@ public class WorkloadRunsControllerCurrentPackagesTests
 
         Assert.That(result.Result, Is.TypeOf<CreatedAtActionResult>());
     }
+
+    [Test]
+    public async Task Create_ReturnsUnprocessableEntity_WhenDowngradeDetected()
+    {
+        var workloadId = Guid.NewGuid();
+        var oldRevisionId = Guid.NewGuid();
+        var newRevisionId = Guid.NewGuid();
+        var nodeId = Guid.NewGuid();
+        var packageId = Guid.NewGuid();
+
+        _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity
+        {
+            WorkloadId = workloadId,
+            Name = "test-workload"
+        });
+
+        _db.Packages.Add(new PackageEntity
+        {
+            PackageId = packageId,
+            Name = "test-pkg",
+            Version = "1.0.0",
+            SourcePath = "/tmp/test",
+            InstallType = "archive",
+            InstallArgs = ""
+        });
+
+        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
+        {
+            RevisionId = oldRevisionId,
+            WorkloadId = workloadId,
+            Version = "1.0.0",
+            IsPublished = true,
+            CreatedAtUtc = DateTime.UtcNow
+        });
+
+        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
+        {
+            RevisionId = newRevisionId,
+            WorkloadId = workloadId,
+            Version = "2.0.0",
+            IsPublished = true,
+            CreatedAtUtc = DateTime.UtcNow
+        });
+
+        _db.WorkloadPackages.Add(new WorkloadPackageEntity
+        {
+            WorkloadPackageId = Guid.NewGuid(),
+            RevisionId = oldRevisionId,
+            PackageId = packageId,
+            PackageIndex = 1
+        });
+
+        _db.WorkloadPackages.Add(new WorkloadPackageEntity
+        {
+            WorkloadPackageId = Guid.NewGuid(),
+            RevisionId = newRevisionId,
+            PackageId = packageId,
+            PackageIndex = 1
+        });
+
+        _db.Nodes.Add(new NodeEntity
+        {
+            NodeId = nodeId,
+            Hostname = "test-node",
+            DisplayName = "Test Node"
+        });
+
+        _db.NodeWorkloadStates.Add(new NodeWorkloadStateEntity
+        {
+            NodeWorkloadStateId = Guid.NewGuid(),
+            NodeId = nodeId,
+            WorkloadId = workloadId,
+            CurrentRevisionId = newRevisionId,
+            PackageStatesJson = "{}"
+        });
+
+        await _db.SaveChangesAsync();
+
+        var controller = CreateController();
+        var request = new CreateWorkloadRunRequest
+        {
+            WorkloadId = workloadId,
+            RevisionId = oldRevisionId,
+            Mode = "install",
+            IdempotencyKey = Guid.NewGuid().ToString(),
+            NodeIds = new List<Guid> { nodeId }
+        };
+
+        var result = await controller.Create(request);
+
+        Assert.That(result.Result, Is.TypeOf<UnprocessableEntityObjectResult>());
+        var unprocessable = (UnprocessableEntityObjectResult)result.Result!;
+        var value = unprocessable.Value as dynamic;
+        Assert.That(value!.code.ToString(), Is.EqualTo("DOWNGRADE_BLOCKED"));
+    }
+
+    [Test]
+    public async Task Create_ReturnsConflict_WithConflictingRunDetails_WhenActiveRunExists()
+    {
+        var workloadId = Guid.NewGuid();
+        var revisionId = Guid.NewGuid();
+        var nodeId = Guid.NewGuid();
+        var packageId = Guid.NewGuid();
+
+        _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity
+        {
+            WorkloadId = workloadId,
+            Name = "test-workload"
+        });
+
+        _db.Packages.Add(new PackageEntity
+        {
+            PackageId = packageId,
+            Name = "test-pkg",
+            Version = "1.0.0",
+            SourcePath = "/tmp/test",
+            InstallType = "archive",
+            InstallArgs = ""
+        });
+
+        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
+        {
+            RevisionId = revisionId,
+            WorkloadId = workloadId,
+            Version = "1.0.0",
+            IsPublished = true,
+            CreatedAtUtc = DateTime.UtcNow
+        });
+
+        _db.WorkloadPackages.Add(new WorkloadPackageEntity
+        {
+            WorkloadPackageId = Guid.NewGuid(),
+            RevisionId = revisionId,
+            PackageId = packageId,
+            PackageIndex = 1
+        });
+
+        _db.Nodes.Add(new NodeEntity
+        {
+            NodeId = nodeId,
+            Hostname = "test-node",
+            DisplayName = "Test Node"
+        });
+
+        var existingRunId = Guid.NewGuid();
+        _db.WorkloadRuns.Add(new WorkloadRunEntity
+        {
+            RunId = existingRunId,
+            WorkloadId = workloadId,
+            RevisionId = revisionId,
+            NodeId = nodeId,
+            State = "Queued",
+            CreatedAtUtc = DateTime.UtcNow,
+            IdempotencyKey = "existing-key"
+        });
+
+        await _db.SaveChangesAsync();
+
+        var controller = CreateController();
+        var request = new CreateWorkloadRunRequest
+        {
+            WorkloadId = workloadId,
+            RevisionId = revisionId,
+            Mode = "install",
+            IdempotencyKey = Guid.NewGuid().ToString(),
+            NodeIds = new List<Guid> { nodeId }
+        };
+
+        var result = await controller.Create(request);
+
+        Assert.That(result.Result, Is.TypeOf<ConflictObjectResult>());
+        var conflict = (ConflictObjectResult)result.Result!;
+        var value = conflict.Value as dynamic;
+        Assert.That(value!.code.ToString(), Is.EqualTo("ACTIVE_RUN_CONFLICT"));
+        Assert.That((Guid)value.conflictingRunId, Is.EqualTo(existingRunId));
+        Assert.That(value.conflictingRunState.ToString(), Is.EqualTo("Queued"));
+    }
 }

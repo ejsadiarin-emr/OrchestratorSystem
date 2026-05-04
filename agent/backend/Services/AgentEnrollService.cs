@@ -98,7 +98,7 @@ public class AgentEnrollService
     private static void RegisterAndStartService()
     {
         Console.WriteLine("Service registration would occur here (requires admin privileges).");
-        Console.WriteLine("Run: sc create OrchestratorAgent binPath= \"Agent.exe\" start= auto");
-        Console.WriteLine("Run: sc start OrchestratorAgent");
+        Console.WriteLine("Run: sc.exe create OrchestratorAgent binPath= \"Agent.exe\" start= auto");
+        Console.WriteLine("Run: sc.exe start OrchestratorAgent");
     }
 }

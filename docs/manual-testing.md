@@ -151,17 +151,17 @@ Replace:
 Enrollment successful. Agent ID: 1234567890abcdef...
 Configuration written to: C:\temp\deployment-poc\agent.json
 Service registration would occur here (requires admin privileges).
-Run: sc create OrchestratorAgent binPath= "C:\temp\deployment-poc\Agent.exe" start= auto
-Run: sc start OrchestratorAgent
+Run: sc.exe create OrchestratorAgent binPath= "C:\temp\deployment-poc\Agent.exe" start= auto
+Run: sc.exe start OrchestratorAgent
 ```
 
 Since you're already running as Administrator, register the service:
 
 ```powershell
 # Register the Agent as a Windows Service
-sc create OrchestratorAgent binPath= "C:\temp\deployment-poc\Agent.exe" start= auto
+sc.exe create OrchestratorAgent binPath= "C:\temp\deployment-poc\Agent.exe" start= auto
 cd C:\temp\deployment-poc
-sc start OrchestratorAgent
+sc.exe start OrchestratorAgent
 ```
 
 Verify the service is running:
@@ -329,8 +329,8 @@ Complete the cleanup:
 
 ```powershell
 # Stop and remove the service
-sc stop OrchestratorAgent
-sc delete OrchestratorAgent
+sc.exe stop OrchestratorAgent
+sc.exe delete OrchestratorAgent
 ```
 
 Verify the agent is gone from the Orchestrator:

@@ -72,7 +72,7 @@ public class AgentResetService
     private static void StopAndDeleteService()
     {
         Console.WriteLine("Service removal would occur here (requires admin privileges).");
-        Console.WriteLine("Run: sc stop OrchestratorAgent");
-        Console.WriteLine("Run: sc delete OrchestratorAgent");
+        Console.WriteLine("Run: sc.exe stop OrchestratorAgent");
+        Console.WriteLine("Run: sc.exe delete OrchestratorAgent");
     }
 }

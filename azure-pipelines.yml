@@ -9,7 +9,7 @@ pool:
 
 variables:
   buildConfiguration: 'Release'
-  dotnetVersion: '8.0.x'
+  dotnetVersion: '10.0.x'
   nodeVersion: '20.x'
 
 steps:
@@ -46,8 +46,8 @@ steps:
       New-Item -ItemType Directory -Force -Path dist | Out-Null
       New-Item -ItemType Directory -Force -Path dist/artifacts | Out-Null
       New-Item -ItemType Directory -Force -Path dist/workload-definitions | Out-Null
-      Copy-Item orchestrator/backend/bin/Release/net8.0-windows/win-x64/publish/Orchestrator.exe dist/
-      Copy-Item agent/backend/bin/Release/net8.0-windows/win-x64/publish/Agent.exe dist/
+      Copy-Item orchestrator/backend/bin/Release/net10.0-windows/win-x64/publish/Orchestrator.exe dist/
+      Copy-Item agent/backend/bin/Release/net10.0-windows/win-x64/publish/Agent.exe dist/
       Copy-Item orchestrator/backend/appsettings.json dist/
     displayName: 'Create distribution'
 

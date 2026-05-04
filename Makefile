@@ -30,8 +30,8 @@ publish: frontend
 dist: publish
 	mkdir -p dist/artifacts
 	mkdir -p dist/workload-definitions
-	cp orchestrator/backend/bin/Release/net8.0-windows/win-x64/publish/Orchestrator.exe dist/
-	cp agent/backend/bin/Release/net8.0-windows/win-x64/publish/Agent.exe dist/
+	cp orchestrator/backend/bin/Release/net10.0-windows/win-x64/publish/Orchestrator.exe dist/
+	cp agent/backend/bin/Release/net10.0-windows/win-x64/publish/Agent.exe dist/
 	cp orchestrator/backend/appsettings.json dist/
 	@echo "Distribution ready in dist/"
 	@echo "Copy dist/ to Windows and run Orchestrator.exe and Agent.exe from PowerShell"

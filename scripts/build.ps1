@@ -36,9 +36,9 @@ New-Item -ItemType Directory -Force -Path (Join-Path $dist "artifacts") | Out-Nu
 New-Item -ItemType Directory -Force -Path (Join-Path $dist "workload-definitions") | Out-Null
 
 # Copy executables
-Copy-Item (Join-Path $root "orchestrator" "backend" "bin" "Release" "net8.0-windows" "win-x64" "publish" "Orchestrator.exe") `
+Copy-Item (Join-Path $root "orchestrator" "backend" "bin" "Release" "net10.0-windows" "win-x64" "publish" "Orchestrator.exe") `
     (Join-Path $dist "Orchestrator.exe") -Force
-Copy-Item (Join-Path $root "agent" "backend" "bin" "Release" "net8.0-windows" "win-x64" "publish" "Agent.exe") `
+Copy-Item (Join-Path $root "agent" "backend" "bin" "Release" "net10.0-windows" "win-x64" "publish" "Agent.exe") `
     (Join-Path $dist "Agent.exe") -Force
 
 # Copy appsettings

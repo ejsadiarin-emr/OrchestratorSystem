@@ -28,8 +28,8 @@ Create the .NET solution with both projects (Orchestrator and Agent) and the Rea
 ### Tasks
 
 - [ ] Create .NET solution file at repo root: `DeploymentPoC.sln`
-- [ ] Create `orchestrator/backend/Orchestrator.csproj` — ASP.NET Core Web API targeting `net8.0-windows`
-- [ ] Create `agent/backend/Agent.csproj` — .NET Worker Service with `UseWindowsService()` targeting `net8.0-windows`
+- [ ] Create `orchestrator/backend/Orchestrator.csproj` — ASP.NET Core Web API targeting `net10.0-windows`
+- [ ] Create `agent/backend/Agent.csproj` — .NET Worker Service with `UseWindowsService()` targeting `net10.0-windows`
 - [ ] Add NuGet references to Orchestrator project:
   - `Microsoft.EntityFrameworkCore.Sqlite`
   - `Microsoft.EntityFrameworkCore.Design`
@@ -149,7 +149,7 @@ await host.RunAsync();
 ```xml
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
@@ -157,10 +157,10 @@ await host.RunAsync();
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0" />
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.7" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.7" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.7" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="8.1.1" />
   </ItemGroup>
 </Project>
 ```
@@ -170,7 +170,7 @@ await host.RunAsync();
 ```xml
 <Project Sdk="Microsoft.NET.Sdk.Worker">
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
@@ -178,7 +178,7 @@ await host.RunAsync();
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0" />
   </ItemGroup>
 </Project>
 ```

@@ -5,7 +5,7 @@ This guide covers testing the DeploymentPoC system. The primary workflow is to *
 ## Prerequisites
 
 ### Build Machine (WSL/Linux)
-- .NET 8 SDK installed
+- .NET 10 SDK installed
 - Node.js 20+ installed
 - `make` available
 
@@ -384,7 +384,7 @@ The dev server runs at `http://localhost:5173/` and proxies `/api/*` to `http://
 
 ### WSL Build Issues
 
-- **`make dist` fails with "dotnet not found"**: Ensure .NET 8 SDK is installed in WSL (`sudo apt install dotnet-sdk-8.0` on Ubuntu)
+- **`make dist` fails with "dotnet not found"**: Ensure .NET 10 SDK is installed in WSL (`sudo apt install dotnet-sdk-10.0` on Ubuntu)
 - **Permission denied on `dist/`**: Run `chmod +x dist/*.exe` if copying back to WSL (not needed for Windows)
 
 ### Windows Runtime Issues

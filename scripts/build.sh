@@ -30,9 +30,9 @@ mkdir -p "$root/dist/artifacts"
 mkdir -p "$root/dist/workload-definitions"
 
 # Copy executables
-cp "$root/orchestrator/backend/bin/Release/net8.0-windows/win-x64/publish/Orchestrator.exe" \
+cp "$root/orchestrator/backend/bin/Release/net10.0-windows/win-x64/publish/Orchestrator.exe" \
     "$root/dist/Orchestrator.exe"
-cp "$root/agent/backend/bin/Release/net8.0-windows/win-x64/publish/Agent.exe" \
+cp "$root/agent/backend/bin/Release/net10.0-windows/win-x64/publish/Agent.exe" \
     "$root/dist/Agent.exe"
 
 # Copy appsettings

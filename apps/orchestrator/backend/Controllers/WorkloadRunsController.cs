@@ -94,22 +94,46 @@ public sealed class WorkloadRunsController : ControllerBase
             });
         }
 
+        if (mode == "install" || mode == "update")
+        {
+            var downgradeErrors = await CheckForDowngradesAsync(distinctNodeIds, request.RevisionId);
+            if (downgradeErrors.Count > 0)
+            {
+                return UnprocessableEntity(new
+                {
+                    code = "DOWNGRADE_BLOCKED",
+                    message = "Cannot install workload — one or more nodes have a newer version installed.",
+                    details = downgradeErrors
+                });
+            }
+        }
+
         if (mode == "uninstall")
         {
-            var nodesWithoutRevision = await _db.NodeWorkloadStates
+            var nodesWithoutWorkload = await _db.NodeWorkloadStates
                 .AsNoTracking()
                 .Where(s => s.WorkloadId == request.WorkloadId
                     && distinctNodeIds.Contains(s.NodeId)
-                    && s.CurrentRevisionId != request.RevisionId)
+                    && s.CurrentRevisionId == null)
                 .Select(s => s.NodeId)
                 .ToListAsync();
 
-            if (nodesWithoutRevision.Count > 0)
+            // Also check for nodes that have NO state record at all for this workload
+            var nodeIdsWithState = await _db.NodeWorkloadStates
+                .AsNoTracking()
+                .Where(s => s.WorkloadId == request.WorkloadId && distinctNodeIds.Contains(s.NodeId))
+                .Select(s => s.NodeId)
+                .ToListAsync();
+
+            var nodesMissingState = distinctNodeIds.Except(nodeIdsWithState).ToList();
+            var invalidNodes = nodesWithoutWorkload.Union(nodesMissingState).ToList();
+
+            if (invalidNodes.Count > 0)
             {
                 errors.Add(new ValidationFieldError
                 {
                     Field = "nodeIds",
-                    Error = $"One or more nodes do not have revision {request.RevisionId} installed"
+                    Error = "One or more nodes do not have this workload installed"
                 });
             }
         }
@@ -142,16 +166,23 @@ public sealed class WorkloadRunsController : ControllerBase
         }
 
         var activeStates = new[] { "Queued", "Running" };
-        var hasActiveRun = await _db.WorkloadRuns
+        var conflictingRun = await _db.WorkloadRuns
             .AsNoTracking()
             .Where(r => r.WorkloadId == request.WorkloadId
                 && r.NodeId.HasValue && distinctNodeIds.Contains(r.NodeId.Value)
                 && activeStates.Contains(r.State))
-            .AnyAsync();
+            .OrderBy(r => r.CreatedAtUtc)
+            .FirstOrDefaultAsync();
 
-        if (hasActiveRun)
+        if (conflictingRun != null)
         {
-            return Conflict(new { message = "An active run already exists for this workload on one or more nodes" });
+            return Conflict(new
+            {
+                code = "ACTIVE_RUN_CONFLICT",
+                message = "Node already has an active run for this workload",
+                conflictingRunId = conflictingRun.RunId,
+                conflictingRunState = conflictingRun.State
+            });
         }
 
         var riskLevel = await _policyEvaluation.EvaluateRunRiskAsync(request.RevisionId, _db, HttpContext.RequestAborted);
@@ -267,7 +298,11 @@ public sealed class WorkloadRunsController : ControllerBase
         }
         catch (DbUpdateException ex) when (IsActiveRunConstraintViolation(ex))
         {
-            return Conflict(new { message = "An active run already exists for this workload on one or more nodes" });
+            return Conflict(new
+            {
+                code = "ACTIVE_RUN_CONFLICT",
+                message = "Node already has an active run for this workload"
+            });
         }
         catch (DbUpdateException)
         {
@@ -799,20 +834,30 @@ public sealed class WorkloadRunsController : ControllerBase
 
         if (normalizedMode == "uninstall" && revision is not null)
         {
-            var nodesWithoutRevision = await _db.NodeWorkloadStates
+            var nodesWithoutWorkload = await _db.NodeWorkloadStates
                 .AsNoTracking()
                 .Where(s => s.WorkloadId == workloadId
                     && parsedNodeIds.Contains(s.NodeId)
-                    && s.CurrentRevisionId != revisionId)
+                    && s.CurrentRevisionId == null)
                 .Select(s => s.NodeId)
                 .ToListAsync();
 
-            if (nodesWithoutRevision.Count > 0)
+            // Also check for nodes that have NO state record at all for this workload
+            var nodeIdsWithState = await _db.NodeWorkloadStates
+                .AsNoTracking()
+                .Where(s => s.WorkloadId == workloadId && parsedNodeIds.Contains(s.NodeId))
+                .Select(s => s.NodeId)
+                .ToListAsync();
+
+            var nodesMissingState = parsedNodeIds.Except(nodeIdsWithState).ToList();
+            var invalidNodes = nodesWithoutWorkload.Union(nodesMissingState).ToList();
+
+            if (invalidNodes.Count > 0)
             {
                 errors.Add(new ValidationFieldError
                 {
                     Field = "nodeIds",
-                    Error = $"One or more nodes do not have revision {revisionId} installed"
+                    Error = "One or more nodes do not have this workload installed"
                 });
             }
         }
@@ -1007,6 +1052,27 @@ public sealed class WorkloadRunsController : ControllerBase
                     }
                 }
 
+                bool hasBlockedDowngrade = actions.Any(a =>
+                    a.Action == "update" &&
+                    VersionComparisonService.IsDowngrade(a.CurrentVersion, a.TargetVersion));
+
+                bool hasInstallMissing = actions.Any(a => a.Action == "install") && actions.Any(a => a.Action == "unchanged");
+
+                if (hasBlockedDowngrade)
+                {
+                    foreach (var action in actions.Where(a => a.Action == "update" && VersionComparisonService.IsDowngrade(a.CurrentVersion, a.TargetVersion)))
+                    {
+                        action.Action = "blocked_downgrade";
+                    }
+                }
+                else if (hasInstallMissing)
+                {
+                    foreach (var action in actions.Where(a => a.Action == "install"))
+                    {
+                        action.Action = "install_missing";
+                    }
+                }
+
                 nodePreview.Actions = actions;
             }
 
@@ -1042,6 +1108,79 @@ public sealed class WorkloadRunsController : ControllerBase
             "install" or "update" or "uninstall" => true,
             _ => false
         };
+    }
+
+    private async Task<List<object>> CheckForDowngradesAsync(List<Guid> nodeIds, Guid targetRevisionId)
+    {
+        var errors = new List<object>();
+
+        var targetRevision = await _db.WorkloadRevisions
+            .Include(r => r.Packages)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.RevisionId == targetRevisionId);
+
+        if (targetRevision == null)
+            return errors;
+
+        var targetPackageIds = targetRevision.Packages.Select(wp => wp.PackageId).ToList();
+        var targetPackageEntities = await _db.Packages
+            .AsNoTracking()
+            .Where(p => targetPackageIds.Contains(p.PackageId))
+            .ToDictionaryAsync(p => p.PackageId);
+
+        var targetPackages = targetRevision.Packages
+            .Where(wp => targetPackageEntities.ContainsKey(wp.PackageId))
+            .ToDictionary(
+                wp => targetPackageEntities[wp.PackageId].Name,
+                wp => targetPackageEntities[wp.PackageId].Version);
+
+        var nodeStates = await _db.NodeWorkloadStates
+            .AsNoTracking()
+            .Include(s => s.CurrentRevision)
+            .ThenInclude(r => r!.Packages)
+            .Where(s => nodeIds.Contains(s.NodeId) && s.CurrentRevisionId != null)
+            .ToListAsync();
+
+        var currentRevisionIds = nodeStates
+            .Where(s => s.CurrentRevision != null)
+            .SelectMany(s => s.CurrentRevision!.Packages.Select(wp => wp.PackageId))
+            .Distinct()
+            .ToList();
+
+        var currentPackageEntities = await _db.Packages
+            .AsNoTracking()
+            .Where(p => currentRevisionIds.Contains(p.PackageId))
+            .ToDictionaryAsync(p => p.PackageId);
+
+        foreach (var state in nodeStates)
+        {
+            if (state.CurrentRevision == null)
+                continue;
+
+            foreach (var currentWp in state.CurrentRevision.Packages)
+            {
+                if (!currentPackageEntities.TryGetValue(currentWp.PackageId, out var currentPkg))
+                    continue;
+
+                if (targetPackages.TryGetValue(currentPkg.Name, out var targetVersion))
+                {
+                    if (VersionComparisonService.IsDowngrade(currentPkg.Version, targetVersion))
+                    {
+                        var node = await _db.Nodes.AsNoTracking().FirstOrDefaultAsync(n => n.NodeId == state.NodeId);
+                        errors.Add(new
+                        {
+                            nodeId = state.NodeId,
+                            hostname = node?.Hostname ?? "",
+                            package = currentPkg.Name,
+                            currentVersion = currentPkg.Version,
+                            targetVersion = targetVersion
+                        });
+                    }
+                }
+            }
+        }
+
+        return errors;
     }
 
     private static string ComputeIdempotencyRequestHash(Guid workloadId, Guid revisionId, string mode, List<Guid> nodeIds, bool forceInstall, bool reinstall)

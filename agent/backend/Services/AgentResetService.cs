@@ -19,7 +19,7 @@ public class AgentResetService
         if (config == null)
         {
             Console.WriteLine("No agent configuration found. Nothing to reset.");
-            DeleteConfigAndService();
+            await DeleteConfigAndServiceAsync();
             return 0;
         }
 
@@ -28,17 +28,10 @@ public class AgentResetService
             using var httpClient = new HttpClient();
             httpClient.Timeout = TimeSpan.FromSeconds(30);
 
-            var unregisterUrl = config.OrchestratorUrl.TrimEnd('/') + "/api/enrollment/unregister";
-            var request = new
-            {
-                config.AgentId,
-                config.AgentSecret
-            };
+            var unregisterUrl = config.OrchestratorUrl.TrimEnd('/') + $"/api/agents/{config.AgentId}/unregister";
+            httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", config.AgentSecret);
 
-            var json = JsonSerializer.Serialize(request);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-            var response = await httpClient.PostAsync(unregisterUrl, content);
+            var response = await httpClient.PostAsync(unregisterUrl, null);
             var responseBody = await response.Content.ReadAsStringAsync();
 
             if (response.IsSuccessStatusCode)
@@ -57,22 +50,31 @@ public class AgentResetService
             Console.WriteLine("Proceeding with local cleanup...");
         }
 
-        DeleteConfigAndService();
+        await DeleteConfigAndServiceAsync();
         return 0;
     }
 
-    private void DeleteConfigAndService()
+    private async Task DeleteConfigAndServiceAsync()
     {
         _configService.DeleteConfig();
         Console.WriteLine("Agent configuration deleted.");
 
-        StopAndDeleteService();
+        await StopAndDeleteServiceAsync();
     }
 
-    private static void StopAndDeleteService()
+    private static async Task StopAndDeleteServiceAsync()
     {
-        Console.WriteLine("Service removal would occur here (requires admin privileges).");
-        Console.WriteLine("Run: sc.exe stop OrchestratorAgent");
-        Console.WriteLine("Run: sc.exe delete OrchestratorAgent");
+        try
+        {
+            using var scm = new ScmService();
+            await scm.StopServiceAsync("OrchestratorAgent");
+            await scm.DeleteServiceAsync("OrchestratorAgent");
+            Console.WriteLine("Windows Service stopped and deleted successfully.");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Service removal failed: {ex.Message}");
+            Console.Error.WriteLine("Run as Administrator to remove the Windows Service.");
+        }
     }
 }

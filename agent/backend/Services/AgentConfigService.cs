@@ -9,7 +9,7 @@ public class AgentConfigService
 
     public AgentConfigService()
     {
-        _configPath = Path.Combine(AppContext.BaseDirectory, "agent.json");
+        _configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "OrchestratorAgent", "agent.json");
     }
 
     public AgentConfig? LoadConfig()
@@ -23,6 +23,10 @@ public class AgentConfigService
 
     public void SaveConfig(AgentConfig config)
     {
+        var directory = Path.GetDirectoryName(_configPath);
+        if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            Directory.CreateDirectory(directory);
+
         var json = JsonSerializer.Serialize(config, new JsonSerializerOptions
         {
             WriteIndented = true

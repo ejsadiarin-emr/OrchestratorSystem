@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using Agent.Models;
@@ -10,7 +11,7 @@ public class AgentEnrollService
 
     public AgentEnrollService()
     {
-        _configPath = Path.Combine(AppContext.BaseDirectory, "agent.json");
+        _configPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "OrchestratorAgent", "agent.json");
     }
 
     public async Task<int> ExecuteEnrollAsync(string token, string url)
@@ -20,7 +21,7 @@ public class AgentEnrollService
             using var httpClient = new HttpClient();
             httpClient.Timeout = TimeSpan.FromSeconds(30);
 
-            var enrollUrl = url.TrimEnd('/') + "/api/enrollment/enroll";
+            var enrollUrl = url.TrimEnd('/') + "/api/agents/enroll";
             var hostname = Environment.MachineName;
             var ipAddress = GetLocalIpAddress();
 
@@ -47,24 +48,26 @@ public class AgentEnrollService
             var agentId = result.GetProperty("agentId").GetString()!;
             var agentSecret = result.GetProperty("agentSecret").GetString()!;
 
+            var pollingInterval = 30;
+            if (result.TryGetProperty("pollingIntervalSeconds", out var pollingProp))
+                pollingInterval = pollingProp.GetInt32();
+
             var config = new AgentConfig
             {
                 AgentId = agentId,
                 AgentSecret = agentSecret,
-                OrchestratorUrl = url.TrimEnd('/')
+                OrchestratorUrl = url.TrimEnd('/'),
+                PollingIntervalSeconds = pollingInterval
             };
 
-            var configJson = JsonSerializer.Serialize(config, new JsonSerializerOptions
-            {
-                WriteIndented = true
-            });
-            await File.WriteAllTextAsync(_configPath, configJson);
+            var configService = new AgentConfigService();
+            configService.SaveConfig(config);
 
             Console.WriteLine($"Enrollment successful. Agent ID: {agentId}");
             Console.WriteLine($"Configuration written to: {_configPath}");
 
             // Register and start Windows Service
-            RegisterAndStartService();
+            await RegisterAndStartServiceAsync();
 
             return 0;
         }
@@ -95,10 +98,19 @@ public class AgentEnrollService
         return "127.0.0.1";
     }
 
-    private static void RegisterAndStartService()
+    private static async Task RegisterAndStartServiceAsync()
     {
-        Console.WriteLine("Service registration would occur here (requires admin privileges).");
-        Console.WriteLine("Run: sc.exe create OrchestratorAgent binPath= \"Agent.exe\" start= auto");
-        Console.WriteLine("Run: sc.exe start OrchestratorAgent");
+        try
+        {
+            using var scm = new ScmService();
+            await scm.InstallServiceAsync("OrchestratorAgent", Assembly.GetExecutingAssembly().Location);
+            await scm.StartServiceAsync("OrchestratorAgent");
+            Console.WriteLine("Windows Service installed and started successfully.");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Service registration failed: {ex.Message}");
+            Console.Error.WriteLine("Run as Administrator to register the Windows Service.");
+        }
     }
 }

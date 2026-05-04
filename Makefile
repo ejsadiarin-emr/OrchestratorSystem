@@ -30,11 +30,18 @@ publish: frontend
 dist: publish
 	mkdir -p dist/artifacts
 	mkdir -p dist/workload-definitions
+	mkdir -p dist/scripts
 	cp orchestrator/backend/bin/Release/net10.0-windows/win-x64/publish/Orchestrator.exe dist/
 	cp agent/backend/bin/Release/net10.0-windows/win-x64/publish/Agent.exe dist/
 	cp orchestrator/backend/appsettings.json dist/
+	cp scripts/download-sample-artifact.ps1 dist/scripts/
 	@echo "Distribution ready in dist/"
 	@echo "Copy dist/ to Windows and run Orchestrator.exe and Agent.exe from PowerShell"
+
+# Copy dist/ to Windows C:\temp\deployment-poc (WSL only)
+cp-win: dist
+	cp -r dist/* /mnt/c/temp/deployment-poc/
+	@echo "Copied dist/ to C:\temp\deployment-poc"
 
 # Run Orchestrator in development mode (for local API testing)
 run-dev:

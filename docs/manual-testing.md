@@ -192,34 +192,48 @@ You should see the newly enrolled agent with status `REGISTERED`.
 
 ### Step 8: Upload Artifacts
 
-From any machine that can reach the Orchestrator:
+#### 8a: Download a sample artifact
+
+Run this on the **Windows target machine** to download a real MSI package:
 
 ```powershell
-# PowerShell - single upload
-Invoke-RestMethod -Uri "http://localhost:5000/api/artifacts/upload" -Method Post -Form @{
-    packageId = "MyPackage"
-    version = "1.0.0"
-    packageName = "My Package"
-    file = Get-Item "C:\temp\MyPackage_1.0.0.msi"
-}
-
-# PowerShell - bulk import (filename format: PackageId_Version.ext)
-Invoke-RestMethod -Uri "http://localhost:5000/api/artifacts/import" -Method Post -Form @{
-    files = Get-Item "C:\temp\MyPackage_1.0.0.msi"
-}
-
-# List artifacts
-Invoke-RestMethod -Uri "http://localhost:5000/api/artifacts"
+cd C:\temp\deployment-poc
+.\scripts\download-sample-artifact.ps1
 ```
 
-Or using `curl` on WSL/Linux:
+> If you used `make cp-win`, the script is already in `C:\temp\deployment-poc\scripts\`. Otherwise, copy it manually from `scripts/download-sample-artifact.ps1`.
+
+This downloads `C:\temp\7-Zip_24.09.msi`, which you will upload in the next step.
+
+#### 8b: Upload the artifact
+
+> **Note:** Windows PowerShell 5.1 does not support the `-Form` parameter on `Invoke-RestMethod`. Use `curl.exe` (the real curl binary, available on Windows 10/11) instead:
+
+```powershell
+# Single upload
+curl.exe -X POST http://localhost:5000/api/artifacts/upload `
+  -F "packageId=7-Zip" `
+  -F "version=24.09" `
+  -F "packageName=7-Zip" `
+  -F "file=@C:\temp\7-Zip_24.09.msi"
+
+# Bulk import (filename must be PackageId_Version.ext)
+curl.exe -X POST http://localhost:5000/api/artifacts/import `
+  -F "files=@C:\temp\7-Zip_24.09.msi"
+
+# List artifacts
+curl.exe http://localhost:5000/api/artifacts
+```
+
+Or from **WSL/Linux**:
 
 ```bash
+# Copy the MSI into WSL first, or use a local file
 curl -X POST http://localhost:5000/api/artifacts/upload \
-  -F "packageId=MyPackage" \
-  -F "version=1.0.0" \
-  -F "packageName=My Package" \
-  -F "file=@/path/to/MyPackage_1.0.0.msi"
+  -F "packageId=7-Zip" \
+  -F "version=24.09" \
+  -F "packageName=7-Zip" \
+  -F "file=@/mnt/c/temp/7-Zip_24.09.msi"
 
 curl http://localhost:5000/api/artifacts
 ```
@@ -240,8 +254,8 @@ curl -X POST http://localhost:5000/api/workloads/upsert \
     "version": "1.0.0",
     "packages": [
       {
-        "packageId": "MyPackage",
-        "version": "1.0.0",
+        "packageId": "7-Zip",
+        "version": "24.09",
         "preInitSteps": ["echo pre-init"],
         "postInitSteps": ["echo post-init"]
       }
@@ -258,8 +272,8 @@ $body = @{
     version = "1.0.0"
     packages = @(
         @{
-            packageId = "MyPackage"
-            version = "1.0.0"
+            packageId = "7-Zip"
+            version = "24.09"
             preInitSteps = @("echo pre-init")
             postInitSteps = @("echo post-init")
         }

@@ -1,166 +1,237 @@
 # Manual Testing Guide
 
-This guide walks through testing the DeploymentPoC system manually.
+This guide covers testing the DeploymentPoC system. The primary workflow is to **build on WSL/Linux and run the self-contained Windows executables on a Windows machine**.
 
 ## Prerequisites
 
+### Build Machine (WSL/Linux)
 - .NET 8 SDK installed
 - Node.js 20+ installed
-- `make` available (or use the Makefile targets as reference for manual commands)
+- `make` available
+
+### Target Machine (Windows)
+- Windows 10/11 or Windows Server 2019+
+- No .NET runtime required (binaries are self-contained)
+- PowerShell
 
 ---
 
-## 1. Build Verification
+## Production Workflow: Build on WSL, Run on Windows
+
+### Step 1: Build Production Binaries
+
+On your **WSL/Linux build machine**:
 
 ```bash
-# Build the full .NET solution
-make build
-
-# Build the React frontend
-make frontend
+make dist
 ```
 
-Or manually:
+This produces the `dist/` directory:
+
+```
+dist/
+├── Orchestrator.exe      # Self-contained single-file executable
+├── Agent.exe             # Self-contained single-file executable
+├── appsettings.json      # Orchestrator configuration
+├── artifacts/            # Artifact storage directory
+└── workload-definitions/ # Workload definition storage directory
+```
+
+> **Note:** .NET can cross-compile `win-x64` binaries from Linux/WSL. The executables include the .NET runtime and all native libraries.
+
+---
+
+### Step 2: Copy Binaries to Windows
+
+From WSL, copy the `dist/` folder to a Windows-accessible location:
+
 ```bash
-dotnet build DeploymentPoC.sln --configuration Release
-cd orchestrator/web && npm install && npm run build
+# Option A: Copy to a Windows drive mounted in WSL
+cp -r dist/ /mnt/c/temp/deployment-poc/
+
+# Option B: Copy to a network share
+cp -r dist/ //your-windows-server/share/deployment-poc/
+```
+
+On the **Windows target machine**, open PowerShell:
+
+```powershell
+# Verify the files are there
+ls C:\temp\deployment-poc\
+
+# Output:
+#     Directory: C:\temp\deployment-poc
+# Mode                 LastWriteTime         Length Name
+# ----                 -------------         ------ ----
+# d-----          5/4/2026   9:00 AM                artifacts
+# d-----          5/4/2026   9:00 AM                workload-definitions
+# -a----          5/4/2026   9:00 AM       45000000 Orchestrator.exe
+# -a----          5/4/2026   9:00 AM       25000000 Agent.exe
+# -a----          5/4/2026   9:00 AM           1200 appsettings.json
 ```
 
 ---
 
-## 2. Start the Orchestrator
+### Step 3: Start the Orchestrator
 
-On the **Orchestrator server/node**:
+On the **Windows Orchestrator server**, open PowerShell as Administrator (recommended for service features):
 
-```bash
-make run-orchestrator
-```
+```powershell
+cd C:\temp\deployment-poc
 
-Or manually:
-```bash
-cd orchestrator/backend
-dotnet run
+# Start the Orchestrator API
+.\Orchestrator.exe
 ```
 
 The API will be available at `http://localhost:5000/`.
 
+To run on a different port, edit `appsettings.json` before starting:
+
+```powershell
+# View current config
+Get-Content appsettings.json | ConvertFrom-Json | Select-Object -ExpandProperty WebHost
+
+# Edit with your preferred editor (notepad, vscode, etc.)
+notepad appsettings.json
+```
+
 ---
 
-## 3. Test the Health Endpoint
+### Step 4: Verify Orchestrator Health
 
-```bash
+From any machine that can reach the Orchestrator:
+
+```powershell
+# PowerShell
+Invoke-RestMethod -Uri "http://localhost:5000/api/health"
+
+# Or using curl (if available)
 curl http://localhost:5000/api/health
 ```
 
-**Expected response:**
-```json
-{"status":"healthy"}
-```
+**Expected:** `{"status":"healthy"}`
 
 ---
 
-## 4. Test Enrollment Token Generation
+### Step 5: Generate an Enrollment Token
 
-On the **Orchestrator server/node** (or any machine that can reach it):
+From any machine that can reach the Orchestrator:
 
-```bash
-# Generate a new enrollment token
-curl -X POST http://localhost:5000/api/enrollment/token
+```powershell
+# PowerShell
+$response = Invoke-RestMethod -Uri "http://localhost:5000/api/enrollment/token" -Method Post
+$response
+
+# Expected output:
+# token      : a1b2c3d4e5f6...
+# expiresAt  : 2026-05-05T10:00:00Z
 ```
 
-**Expected response:**
-```json
-{"token":"a1b2c3d4e5f6...","expiresAt":"2026-05-05T10:00:00Z"}
-```
-
-```bash
-# List all tokens
-curl http://localhost:5000/api/enrollment/tokens
-```
+Save the token value for the next step.
 
 ---
 
-## 5. Test Agent Enrollment
+### Step 6: Enroll the Agent
 
-> **Important:** This step is performed on the **Agent node** (the Windows machine that will run the Agent service).
+On the **Windows Agent node** (the machine that will run the Agent service), open PowerShell as Administrator:
 
-First, publish the Agent executable (or use `dotnet run` for testing):
+```powershell
+cd C:\temp\deployment-poc
 
-```bash
-# Option A: Use the published self-contained executable
-make publish
-./dist/Agent.exe --enroll <token> --url http://<orchestrator-host>:5000
-
-# Option B: Run via dotnet (development mode)
-cd agent/backend
-dotnet run -- --enroll <token> --url http://<orchestrator-host>:5000
+# Enroll the agent
+.\Agent.exe --enroll <token> --url http://<orchestrator-host>:5000
 ```
 
 Replace:
-- `<token>` with the token from Step 4
-- `<orchestrator-host>` with the Orchestrator's IP or hostname
+- `<token>` with the token from Step 5
+- `<orchestrator-host>` with the Orchestrator's IP or hostname (use `localhost` if same machine)
 
 **Expected output:**
 ```
 Enrollment successful. Agent ID: 1234567890abcdef...
-Configuration written to: C:\...\agent.json
+Configuration written to: C:\temp\deployment-poc\agent.json
 Service registration would occur here (requires admin privileges).
-Run: sc create OrchestratorAgent binPath= "Agent.exe" start= auto
+Run: sc create OrchestratorAgent binPath= "C:\temp\deployment-poc\Agent.exe" start= auto
 Run: sc start OrchestratorAgent
 ```
 
-> **Note:** On Linux, service registration is skipped and instructions are printed. On Windows, you would run the `sc` commands as Administrator to register the service.
+Since you're already running as Administrator, register the service:
 
----
-
-## 6. Test Agent APIs
-
-On the **Orchestrator server/node** (or any machine that can reach it):
-
-```bash
-# List all registered agents
-curl http://localhost:5000/api/agents
-
-# Get a specific agent (replace <agentId>)
-curl http://localhost:5000/api/agents/<agentId>
-
-# Send a heartbeat (simulates agent polling)
-curl -X POST http://localhost:5000/api/agents/<agentId>/heartbeat
+```powershell
+# Register the Agent as a Windows Service
+sc create OrchestratorAgent binPath= "C:\temp\deployment-poc\Agent.exe" start= auto
+cd C:\temp\deployment-poc
+sc start OrchestratorAgent
 ```
 
+Verify the service is running:
+
+```powershell
+Get-Service OrchestratorAgent
+```
+
+> **Note:** The `agent.json` file is created in the same directory as `Agent.exe` and contains the Agent's credentials. Keep it secure.
+
 ---
 
-## 7. Test Artifact Upload
+### Step 7: Verify Agent Registration
 
-On the **Orchestrator server/node** (or via the frontend/API client):
+From any machine that can reach the Orchestrator:
+
+```powershell
+# PowerShell
+Invoke-RestMethod -Uri "http://localhost:5000/api/agents"
+
+# Or curl
+curl http://localhost:5000/api/agents
+```
+
+You should see the newly enrolled agent with status `REGISTERED`.
+
+---
+
+### Step 8: Upload Artifacts
+
+From any machine that can reach the Orchestrator:
+
+```powershell
+# PowerShell - single upload
+Invoke-RestMethod -Uri "http://localhost:5000/api/artifacts/upload" -Method Post -Form @{
+    packageId = "MyPackage"
+    version = "1.0.0"
+    packageName = "My Package"
+    file = Get-Item "C:\temp\MyPackage_1.0.0.msi"
+}
+
+# PowerShell - bulk import (filename format: PackageId_Version.ext)
+Invoke-RestMethod -Uri "http://localhost:5000/api/artifacts/import" -Method Post -Form @{
+    files = Get-Item "C:\temp\MyPackage_1.0.0.msi"
+}
+
+# List artifacts
+Invoke-RestMethod -Uri "http://localhost:5000/api/artifacts"
+```
+
+Or using `curl` on WSL/Linux:
 
 ```bash
-# Create a dummy installer file
-echo "dummy installer" > /tmp/MyPackage_1.0.0.msi
-
-# Single file upload
 curl -X POST http://localhost:5000/api/artifacts/upload \
   -F "packageId=MyPackage" \
   -F "version=1.0.0" \
   -F "packageName=My Package" \
-  -F "file=@/tmp/MyPackage_1.0.0.msi"
+  -F "file=@/path/to/MyPackage_1.0.0.msi"
 
-# Bulk import (filename format: PackageId_Version.ext)
-curl -X POST http://localhost:5000/api/artifacts/import \
-  -F "files=@/tmp/MyPackage_1.0.0.msi"
-
-# List all artifacts
 curl http://localhost:5000/api/artifacts
 ```
 
 ---
 
-## 8. Test Workload Upload/Upsert
+### Step 9: Upload a Workload
 
-On the **Orchestrator server/node**:
+From any machine that can reach the Orchestrator:
 
 ```bash
-# Create or update a workload definition
+# curl (works on WSL, Git Bash, or anywhere)
 curl -X POST http://localhost:5000/api/workloads/upsert \
   -H "Content-Type: application/json" \
   -d '{
@@ -176,26 +247,38 @@ curl -X POST http://localhost:5000/api/workloads/upsert \
       }
     ]
   }'
+```
 
-# List all workloads
-curl http://localhost:5000/api/workloads
+Or PowerShell:
 
-# Get a specific workload
-curl http://localhost:5000/api/workloads/StandardDesktop/1.0.0
+```powershell
+$body = @{
+    workloadId = "StandardDesktop"
+    workloadName = "Standard Desktop"
+    version = "1.0.0"
+    packages = @(
+        @{
+            packageId = "MyPackage"
+            version = "1.0.0"
+            preInitSteps = @("echo pre-init")
+            postInitSteps = @("echo post-init")
+        }
+    )
+} | ConvertTo-Json -Depth 10
+
+Invoke-RestMethod -Uri "http://localhost:5000/api/workloads/upsert" -Method Post -Body $body -ContentType "application/json"
 ```
 
 ---
 
-## 9. Test Workload Watcher
+### Step 10: Test Workload Watcher
 
-On the **Orchestrator server/node**:
+On the **Windows Orchestrator server**, create a workload definition file in the watched directory:
 
-The Orchestrator watches the `dist/workload-definitions/` directory for `.json` files. Drop a file there to test auto-import:
+```powershell
+cd C:\temp\deployment-poc
 
-```bash
-mkdir -p dist/workload-definitions
-
-cat > dist/workload-definitions/AutoImport_2.0.0.json << 'EOF'
+$json = @'
 {
   "workloadId": "AutoImport",
   "workloadName": "Auto Imported Workload",
@@ -207,30 +290,30 @@ cat > dist/workload-definitions/AutoImport_2.0.0.json << 'EOF'
     }
   ]
 }
-EOF
+'@
+
+$json | Out-File -FilePath "workload-definitions\AutoImport_2.0.0.json" -Encoding utf8
 ```
 
-Wait ~1 second, then verify:
+Wait ~1 second, then verify it was auto-imported:
 
-```bash
-curl http://localhost:5000/api/workloads
+```powershell
+Invoke-RestMethod -Uri "http://localhost:5000/api/workloads"
 ```
 
-You should see the `AutoImport` workload automatically imported.
+You should see the `AutoImport` workload in the list.
 
 ---
 
-## 10. Test Agent Reset/Unregistration
+### Step 11: Reset/Unregister the Agent
 
-On the **Agent node** (where `agent.json` exists):
+On the **Windows Agent node**, open PowerShell as Administrator:
 
-```bash
-# Option A: Use the published self-contained executable
-./dist/Agent.exe --reset
+```powershell
+cd C:\temp\deployment-poc
 
-# Option B: Run via dotnet (development mode)
-cd agent/backend
-dotnet run -- --reset
+# Unregister the agent
+.\Agent.exe --reset
 ```
 
 **Expected output:**
@@ -242,42 +325,43 @@ Run: sc stop OrchestratorAgent
 Run: sc delete OrchestratorAgent
 ```
 
-> **Note:** On Windows, run the `sc` commands as Administrator to fully remove the service.
+Complete the cleanup:
+
+```powershell
+# Stop and remove the service
+sc stop OrchestratorAgent
+sc delete OrchestratorAgent
+```
+
+Verify the agent is gone from the Orchestrator:
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:5000/api/agents"
+```
 
 ---
 
-## 11. Test the React Frontend
+## Development Workflow (dotnet run)
 
-On the **Orchestrator server/node** (for development):
+For rapid iteration during development, you can run directly via `dotnet run` instead of using published binaries.
 
-```bash
-cd orchestrator/web
-npm run dev
-```
-
-Open `http://localhost:5173/` in a browser. The sidebar shows navigation links to all pages. The Vite dev server proxies `/api/*` calls to `http://localhost:5000/`.
-
-For production, the frontend is built into `orchestrator/backend/wwwroot/` and served by the ASP.NET Core app automatically.
-
----
-
-## 12. Full Production Distribution Build
+### Start Orchestrator in Dev Mode
 
 ```bash
-make dist
+make run-dev
+# or
+cd orchestrator/backend && dotnet run
 ```
 
-This produces:
-```
-dist/
-├── Orchestrator.exe      # Self-contained single-file executable
-├── Agent.exe             # Self-contained single-file executable
-├── appsettings.json      # Orchestrator configuration
-├── artifacts/            # Artifact storage directory
-└── workload-definitions/ # Workload definition storage directory
+### Start Frontend Dev Server
+
+```bash
+make run-frontend
+# or
+cd orchestrator/web && npm run dev
 ```
 
-Copy the `dist/` folder to your target Windows server(s) to deploy.
+The dev server runs at `http://localhost:5173/` and proxies `/api/*` to `http://localhost:5000/`.
 
 ---
 
@@ -285,12 +369,12 @@ Copy the `dist/` folder to your target Windows server(s) to deploy.
 
 | Target | Description |
 |--------|-------------|
-| `make build` | Build .NET solution (Release) |
+| `make publish` | Build self-contained win-x64 executables |
+| `make dist` | Package into `dist/` for copying to Windows |
+| `make build` | Build .NET solution (Release, not self-contained) |
 | `make frontend` | Build React frontend |
-| `make publish` | Publish self-contained executables |
-| `make dist` | Create distribution directory |
-| `make run-orchestrator` | Run Orchestrator in dev mode |
-| `make run-agent` | Run Agent in dev mode |
+| `make run-dev` | Run Orchestrator in dev mode |
+| `make run-frontend` | Run React dev server |
 | `make clean` | Clean all build artifacts |
 | `make help` | Show available targets |
 
@@ -298,7 +382,40 @@ Copy the `dist/` folder to your target Windows server(s) to deploy.
 
 ## Troubleshooting
 
-- **Port 5000 already in use:** Change the port in `orchestrator/backend/appsettings.json` under `WebHost:Port`.
-- **SQLite database locked:** Ensure only one Orchestrator instance is running.
-- **Agent enrollment fails:** Verify the token hasn't expired and the Orchestrator URL is reachable from the Agent node.
-- **Frontend build fails:** Ensure Node.js 20+ is installed and `npm install` was run.
+### WSL Build Issues
+
+- **`make dist` fails with "dotnet not found"**: Ensure .NET 8 SDK is installed in WSL (`sudo apt install dotnet-sdk-8.0` on Ubuntu)
+- **Permission denied on `dist/`**: Run `chmod +x dist/*.exe` if copying back to WSL (not needed for Windows)
+
+### Windows Runtime Issues
+
+- **"Windows cannot run this app"**: Ensure you're on a 64-bit Windows system (the binaries target `win-x64`)
+- **Orchestrator won't start (port 5000 in use)**: Edit `appsettings.json` and change `WebHost:Port`
+- **Agent enrollment fails**: Verify the token hasn't expired and the Orchestrator URL is reachable from the Agent node
+- **Service registration fails**: Ensure PowerShell is running as Administrator
+
+### Cross-Platform Notes
+
+- The `Orchestrator.exe` and `Agent.exe` binaries are **pure Windows executables**. They cannot run on Linux.
+- However, they can be **built on Linux/WSL** because .NET supports cross-platform compilation.
+- The SQLite database (`orchestrator.db`) is created in the working directory where `Orchestrator.exe` runs.
+- Artifacts are stored in the `artifacts/` folder relative to the working directory.
+
+---
+
+## Architecture Summary
+
+```
+┌─────────────────┐         ┌─────────────────┐         ┌─────────────────┐
+│   WSL/Linux     │         │  Windows Server │         │  Windows Agent  │
+│   (Build)       │         │  (Orchestrator) │         │  (Agent Node)   │
+│                 │         │                 │         │                 │
+│  make dist      │ ──────> │  Orchestrator.exe        │  Agent.exe      │
+│                 │  copy   │  ├─ SQLite DB            │  ├─ agent.json  │
+│                 │  dist/  │  ├─ artifacts/           │  └─ Windows     │
+│                 │         │  └─ wwwroot/ (React)     │     Service     │
+└─────────────────┘         └─────────────────┘         └─────────────────┘
+                                    ^                             │
+                                    │      HTTP API calls         │
+                                    └─────────────────────────────┘
+```

@@ -1,9 +1,9 @@
-.PHONY: all build publish clean dist run-orchestrator run-agent frontend help
+.PHONY: all build publish clean dist run-dev run-frontend help
 
-# Default target
+# Default target - production publish
 all: publish
 
-# Build .NET solution in Debug configuration
+# Build .NET solution (fast, no self-contained)
 build:
 	dotnet build DeploymentPoC.sln --configuration Release
 
@@ -12,6 +12,7 @@ frontend:
 	cd orchestrator/web && npm install && npm run build
 
 # Publish self-contained single-file executables for production
+# Target: win-x64. Can be built on Linux/WSL and copied to Windows.
 publish: frontend
 	dotnet publish orchestrator/backend/Orchestrator.csproj \
 		-c Release -r win-x64 --self-contained true \
@@ -24,23 +25,26 @@ publish: frontend
 		/p:IncludeNativeLibrariesForSelfExtract=true \
 		/p:EnableCompressionInSingleFile=true
 
-# Create distribution directory with all artifacts
+# Create distribution directory with everything needed to run on Windows
+# Usage: make dist -> copy dist/ folder to Windows -> run binaries in PowerShell
 dist: publish
 	mkdir -p dist/artifacts
 	mkdir -p dist/workload-definitions
 	cp orchestrator/backend/bin/Release/net8.0-windows/win-x64/publish/Orchestrator.exe dist/
 	cp agent/backend/bin/Release/net8.0-windows/win-x64/publish/Agent.exe dist/
 	cp orchestrator/backend/appsettings.json dist/
+	@echo "Distribution ready in dist/"
+	@echo "Copy dist/ to Windows and run Orchestrator.exe and Agent.exe from PowerShell"
 
-# Run Orchestrator in development mode
-run-orchestrator:
+# Run Orchestrator in development mode (for local API testing)
+run-dev:
 	cd orchestrator/backend && dotnet run
 
-# Run Agent in development mode (requires agent.json from enrollment)
-run-agent:
-	cd agent/backend && dotnet run
+# Run React frontend dev server (proxies to localhost:5000)
+run-frontend:
+	cd orchestrator/web && npm run dev
 
-# Clean build artifacts
+# Clean all build artifacts
 clean:
 	dotnet clean DeploymentPoC.sln
 	cd orchestrator/web && rm -rf node_modules dist
@@ -48,12 +52,16 @@ clean:
 
 # Show help
 help:
-	@echo "Available targets:"
-	@echo "  make build          - Build .NET solution (Release)"
+	@echo "Production workflow (build on WSL/Linux, run on Windows):"
+	@echo "  make publish        - Build self-contained win-x64 executables"
+	@echo "  make dist           - Package into dist/ for copying to Windows"
+	@echo ""
+	@echo "Development workflow (dotnet run):"
+	@echo "  make build          - Build .NET solution (Release, not self-contained)"
 	@echo "  make frontend       - Build React frontend"
-	@echo "  make publish        - Publish self-contained executables"
-	@echo "  make dist           - Create distribution directory"
-	@echo "  make run-orchestrator - Run Orchestrator in dev mode"
-	@echo "  make run-agent      - Run Agent in dev mode"
+	@echo "  make run-dev        - Run Orchestrator in dev mode"
+	@echo "  make run-frontend   - Run React dev server"
+	@echo ""
+	@echo "Maintenance:"
 	@echo "  make clean          - Clean all build artifacts"
 	@echo "  make help           - Show this help"

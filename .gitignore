@@ -91,3 +91,6 @@ wiki
 .agents
 .env
 screenshot*
+test-artifacts/
+*.exe
+*.zip

@@ -22,7 +22,7 @@ public sealed class AgentRuntimeService : BackgroundService
     private IHubConnection? _connection;
     private Timer? _heartbeatTimer;
     private Guid? _nodeId;
-    private Task? _runningPipeline;
+    private readonly SemaphoreSlim _pipelineLock = new(1, 1);
     private readonly CancellationTokenSource _pipelineWatchdogCts = new();
 
     public AgentRuntimeService(
@@ -155,7 +155,8 @@ public sealed class AgentRuntimeService : BackgroundService
                 _logger.LogError(ex, "Poll cycle failed — will retry");
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(10), stoppingToken);
+            var pollIntervalSeconds = _configuration.GetValue<double?>("Agent:PollIntervalSeconds") ?? 10.0;
+            await Task.Delay(TimeSpan.FromSeconds(pollIntervalSeconds), stoppingToken);
         }
     }
 
@@ -166,123 +167,133 @@ public sealed class AgentRuntimeService : BackgroundService
 
         foreach (var run in runs ?? [])
         {
-            // Atomic claim
-            var claimResponse = await http.PatchAsJsonAsync(
-                $"/api/workload-runs/{run.RunId}?agent_id={nodeId}",
-                new { status = "Running" }, ct);
-
-            if (!claimResponse.IsSuccessStatusCode)
+            // Skip claiming if a pipeline is already running — don't skip polling
+            if (!await _pipelineLock.WaitAsync(0))
             {
-                _logger.LogWarning("Failed to claim run {RunId}. Status={Status}", run.RunId, claimResponse.StatusCode);
-                continue;
+                _logger.LogInformation("Pipeline already running — deferring run {RunId}", run.RunId);
+                break; // Don't claim; next poll cycle will re-fetch this run
             }
 
-            // Build PipelineContext from PendingWorkloadRunResponse
-            static PackageAssignment MapPackage(PendingPackageDto p) => new()
+            try
             {
-                PackageEntityId = p.PackageEntityId,
-                PackageId = p.PackageEntityId.ToString(),
-                Name = p.Name,
-                Version = p.Version,
-                ArtifactFileName = p.Filename,
-                DownloadUrl = p.DownloadUrl,
-                ExpectedSha256 = p.ExpectedSha256,
-                InstallAdapter = p.InstallAdapter,
-                Detection = p.Detection
-            };
+                // Atomic claim
+                var claimResponse = await http.PatchAsJsonAsync(
+                    $"/api/workload-runs/{run.RunId}?agent_id={nodeId}",
+                    new { status = "Running" }, ct);
 
-            var targetPackages = run.Packages.Select(MapPackage).ToList();
-            var currentPackages = run.CurrentPackages.Select(MapPackage).ToList();
-
-            var context = new PipelineContext
-            {
-                Payload = new AssignRunPayload
+                if (!claimResponse.IsSuccessStatusCode)
                 {
-                    RunId = run.RunId,
-                    WorkloadId = run.WorkloadId,
-                    WorkloadName = run.WorkloadName,
-                    Mode = run.Mode,
-                    NodeId = nodeId,
-                    Packages = targetPackages,
-                    CurrentPackages = currentPackages
-                },
-                CurrentPackages = currentPackages,
-                OrchestratorBaseUrl = http.BaseAddress?.ToString().TrimEnd('/') ?? "",
-                AgentId = nodeId.ToString(),
-                RunId = run.RunId.ToString(),
-                Sequence = 0,
-                ForceInstall = false
-            };
-
-            var pipelineTimeoutMinutes = _configuration.GetValue<double?>("Agent:PipelineTimeoutMinutes") ?? 30;
-            var pipelineCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            pipelineCts.CancelAfter(TimeSpan.FromMinutes(pipelineTimeoutMinutes));
-            var pipelineCt = pipelineCts.Token;
-
-            // Fire and forget — don't await, so poll loop isn't blocked
-            _runningPipeline = Task.Run(async () =>
-            {
-                try
-                {
-                    var result = await _pipelineExecutor.ExecuteAsync(
-                        context,
-                        async (msg, msgCt) =>
-                        {
-                            if (msg.Payload is StepStatusPayload stepPayload)
-                            {
-                                await http.PostAsJsonAsync(
-                                    $"/api/workload-runs/{run.RunId}/timeline?agent_id={nodeId}",
-                                    new
-                                    {
-                                        step = stepPayload.StepName,
-                                        status = stepPayload.Status,
-                                        message = stepPayload.Error
-                                    }, msgCt);
-                            }
-                            else if (msg.Payload is FinalizationPayload finalPayload)
-                            {
-                                await http.PostAsJsonAsync(
-                                    $"/api/workload-runs/{run.RunId}/timeline?agent_id={nodeId}",
-                                    new
-                                    {
-                                        step = "Finalization",
-                                        status = finalPayload.Result,
-                                        message = finalPayload.Error
-                                    }, msgCt);
-                            }
-                        },
-                        pipelineCt);
-
-                    // Report final status
-                    await http.PatchAsJsonAsync(
-                        $"/api/workload-runs/{run.RunId}?agent_id={nodeId}",
-                        new
-                        {
-                            status = result.Success ? "Completed" : "Failed",
-                            error = result.Error
-                        }, CancellationToken.None);
-
-                    _logger.LogInformation("Pipeline completed: RunId={RunId}, Success={Success}", run.RunId, result.Success);
+                    _logger.LogWarning("Failed to claim run {RunId}. Status={Status}", run.RunId, claimResponse.StatusCode);
+                    _pipelineLock.Release(); // Release if claim failed — allow retry on next cycle
+                    continue;
                 }
-                catch (Exception ex)
+
+                // Build PipelineContext from PendingWorkloadRunResponse
+                static PackageAssignment MapPackage(PendingPackageDto p) => new()
                 {
-                    _logger.LogError(ex, "Pipeline failed for RunId={RunId}", run.RunId);
+                    PackageEntityId = p.PackageEntityId,
+                    PackageId = p.PackageEntityId.ToString(),
+                    Name = p.Name,
+                    Version = p.Version,
+                    ArtifactFileName = p.Filename,
+                    DownloadUrl = p.DownloadUrl,
+                    ExpectedSha256 = p.ExpectedSha256,
+                    InstallAdapter = p.InstallAdapter,
+                    Detection = p.Detection
+                };
+
+                var targetPackages = run.Packages.Select(MapPackage).ToList();
+                var currentPackages = run.CurrentPackages.Select(MapPackage).ToList();
+
+                var context = new PipelineContext
+                {
+                    Payload = new AssignRunPayload
+                    {
+                        RunId = run.RunId,
+                        WorkloadId = run.WorkloadId,
+                        WorkloadName = run.WorkloadName,
+                        Mode = run.Mode,
+                        NodeId = nodeId,
+                        Packages = targetPackages,
+                        CurrentPackages = currentPackages
+                    },
+                    CurrentPackages = currentPackages,
+                    OrchestratorBaseUrl = http.BaseAddress?.ToString().TrimEnd('/') ?? "",
+                    AgentId = nodeId.ToString(),
+                    RunId = run.RunId.ToString(),
+                    Sequence = 0,
+                    ForceInstall = false
+                };
+
+                var pipelineTimeoutMinutes = _configuration.GetValue<double?>("Agent:PipelineTimeoutMinutes") ?? 30;
+                var pipelineCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                pipelineCts.CancelAfter(TimeSpan.FromMinutes(pipelineTimeoutMinutes));
+
+                // Fire and forget — semaphore is released in finally block
+                _ = Task.Run(async () =>
+                {
                     try
                     {
+                        var result = await _pipelineExecutor.ExecuteAsync(
+                            context,
+                            async (msg, msgCt) =>
+                            {
+                                if (msg.Payload is StepStatusPayload stepPayload)
+                                {
+                                    await http.PostAsJsonAsync(
+                                        $"/api/workload-runs/{run.RunId}/timeline?agent_id={nodeId}",
+                                        new
+                                        {
+                                            step = stepPayload.StepName,
+                                            status = stepPayload.Status,
+                                            message = stepPayload.Error
+                                        }, msgCt);
+                                }
+                                else if (msg.Payload is FinalizationPayload finalPayload)
+                                {
+                                    await http.PostAsJsonAsync(
+                                        $"/api/workload-runs/{run.RunId}/timeline?agent_id={nodeId}",
+                                        new
+                                        {
+                                            step = "Finalization",
+                                            status = finalPayload.Result,
+                                            message = finalPayload.Error
+                                        }, msgCt);
+                                }
+                            },
+                            pipelineCts.Token);
+
+                        _logger.LogInformation("Pipeline completed: RunId={RunId}, Success={Success}, Error={Error}", run.RunId, result.Success, result.Error);
+
+                        // Report final status (same as before)
                         await http.PatchAsJsonAsync(
                             $"/api/workload-runs/{run.RunId}?agent_id={nodeId}",
-                            new { status = "Failed", error = ex.Message }, CancellationToken.None);
+                            new { status = result.Success ? "Completed" : "Failed", error = result.Error },
+                            CancellationToken.None);
                     }
-                    catch { /* best effort */ }
-                }
-            });
-
-            _ = Task.Run(async () =>
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Pipeline failed for RunId={RunId}", run.RunId);
+                        try
+                        {
+                            await http.PatchAsJsonAsync(
+                                $"/api/workload-runs/{run.RunId}?agent_id={nodeId}",
+                                new { status = "Failed", error = ex.Message }, CancellationToken.None);
+                        }
+                        catch { /* best effort */ }
+                    }
+                    finally
+                    {
+                        _pipelineLock.Release();
+                        pipelineCts.Dispose();
+                    }
+                });
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                try { await _runningPipeline; }
-                catch (Exception ex) { _logger.LogError(ex, "Pipeline task faulted"); }
-                finally { _runningPipeline = null; pipelineCts.Dispose(); }
-            });
+                _pipelineLock.Release(); // Release on unexpected errors before pipeline starts
+                throw;
+            }
         }
     }
 
@@ -419,6 +430,7 @@ public sealed class AgentRuntimeService : BackgroundService
     {
         _pipelineWatchdogCts.Cancel();
         _pipelineWatchdogCts.Dispose();
+        _pipelineLock.Dispose();
         base.Dispose();
     }
 }

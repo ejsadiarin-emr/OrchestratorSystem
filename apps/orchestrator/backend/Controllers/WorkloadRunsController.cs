@@ -690,8 +690,16 @@ public sealed class WorkloadRunsController : ControllerBase
 
         if (request.Status == "Completed" && agentId.HasValue)
         {
-            await NodeWorkloadStateService.UpdateNodeWorkloadStateStatusAsync(
-                _db, agentId.Value, runId, "completed", setCurrentRevision: true, workloadStatus: "Current");
+            if (string.Equals(run.Mode, "uninstall", StringComparison.OrdinalIgnoreCase))
+            {
+                await NodeWorkloadStateService.ClearNodeWorkloadStateRevisionAsync(
+                    _db, agentId.Value, runId);
+            }
+            else
+            {
+                await NodeWorkloadStateService.UpdateNodeWorkloadStateStatusAsync(
+                    _db, agentId.Value, runId, "completed", setCurrentRevision: true, workloadStatus: "Current");
+            }
             await _db.SaveChangesAsync();
         }
 

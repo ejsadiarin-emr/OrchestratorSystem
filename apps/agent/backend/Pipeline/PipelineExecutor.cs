@@ -225,7 +225,7 @@ public class PipelineExecutor
                         package.PackageId,
                         artifactUrl);
 
-                    var chunkSizeBytes = _configuration.GetValue<int?>("Agent:ChunkSizeBytes") ?? 2 * 1024 * 1024;
+                    var chunkSizeBytes = _configuration.GetValue<int?>("Agent:ChunkSizeBytes") ?? 8 * 1024 * 1024;
                     var useChunkedDownload = _configuration.GetValue<bool?>("Agent:UseChunkedDownload") ?? true;
 
                     var acquireResult = await acquire.ExecuteAsync(new AcquireArtifactRequest
@@ -250,10 +250,14 @@ public class PipelineExecutor
                     }
                 }
 
+                
+
+                var logCommand = effectiveConfig.UninstallCommand?.Replace("{artifactPath}", destinationPath ?? "", StringComparison.OrdinalIgnoreCase) ?? "";
+                var logArgs = effectiveConfig.UninstallArgs?.Replace("{artifactPath}", destinationPath ?? "", StringComparison.OrdinalIgnoreCase) ?? "";
                 _logger.LogInformation(
                     "Executing uninstall: Command={Command}, Args={Args}, Type={Type}",
-                    effectiveConfig.UninstallCommand,
-                    effectiveConfig.UninstallArgs,
+                    logCommand,
+                    logArgs,
                     effectiveConfig.Type);
 
                 var uninstallResult = await UninstallPackage.ExecuteAsync(effectiveConfig, destinationPath, stepCt);
@@ -409,7 +413,7 @@ public class PipelineExecutor
                         uninstallPackage.PackageId,
                         artifactUrl);
 
-                    var chunkSizeBytes = _configuration.GetValue<int?>("Agent:ChunkSizeBytes") ?? 2 * 1024 * 1024;
+                    var chunkSizeBytes = _configuration.GetValue<int?>("Agent:ChunkSizeBytes") ?? 8 * 1024 * 1024;
                     var useChunkedDownload = _configuration.GetValue<bool?>("Agent:UseChunkedDownload") ?? true;
 
                     var acquireResult = await acquire.ExecuteAsync(new AcquireArtifactRequest
@@ -433,6 +437,14 @@ public class PipelineExecutor
                         return await FinalizeAsync(sendMessageAsync, context, ct);
                     }
                 }
+
+                var logCommand = effectiveConfig.UninstallCommand?.Replace("{artifactPath}", destinationPath ?? "", StringComparison.OrdinalIgnoreCase) ?? "";
+                var logArgs = effectiveConfig.UninstallArgs?.Replace("{artifactPath}", destinationPath ?? "", StringComparison.OrdinalIgnoreCase) ?? "";
+                _logger.LogInformation(
+                    "Executing uninstall: Command={Command}, Args={Args}, Type={Type}",
+                    logCommand,
+                    logArgs,
+                    effectiveConfig.Type);
 
                 var uninstallResult = await UninstallPackage.ExecuteAsync(effectiveConfig, destinationPath, stepCt);
                 await SendStepStatusAsync(sendMessageAsync, context, "UninstallPackage", uninstallPackage, uninstallResult.Success, uninstallResult.Error, stepCt);
@@ -527,7 +539,7 @@ public class PipelineExecutor
                 package.PackageId,
                 artifactUrl);
 
-            var chunkSizeBytes = _configuration.GetValue<int?>("Agent:ChunkSizeBytes") ?? 2 * 1024 * 1024;
+            var chunkSizeBytes = _configuration.GetValue<int?>("Agent:ChunkSizeBytes") ?? 8 * 1024 * 1024;
             var useChunkedDownload = _configuration.GetValue<bool?>("Agent:UseChunkedDownload") ?? true;
 
             var acquireResult = await acquire.ExecuteAsync(new AcquireArtifactRequest

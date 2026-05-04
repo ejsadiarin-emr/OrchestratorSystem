@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Security.Cryptography;
 using DeploymentPoC.Agent.Steps;
 using Xunit;
 
@@ -160,10 +162,10 @@ public sealed class AcquireArtifactTests
     }
 
     [Fact]
-    public void AcquireArtifactRequest_DefaultChunkSize_Is2MB()
+    public void AcquireArtifactRequest_DefaultChunkSize_Is8MB()
     {
         var request = new AcquireArtifactRequest();
-        Assert.Equal(2 * 1024 * 1024, request.ChunkSizeBytes);
+        Assert.Equal(8 * 1024 * 1024, request.ChunkSizeBytes);
     }
 
     [Fact]
@@ -270,6 +272,255 @@ public sealed class AcquireArtifactTests
 
             Assert.False(result.Success);
             Assert.Contains("chunk_download_failed_after_retries", result.Error);
+        }
+        finally
+        {
+            if (File.Exists(destinationPath))
+                File.Delete(destinationPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ChunkedDownload_TimeoutDuringChunk_ReturnsDownloadTimeout()
+    {
+        var handler = new TestHandler((request, ct) =>
+        {
+            if (request.Method == HttpMethod.Head)
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.OK);
+                response.Content = new ByteArrayContent(Array.Empty<byte>());
+                response.Content.Headers.ContentLength = 100;
+                return Task.FromResult(response);
+            }
+
+            if (request.Method == HttpMethod.Get)
+            {
+                return DelayedChunkResponseAsync(ct);
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+
+            static async Task<HttpResponseMessage> DelayedChunkResponseAsync(CancellationToken cancellationToken)
+            {
+                // Delay longer than the 1-second download timeout so cancellation fires.
+                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+
+                // This line should not be reached because the token is cancelled first.
+                var response = new HttpResponseMessage(HttpStatusCode.PartialContent);
+                var data = new byte[100];
+                new Random(42).NextBytes(data);
+                response.Content = new ByteArrayContent(data);
+                response.Content.Headers.ContentRange = new ContentRangeHeaderValue(0, 99, 100);
+                return response;
+            }
+        });
+
+        var http = new HttpClient(handler);
+        var acquire = new AcquireArtifact(http);
+        var destinationPath = Path.Combine(Path.GetTempPath(), $"acquire-test-{Guid.NewGuid():N}.zip");
+
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            var result = await acquire.ExecuteAsync(new AcquireArtifactRequest
+            {
+                ArtifactUrl = "http://example.com/artifact.zip",
+                DestinationPath = destinationPath,
+                ChunkSizeBytes = 1024,
+                DownloadTimeoutSeconds = 1
+            }, CancellationToken.None);
+
+            Assert.False(result.Success);
+            Assert.Equal("download_timeout", result.Error);
+        }
+        finally
+        {
+            stopwatch.Stop();
+            if (File.Exists(destinationPath))
+                File.Delete(destinationPath);
+        }
+
+        // If retries occurred, attempt 0 would delay 1s, attempt 1 would delay 2s, etc.
+        // The timeout fires at 1s, so total elapsed must be well under 2s if no retries ran.
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(1.5),
+            $"Expected quick timeout without retries, but elapsed was {stopwatch.Elapsed}");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ChunkedDownload_RetriesWithLongTimeout_Succeeds()
+    {
+        var chunkAttemptCount = 0;
+        var handler = new TestHandler((request, ct) =>
+        {
+            if (request.Method == HttpMethod.Head)
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.OK);
+                response.Content = new ByteArrayContent(Array.Empty<byte>());
+                response.Content.Headers.ContentLength = 100;
+                return Task.FromResult(response);
+            }
+
+            if (request.Method == HttpMethod.Get)
+            {
+                chunkAttemptCount++;
+                if (chunkAttemptCount <= 2)
+                {
+                    throw new HttpRequestException("Simulated failure");
+                }
+
+                var response = new HttpResponseMessage(HttpStatusCode.PartialContent);
+                var data = new byte[100];
+                new Random(42).NextBytes(data);
+                response.Content = new ByteArrayContent(data);
+                response.Content.Headers.ContentRange = new ContentRangeHeaderValue(0, 99, 100);
+                return Task.FromResult(response);
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+        });
+
+        var http = new HttpClient(handler);
+        var acquire = new AcquireArtifact(http);
+        var destinationPath = Path.Combine(Path.GetTempPath(), $"acquire-test-{Guid.NewGuid():N}.zip");
+
+        try
+        {
+            var result = await acquire.ExecuteAsync(new AcquireArtifactRequest
+            {
+                ArtifactUrl = "http://example.com/artifact.zip",
+                DestinationPath = destinationPath,
+                ChunkSizeBytes = 1024,
+                DownloadTimeoutSeconds = 10 // Long timeout — must not fire before retries succeed
+            }, CancellationToken.None);
+
+            Assert.True(result.Success);
+            Assert.Equal(100, result.BytesWritten);
+            Assert.Equal(3, chunkAttemptCount);
+        }
+        finally
+        {
+            if (File.Exists(destinationPath))
+                File.Delete(destinationPath);
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_SuccessfulChunkedDownload_WithSha256_Succeeds()
+    {
+        var data = new byte[100];
+        new Random(42).NextBytes(data);
+        using var sha = SHA256.Create();
+        var expectedHash = Convert.ToHexString(sha.ComputeHash(data)).ToLowerInvariant();
+
+        var handler = new TestHandler((request, ct) =>
+        {
+            if (request.Method == HttpMethod.Head)
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.OK);
+                response.Content = new ByteArrayContent(Array.Empty<byte>());
+                response.Content.Headers.ContentLength = data.Length;
+                return Task.FromResult(response);
+            }
+
+            if (request.Method == HttpMethod.Get)
+            {
+                var response = new HttpResponseMessage(HttpStatusCode.PartialContent);
+                response.Content = new ByteArrayContent(data);
+                response.Content.Headers.ContentRange = new ContentRangeHeaderValue(0, data.Length - 1, data.Length);
+                return Task.FromResult(response);
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+        });
+
+        var http = new HttpClient(handler);
+        var acquire = new AcquireArtifact(http);
+        var destinationPath = Path.Combine(Path.GetTempPath(), $"acquire-test-{Guid.NewGuid():N}.zip");
+
+        try
+        {
+            // Short timeout: if FinalizeResultAsync still used the download-scoped token,
+            // the timer could fire during SHA-256 verification and fail the download.
+            var result = await acquire.ExecuteAsync(new AcquireArtifactRequest
+            {
+                ArtifactUrl = "http://example.com/artifact.zip",
+                DestinationPath = destinationPath,
+                ChunkSizeBytes = 1024,
+                DownloadTimeoutSeconds = 1,
+                ExpectedSha256 = expectedHash
+            }, CancellationToken.None);
+
+            Assert.True(result.Success);
+            Assert.Equal(data.Length, result.BytesWritten);
+            Assert.True(File.Exists(destinationPath));
+        }
+        finally
+        {
+            if (File.Exists(destinationPath))
+                File.Delete(destinationPath);
+        }
+    }
+
+    [Fact]
+    public async Task FinalizeResultAsync_WithMatchingHash_ReturnsSuccess()
+    {
+        var data = new byte[100];
+        new Random(42).NextBytes(data);
+        using var sha = SHA256.Create();
+        var expectedHash = Convert.ToHexString(sha.ComputeHash(data)).ToLowerInvariant();
+
+        var destinationPath = Path.Combine(Path.GetTempPath(), $"acquire-finalize-{Guid.NewGuid():N}.bin");
+        await File.WriteAllBytesAsync(destinationPath, data);
+
+        try
+        {
+            var method = typeof(AcquireArtifact).GetMethod("FinalizeResultAsync", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(method);
+
+            var request = new AcquireArtifactRequest
+            {
+                ExpectedSha256 = expectedHash
+            };
+
+            var result = await (Task<AcquireArtifactResult>)method!.Invoke(null, new object[] { request, destinationPath, data.Length, CancellationToken.None })!;
+
+            Assert.True(result.Success);
+            Assert.Equal(data.Length, result.BytesWritten);
+            Assert.Equal("http", result.Transport);
+        }
+        finally
+        {
+            if (File.Exists(destinationPath))
+                File.Delete(destinationPath);
+        }
+    }
+
+    [Fact]
+    public async Task FinalizeResultAsync_WithCancelledToken_ThrowsOperationCanceledException()
+    {
+        var data = new byte[10];
+        var destinationPath = Path.Combine(Path.GetTempPath(), $"acquire-finalize-{Guid.NewGuid():N}.bin");
+        await File.WriteAllBytesAsync(destinationPath, data);
+
+        try
+        {
+            var method = typeof(AcquireArtifact).GetMethod("FinalizeResultAsync", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.NotNull(method);
+
+            using var sha = SHA256.Create();
+            var hash = Convert.ToHexString(sha.ComputeHash(data)).ToLowerInvariant();
+
+            var request = new AcquireArtifactRequest
+            {
+                ExpectedSha256 = hash
+            };
+
+            var cts = new CancellationTokenSource();
+            cts.Cancel();
+
+            var ex = await Assert.ThrowsAsync<TaskCanceledException>(() =>
+                (Task<AcquireArtifactResult>)method!.Invoke(null, new object[] { request, destinationPath, data.Length, cts.Token })!);
+            Assert.NotNull(ex);
         }
         finally
         {

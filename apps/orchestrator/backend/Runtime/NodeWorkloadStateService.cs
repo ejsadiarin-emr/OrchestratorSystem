@@ -128,18 +128,27 @@ public sealed class NodeWorkloadStateService
                 && WorkStepNames.Contains(t.StepName)
                 && t.Status == "success");
 
-        if (hadWork)
+        var isUninstall = string.Equals(run?.Mode, "uninstall", StringComparison.OrdinalIgnoreCase);
+
+        if (isUninstall)
+        {
+            await ClearNodeWorkloadStateRevisionAsync(db, nodeId, runId);
+            _logger.LogInformation(
+                "Complete processed (uninstall): RunId={RunId}, NodeId={NodeId}, CurrentRevisionId cleared",
+                runId, nodeId);
+        }
+        else if (hadWork)
         {
             await UpdateNodeWorkloadStateStatusAsync(db, nodeId, runId, "completed", setCurrentRevision: true, workloadStatus: "Current");
             _logger.LogInformation(
-                "Complete processed with work done: RunId={RunId}, NodeId={NodeId}, RevisionId={RevisionId} set as current",
+                "Complete processed with work done: RunId={RunId}, NodeId={NodeId}",
                 runId, nodeId);
         }
         else
         {
             await UpdateNodeWorkloadStateStatusAsync(db, nodeId, runId, "completed", setCurrentRevision: true, workloadStatus: "Current");
             _logger.LogInformation(
-                "Complete processed with no work done: RunId={RunId}, NodeId={NodeId}, RevisionId={RevisionId} set as current",
+                "Complete processed with no work done: RunId={RunId}, NodeId={NodeId}",
                 runId, nodeId);
         }
 
@@ -273,6 +282,26 @@ public sealed class NodeWorkloadStateService
             {
                 state.Status = workloadStatus;
             }
+            state.UpdatedAtUtc = DateTime.UtcNow;
+        }
+    }
+
+    internal static async Task ClearNodeWorkloadStateRevisionAsync(InstallerDbContext db, Guid nodeId, Guid runId)
+    {
+        var run = await db.WorkloadRuns.FirstOrDefaultAsync(r => r.RunId == runId && r.NodeId == nodeId);
+        if (run is null)
+        {
+            return;
+        }
+
+        var state = await db.NodeWorkloadStates
+            .FirstOrDefaultAsync(s => s.NodeId == nodeId && s.WorkloadId == run.WorkloadId);
+
+        if (state is not null)
+        {
+            state.CurrentRevisionId = null;
+            state.PackageStatesJson = "{}";
+            state.Status = "Unknown";
             state.UpdatedAtUtc = DateTime.UtcNow;
         }
     }

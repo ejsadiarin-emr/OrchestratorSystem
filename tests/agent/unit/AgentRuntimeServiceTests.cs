@@ -440,4 +440,350 @@ public sealed class AgentRuntimeServiceTests
         Assert.That(body, Does.Contain("Failed"));
         Assert.That(body, Does.Contain("canceled").IgnoreCase);
     }
+
+    [Test]
+    public async Task SemaphoreBlocksConcurrentPipelineExecution_SecondRunDeferred()
+    {
+        var nodeId = Guid.NewGuid();
+        var run1 = Guid.NewGuid();
+        var run2 = Guid.NewGuid();
+
+        var claimedRuns = new List<Guid>();
+        var pendingRuns = new List<PendingWorkloadRunResponse>
+        {
+            new()
+            {
+                RunId = run1,
+                WorkloadId = Guid.NewGuid(),
+                WorkloadName = "Workload1",
+                Mode = "Install",
+                Packages = new(),
+                CurrentPackages = new()
+            },
+            new()
+            {
+                RunId = run2,
+                WorkloadId = Guid.NewGuid(),
+                WorkloadName = "Workload2",
+                Mode = "Install",
+                Packages = new(),
+                CurrentPackages = new()
+            }
+        };
+
+        var handler = new CapturingHttpHandler((req, ct) =>
+        {
+            if (req.Method == HttpMethod.Get && req.RequestUri!.PathAndQuery.Contains("/pending"))
+            {
+                var unclaimed = pendingRuns.Where(r => !claimedRuns.Contains(r.RunId)).ToList();
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(unclaimed)
+                };
+            }
+
+            if (req.Method == HttpMethod.Patch && req.RequestUri!.ToString().Contains($"/api/workload-runs/{run1}"))
+            {
+                claimedRuns.Add(run1);
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            }
+
+            if (req.Method == HttpMethod.Patch && req.RequestUri!.ToString().Contains($"/api/workload-runs/{run2}"))
+            {
+                claimedRuns.Add(run2);
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Agent:NodeId"] = nodeId.ToString(),
+                ["Orchestrator:BaseUrl"] = "http://localhost:5000",
+                ["Agent:PollIntervalSeconds"] = "0.5"
+            })
+            .Build();
+
+        var loggerMock = new Mock<ILogger<AgentRuntimeService>>();
+        var fakeConnection = new FakeHubConnection();
+        var fakeFactory = new FakeHubConnectionFactory(fakeConnection);
+
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5000") };
+        var httpFactoryMock = new Mock<IHttpClientFactory>();
+        httpFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
+
+        var pipelineExecutor = new DelayingPipelineExecutor(TimeSpan.FromMilliseconds(200));
+        var service = new AgentRuntimeService(config, loggerMock.Object, pipelineExecutor, fakeFactory, httpFactoryMock.Object);
+
+        using var cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromSeconds(2));
+
+        var executeTask = service.StartAsync(cts.Token);
+
+        await pipelineExecutor.Started;
+
+        Assert.That(claimedRuns.Contains(run1), Is.True, "Run1 should be claimed immediately");
+        Assert.That(claimedRuns.Contains(run2), Is.False, "Run2 should not be claimed during the same poll cycle");
+
+        try { await service.ExecuteTask!; } catch (OperationCanceledException) { }
+
+        Assert.That(claimedRuns.Contains(run2), Is.True, "Run2 should be claimed after the first pipeline completes");
+    }
+
+    [Test]
+    public async Task PollingContinuesDuringActivePipeline_LivenessSignal()
+    {
+        var nodeId = Guid.NewGuid();
+        var runId = Guid.NewGuid();
+
+        var pendingRuns = new List<PendingWorkloadRunResponse>
+        {
+            new()
+            {
+                RunId = runId,
+                WorkloadId = Guid.NewGuid(),
+                WorkloadName = "TestWorkload",
+                Mode = "Install",
+                Packages = new(),
+                CurrentPackages = new()
+            }
+        };
+
+        var handler = new CapturingHttpHandler((req, ct) =>
+        {
+            if (req.Method == HttpMethod.Get && req.RequestUri!.PathAndQuery.Contains("/pending"))
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(pendingRuns)
+                };
+            }
+
+            if (req.Method == HttpMethod.Patch && req.RequestUri!.ToString().Contains($"/api/workload-runs/{runId}"))
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Agent:NodeId"] = nodeId.ToString(),
+                ["Orchestrator:BaseUrl"] = "http://localhost:5000",
+                ["Agent:PollIntervalSeconds"] = "0.05"
+            })
+            .Build();
+
+        var loggerMock = new Mock<ILogger<AgentRuntimeService>>();
+        var fakeConnection = new FakeHubConnection();
+        var fakeFactory = new FakeHubConnectionFactory(fakeConnection);
+
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5000") };
+        var httpFactoryMock = new Mock<IHttpClientFactory>();
+        httpFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
+
+        var pipelineExecutor = new DelayingPipelineExecutor(TimeSpan.FromMilliseconds(500));
+        var service = new AgentRuntimeService(config, loggerMock.Object, pipelineExecutor, fakeFactory, httpFactoryMock.Object);
+
+        using var cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromSeconds(1));
+
+        var executeTask = service.StartAsync(cts.Token);
+
+        await pipelineExecutor.Started;
+
+        await Task.Delay(TimeSpan.FromMilliseconds(200));
+
+        cts.Cancel();
+        try { await service.ExecuteTask!; } catch (OperationCanceledException) { }
+
+        var getRequests = handler.Requests
+            .Where(r => r.Method == HttpMethod.Get && r.RequestUri!.PathAndQuery.Contains("/pending"))
+            .ToList();
+
+        var patchRequests = handler.Requests
+            .Where(r => r.Method == HttpMethod.Patch && r.RequestUri!.ToString().Contains($"/api/workload-runs/{runId}"))
+            .ToList();
+
+        Assert.That(getRequests.Count, Is.GreaterThanOrEqualTo(3), "Polling should continue while pipeline is active");
+        Assert.That(patchRequests.Count, Is.EqualTo(1), "Only one run should be claimed at a time");
+    }
+
+    [Test]
+    public async Task SemaphoreReleased_WhenClaimFails_SubsequentClaimSucceeds()
+    {
+        var nodeId = Guid.NewGuid();
+        var runId = Guid.NewGuid();
+
+        var pendingRuns = new List<PendingWorkloadRunResponse>
+        {
+            new()
+            {
+                RunId = runId,
+                WorkloadId = Guid.NewGuid(),
+                WorkloadName = "TestWorkload",
+                Mode = "Install",
+                Packages = new(),
+                CurrentPackages = new()
+            }
+        };
+
+        var claimAttemptCount = 0;
+        var runClaimed = false;
+
+        var handler = new CapturingHttpHandler((req, ct) =>
+        {
+            if (req.Method == HttpMethod.Get && req.RequestUri!.PathAndQuery.Contains("/pending"))
+            {
+                var runs = runClaimed ? new List<PendingWorkloadRunResponse>() : pendingRuns;
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(runs)
+                };
+            }
+
+            if (req.Method == HttpMethod.Patch && req.RequestUri!.ToString().Contains($"/api/workload-runs/{runId}"))
+            {
+                claimAttemptCount++;
+                if (claimAttemptCount == 1)
+                {
+                    return new HttpResponseMessage(HttpStatusCode.Conflict);
+                }
+
+                runClaimed = true;
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Agent:NodeId"] = nodeId.ToString(),
+                ["Orchestrator:BaseUrl"] = "http://localhost:5000",
+                ["Agent:PollIntervalSeconds"] = "0.1"
+            })
+            .Build();
+
+        var loggerMock = new Mock<ILogger<AgentRuntimeService>>();
+        var fakeConnection = new FakeHubConnection();
+        var fakeFactory = new FakeHubConnectionFactory(fakeConnection);
+
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5000") };
+        var httpFactoryMock = new Mock<IHttpClientFactory>();
+        httpFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
+
+        var pipelineExecutor = new FakePipelineExecutor();
+        var service = new AgentRuntimeService(config, loggerMock.Object, pipelineExecutor, fakeFactory, httpFactoryMock.Object);
+
+        using var cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromSeconds(1));
+
+        var executeTask = service.StartAsync(cts.Token);
+
+        try { await service.ExecuteTask!; } catch (OperationCanceledException) { }
+
+        var getRequests = handler.Requests
+            .Where(r => r.Method == HttpMethod.Get && r.RequestUri!.PathAndQuery.Contains("/pending"))
+            .ToList();
+
+        var patchRequests = handler.Requests
+            .Where(r => r.Method == HttpMethod.Patch && r.RequestUri!.ToString().Contains($"/api/workload-runs/{runId}"))
+            .ToList();
+
+        Assert.That(getRequests.Count, Is.GreaterThanOrEqualTo(2), "At least two poll cycles should occur");
+        Assert.That(patchRequests.Count, Is.GreaterThanOrEqualTo(2), "A second claim attempt should be possible after the first fails");
+        Assert.That(runClaimed, Is.True, "The run should be successfully claimed in a subsequent poll cycle");
+    }
+
+    [Test]
+    public async Task NoConcurrentPipelineExecution_OnlyOneClaimAtATime()
+    {
+        var nodeId = Guid.NewGuid();
+        var run1 = Guid.NewGuid();
+        var run2 = Guid.NewGuid();
+
+        var pendingRuns = new List<PendingWorkloadRunResponse>
+        {
+            new()
+            {
+                RunId = run1,
+                WorkloadId = Guid.NewGuid(),
+                WorkloadName = "Workload1",
+                Mode = "Install",
+                Packages = new(),
+                CurrentPackages = new()
+            },
+            new()
+            {
+                RunId = run2,
+                WorkloadId = Guid.NewGuid(),
+                WorkloadName = "Workload2",
+                Mode = "Install",
+                Packages = new(),
+                CurrentPackages = new()
+            }
+        };
+
+        var handler = new CapturingHttpHandler((req, ct) =>
+        {
+            if (req.Method == HttpMethod.Get && req.RequestUri!.PathAndQuery.Contains("/pending"))
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = JsonContent.Create(pendingRuns)
+                };
+            }
+
+            if (req.Method == HttpMethod.Patch)
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Agent:NodeId"] = nodeId.ToString(),
+                ["Orchestrator:BaseUrl"] = "http://localhost:5000",
+                ["Agent:PollIntervalSeconds"] = "0.1"
+            })
+            .Build();
+
+        var loggerMock = new Mock<ILogger<AgentRuntimeService>>();
+        var fakeConnection = new FakeHubConnection();
+        var fakeFactory = new FakeHubConnectionFactory(fakeConnection);
+
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost:5000") };
+        var httpFactoryMock = new Mock<IHttpClientFactory>();
+        httpFactoryMock.Setup(f => f.CreateClient(It.IsAny<string>())).Returns(httpClient);
+
+        var pipelineExecutor = new DelayingPipelineExecutor(TimeSpan.FromMilliseconds(500));
+        var service = new AgentRuntimeService(config, loggerMock.Object, pipelineExecutor, fakeFactory, httpFactoryMock.Object);
+
+        using var cts = new CancellationTokenSource();
+        cts.CancelAfter(TimeSpan.FromSeconds(1));
+
+        var executeTask = service.StartAsync(cts.Token);
+
+        await pipelineExecutor.Started;
+
+        await Task.Delay(TimeSpan.FromMilliseconds(250));
+
+        cts.Cancel();
+        try { await service.ExecuteTask!; } catch (OperationCanceledException) { }
+
+        var patchRequests = handler.Requests
+            .Where(r => r.Method == HttpMethod.Patch)
+            .ToList();
+
+        Assert.That(patchRequests.Count, Is.EqualTo(1), "Only one pipeline should be claimed at any given time");
+    }
 }

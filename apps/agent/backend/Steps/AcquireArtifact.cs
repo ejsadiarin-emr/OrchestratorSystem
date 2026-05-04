@@ -112,7 +112,7 @@ public sealed class AcquireArtifact
 
                         for (var attempt = 0; attempt <= MaxRetries; attempt++)
                         {
-                            using var attemptTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                            using var attemptTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(linkedCt);
                             attemptTimeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
                             var attemptCt = attemptTimeoutCts.Token;
 
@@ -209,17 +209,17 @@ public sealed class AcquireArtifact
                             }
                             catch (Exception ex) when (ex is IOException or HttpRequestException or TaskCanceledException)
                             {
-                                if (ct.IsCancellationRequested)
-                                {
-                                    throw;
-                                }
+                            if (ct.IsCancellationRequested || linkedCt.IsCancellationRequested)
+                            {
+                                throw;
+                            }
 
-                                if (attempt < MaxRetries)
-                                {
-                                    output.Seek(from, SeekOrigin.Begin);
-                                    await Task.Delay(TimeSpan.FromSeconds(1 << attempt), ct);
-                                    continue;
-                                }
+                            if (attempt < MaxRetries)
+                            {
+                                output.Seek(from, SeekOrigin.Begin);
+                                await Task.Delay(TimeSpan.FromSeconds(1 << attempt), linkedCt);
+                                continue;
+                            }
 
                                 downloadFailure = new AcquireArtifactResult
                                 {
@@ -270,7 +270,7 @@ public sealed class AcquireArtifact
                 return downloadFailure;
             }
 
-            var finalResult = await FinalizeResultAsync(request, destinationPath, bytesWritten, linkedCt);
+            var finalResult = await FinalizeResultAsync(request, destinationPath, bytesWritten, ct);
             if (!finalResult.Success)
             {
                 TryDeletePartialFile(destinationPath);

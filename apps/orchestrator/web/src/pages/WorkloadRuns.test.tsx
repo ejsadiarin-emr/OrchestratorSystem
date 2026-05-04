@@ -114,6 +114,10 @@ vi.mock('../services/api', async (importOriginal) => {
       ],
     }),
     getWorkloadRunSteps: vi.fn().mockResolvedValue([]),
+    getInstalledRevisions: vi.fn().mockResolvedValue([
+      { id: 'wrv-002', workloadId: 'workload-001', revision: '1.1.0', state: 'published', createdAt: '', packageSteps: [] },
+      { id: 'wrv-001', workloadId: 'workload-001', revision: '1.0.0', state: 'published', createdAt: '', packageSteps: [] },
+    ]),
     cancelWorkloadRun: vi.fn().mockResolvedValue({
       id: 'run-001',
       workloadId: 'workload-001',
@@ -128,9 +132,13 @@ vi.mock('../services/api', async (importOriginal) => {
       timeline: [],
     }),
     advanceWorkloadRun: vi.fn(),
+    runNodesPreCheckSummary: vi.fn().mockResolvedValue([
+      { nodeId: 'node-001', hostname: 'wj-plant-01', overallStatus: 'passed', workloadStatus: 'Current', action: 'Skip', packages: [] },
+      { nodeId: 'node-002', hostname: 'wj-plant-02', overallStatus: 'passed', workloadStatus: 'Current', action: 'Skip', packages: [] },
+    ]),
     listNodeWorkloadStates: vi.fn().mockResolvedValue([
-      { nodeId: 'node-001', workloadId: 'workload-001', workloadRevision: 'wrv-001', runId: '', status: 'completed', updatedAt: new Date().toISOString(), packageStatesJson: null },
-      { nodeId: 'node-002', workloadId: 'workload-001', workloadRevision: 'wrv-002', runId: '', status: 'completed', updatedAt: new Date().toISOString(), packageStatesJson: null },
+      { nodeId: 'node-001', workloadId: 'workload-001', workloadRevision: 'wrv-002', currentRevisionId: 'wrv-002', runId: '', status: 'completed', updatedAt: new Date().toISOString(), packageStatesJson: null },
+      { nodeId: 'node-002', workloadId: 'workload-001', workloadRevision: 'wrv-002', currentRevisionId: 'wrv-002', runId: '', status: 'completed', updatedAt: new Date().toISOString(), packageStatesJson: null },
     ]),
   }
 })
@@ -155,6 +163,9 @@ describe('Workload Runs page', () => {
     expect(within(dialog).getByRole('button', { name: 'Install' })).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Uninstall' })).toBeInTheDocument()
 
+    // Step 0 -> Step 1
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+
     // wait for workload details to load and revision dropdown to populate
     await waitFor(() => {
       expect(within(dialog).getByLabelText('Revision')).toBeInTheDocument()
@@ -164,6 +175,9 @@ describe('Workload Runs page', () => {
     const revisionSelect = within(dialog).getByLabelText('Revision')
     expect(within(revisionSelect).getByText('1.0.0')).toBeInTheDocument()
     expect(within(revisionSelect).getByText('1.1.0')).toBeInTheDocument()
+
+    // Step 1 -> Step 2
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
 
     // select all online nodes via helper link
     fireEvent.click(within(dialog).getByRole('button', { name: 'Select all online' }))
@@ -177,8 +191,16 @@ describe('Workload Runs page', () => {
     expect(nodeCheckbox3).not.toBeChecked()
     expect(nodeCheckbox3).toBeDisabled()
 
-    // click Create Run to reveal summary
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create Run' }))
+    // Step 2 -> Step 3 (pre-checks)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+
+    // wait for pre-check results
+    await waitFor(() => {
+      expect(within(dialog).getAllByText('Skip')).toHaveLength(2)
+    })
+
+    // Step 3 -> Step 4 (confirm)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
 
     // summary should appear with confirm button and correct details
     await waitFor(() => {
@@ -217,6 +239,18 @@ describe('Workload Runs page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Run Creator' }))
     const dialog = await screen.findByRole('dialog')
 
+    // Step 0 -> Step 1
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText('Revision')).toBeInTheDocument()
+    })
+
+    // Step 1 -> Step 2
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await waitFor(() => {
+      expect(within(dialog).getByLabelText('Plant Line C')).toBeInTheDocument()
+    })
+
     const offlineCheckbox = within(dialog).getByLabelText('Plant Line C')
     expect(offlineCheckbox).toBeDisabled()
     expect(offlineCheckbox).not.toBeChecked()
@@ -232,13 +266,25 @@ describe('Workload Runs page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Run Creator' }))
     const dialog = await screen.findByRole('dialog')
 
+    // Step 0 -> Step 1
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+
     await waitFor(() => {
       expect(within(dialog).getByLabelText('Revision')).toBeInTheDocument()
     })
 
+    // Step 1 -> Step 2
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
     fireEvent.click(within(dialog).getByRole('button', { name: 'Select all online' }))
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create Run' }))
 
+    // Step 2 -> Step 3
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await waitFor(() => {
+      expect(within(dialog).getAllByText('Skip')).toHaveLength(2)
+    })
+
+    // Step 3 -> Step 4
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
     await waitFor(() => {
       expect(within(dialog).getByRole('button', { name: 'Confirm Create Run' })).toBeInTheDocument()
     })
@@ -257,11 +303,16 @@ describe('Workload Runs page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Run Creator' }))
     const dialog = await screen.findByRole('dialog')
 
+    // Step 0: select Uninstall
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Uninstall' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+
     await waitFor(() => {
-      expect(within(dialog).getByLabelText('Revision')).toBeInTheDocument()
+      expect(within(dialog).getByLabelText('Installed Revision')).toBeInTheDocument()
     })
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Uninstall' }))
+    // Step 1 -> Step 2
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
 
     await waitFor(() => {
       expect(within(dialog).getByLabelText('Plant Line A')).toBeInTheDocument()
@@ -275,11 +326,16 @@ describe('Workload Runs page', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Run Creator' }))
     const dialog = await screen.findByRole('dialog')
 
+    // Step 0: select Uninstall
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Uninstall' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+
     await waitFor(() => {
-      expect(within(dialog).getByLabelText('Revision')).toBeInTheDocument()
+      expect(within(dialog).getByLabelText('Installed Revision')).toBeInTheDocument()
     })
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Uninstall' }))
+    // Step 1 -> Step 2
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
 
     await waitFor(() => {
       expect(within(dialog).getByLabelText('Plant Line A')).toBeInTheDocument()
@@ -288,7 +344,14 @@ describe('Workload Runs page', () => {
     const nodeCheckbox = within(dialog).getByLabelText('Plant Line A')
     fireEvent.click(nodeCheckbox)
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create Run' }))
+    // Step 2 -> Step 3 (pre-checks)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await waitFor(() => {
+      expect(within(dialog).getAllByText('Skip')).toHaveLength(2)
+    })
+
+    // Step 3 -> Step 4 (confirm)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
 
     await waitFor(() => {
       expect(within(dialog).getByText('Warning: This will permanently remove packages from nodes.')).toBeInTheDocument()

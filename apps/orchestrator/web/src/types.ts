@@ -390,3 +390,25 @@ export interface NodeDetailResponse extends Node {
   workloads: NodeWorkloadAssignment[]
   latestPreCheck?: NodePreCheckSummary
 }
+
+export type PreCheckAction = 'Skip' | 'FreshInstall' | 'Update' | 'InstallMissing' | 'BlockedDowngrade'
+
+export type WorkloadAssignmentStatus = 'Current' | 'Drifted' | 'Unknown'
+
+export interface PreCheckPackageResult {
+  packageId: string
+  name: string
+  status: 'passed' | 'failed' | 'warning' | 'info'
+  detail?: string
+  expectedVersion?: string
+  actualVersion?: string
+}
+
+export interface PreCheckSummaryNode {
+  nodeId: string
+  hostname: string
+  overallStatus: 'passed' | 'failed' | 'warning' | 'info'
+  workloadStatus: WorkloadAssignmentStatus | 'Absent'
+  action: PreCheckAction
+  packages: PreCheckPackageResult[]
+}

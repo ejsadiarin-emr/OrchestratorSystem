@@ -25,6 +25,7 @@ import type {
   NodeRunState,
   NodeWorkloadState,
   OrchestratorHomeData,
+  PreCheckSummaryNode,
   UploadProgressCallback,
   UploadSession,
   ValidationFieldError,
@@ -299,6 +300,7 @@ export function getSupportedChannels(): ManifestChannel[] {
   return [...channelValues]
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function suggestManifestFromFile(fileName: string, _fileSizeBytes: number): ArtifactManifest {
   const ext = fileName.toLowerCase().split('.').pop()
   const artifactType = ext === 'exe' ? 'exe' : ext === 'zip' ? 'zip' : 'msi'
@@ -567,7 +569,7 @@ export async function uploadArtifactWithProgress(
           artifacts.unshift(artifact)
           writeWorkloadAudit('Artifact ingested', `${artifact.id} accepted and available for new WorkloadRevision drafts.`)
           resolve({ artifact, steps })
-        } catch (err) {
+        } catch {
           reject(new Error('Failed to parse upload response'))
         }
       } else {
@@ -852,6 +854,16 @@ export async function runNodesPreChecks(nodeIds: string[], workloadId?: string):
     body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error(`Failed to run pre-checks: ${res.status}`)
+  return res.json()
+}
+
+export async function runNodesPreCheckSummary(nodeIds: string[], workloadId: string, revisionId: string): Promise<PreCheckSummaryNode[]> {
+  const res = await fetch(`${API_BASE}/api/nodes/prechecks/summary`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ nodeIds, workloadId, revisionId }),
+  })
+  if (!res.ok) throw new Error(`Failed to run pre-check summary: ${res.status}`)
   return res.json()
 }
 
@@ -1226,7 +1238,9 @@ export async function importBulkWorkloads(file: File): Promise<BulkWorkloadImpor
     try {
       const body = await response.json() as { message?: string }
       if (body.message) message = body.message
-    } catch {}
+    } catch {
+      // ignore parse error
+    }
     throw new Error(message)
   }
 
@@ -1289,15 +1303,28 @@ export async function createWorkloadRun(request: CreateWorkloadRunRequest): Prom
   })
   if (!response.ok) {
     let message = `Failed to create run: ${response.status}`
+    let body: unknown
     try {
-      const body = await response.json() as { message?: string; errors?: ValidationFieldError[] }
-      if (body.errors && body.errors.length > 0) {
-        message = body.errors.map((e: ValidationFieldError) => `${e.field}: ${e.error}`).join('; ')
-      } else if (body.message) {
-        message = body.message
-      }
+      body = await response.json()
     } catch {
       // use default message
+    }
+
+    if (response.status === 409) {
+      const b = body as { conflictingRunId?: string; conflictingRunState?: string }
+      message = `Active run already exists: ${b.conflictingRunId ?? 'unknown'} (${b.conflictingRunState ?? 'unknown'})`
+    } else if (response.status === 422) {
+      const b = body as { code?: string }
+      if (b.code === 'DOWNGRADE_BLOCKED') {
+        message = 'Cannot create run: downgrade detected. Use Preview to see details.'
+      }
+    } else {
+      const b = body as { message?: string; errors?: ValidationFieldError[] }
+      if (b.errors && b.errors.length > 0) {
+        message = b.errors.map((e: ValidationFieldError) => `${e.field}: ${e.error}`).join('; ')
+      } else if (b.message) {
+        message = b.message
+      }
     }
     throw new Error(message)
   }
@@ -1449,13 +1476,13 @@ export async function listNodeWorkloadStates(): Promise<NodeWorkloadState[]> {
     throw new Error(`Failed to list node workload states: ${response.status}`)
   }
   const data = await response.json()
-  return data.map((s: any) => ({
-    nodeId: s.nodeId ?? s.node_id,
-    workloadId: s.workloadId ?? s.workload_id,
-    workloadRevision: s.workloadRevision ?? s.workload_revision ?? '',
-    currentRevisionId: s.currentRevisionId ?? s.current_revision_id ?? null,
-    runId: s.runId ?? s.run_id,
-    status: s.state ?? s.status ?? 'queued',
+  return data.map((s: Record<string, unknown>) => ({
+    nodeId: (s.nodeId ?? s.node_id) as string,
+    workloadId: (s.workloadId ?? s.workload_id) as string,
+    workloadRevision: ((s.workloadRevision ?? s.workload_revision) as string) ?? '',
+    currentRevisionId: (s.currentRevisionId ?? s.current_revision_id) as string | null ?? null,
+    runId: (s.runId ?? s.run_id) as string,
+    status: ((s.state ?? s.status) as string) ?? 'queued',
     updatedAt: s.updatedAt ?? new Date().toISOString(),
     packageStatesJson: s.packageStatesJson ?? s.package_states_json ?? null,
   }))

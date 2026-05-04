@@ -9,9 +9,10 @@ interface StepperProps {
   steps: Step[]
   activeStep: number
   className?: string
+  onStepClick?: (stepIndex: number) => void
 }
 
-export function Stepper({ steps, activeStep, className }: StepperProps) {
+export function Stepper({ steps, activeStep, className, onStepClick }: StepperProps) {
   return (
     <div className={cn('flex items-center w-full', className)}>
       {steps.map((step, index) => {
@@ -21,7 +22,16 @@ export function Stepper({ steps, activeStep, className }: StepperProps) {
 
         return (
           <div key={step.id} className="flex items-center flex-1 last:flex-none">
-            <div className="flex flex-col items-center">
+            <button
+              type="button"
+              disabled={!onStepClick || isPending}
+              onClick={() => onStepClick?.(index)}
+              className={cn(
+                'flex flex-col items-center',
+                onStepClick && !isPending && 'cursor-pointer',
+                isPending && 'cursor-not-allowed'
+              )}
+            >
               <div
                 className={cn(
                   'flex items-center justify-center w-8 h-8 rounded-full border-2 text-sm font-medium transition-colors',
@@ -48,7 +58,7 @@ export function Stepper({ steps, activeStep, className }: StepperProps) {
               >
                 {step.label}
               </span>
-            </div>
+            </button>
             {index < steps.length - 1 && (
               <div
                 className={cn(

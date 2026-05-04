@@ -1,70 +1,59 @@
-# DeploymentPoC Makefile (PowerShell)
-# Requires: GNU Make + PowerShell
-
-SHELL := powershell.exe
-.SHELLFLAGS := -NoProfile -Command
-
-.PHONY: publish build publish-orchestrator publish-agent build-frontend copy-workloads download-artifacts run-orchestrator run-agent run-frontend clean stop-processes
+.PHONY: all build publish clean dist run-orchestrator run-agent frontend help
 
 # Default target
-publish: clean stop-processes build-frontend publish-orchestrator publish-agent copy-workloads
-	Write-Host "=== Publish complete. Artifacts in .\dist ===" -ForegroundColor Green
+all: publish
 
-# Debug build (faster, for local dev)
-build: build-frontend
-	dotnet build apps\orchestrator\backend\DeploymentPoC.Orchestrator.csproj
-	dotnet build apps\agent\backend\DeploymentPoC.Agent.csproj
+# Build .NET solution in Debug configuration
+build:
+	dotnet build DeploymentPoC.sln --configuration Release
 
-# Publish self-contained orchestrator
-publish-orchestrator: build-frontend stop-processes
-	Write-Host "Publishing orchestrator..." -ForegroundColor Cyan
-	dotnet publish apps\orchestrator\backend\DeploymentPoC.Orchestrator.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true -o .\dist
+# Build React frontend
+frontend:
+	cd orchestrator/web && npm install && npm run build
 
-# Publish self-contained agent
-publish-agent: stop-processes
-	Write-Host "Publishing agent..." -ForegroundColor Cyan
-	dotnet publish apps\agent\backend\DeploymentPoC.Agent.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true -o .\dist
+# Publish self-contained single-file executables for production
+publish: frontend
+	dotnet publish orchestrator/backend/Orchestrator.csproj \
+		-c Release -r win-x64 --self-contained true \
+		/p:PublishSingleFile=true \
+		/p:IncludeNativeLibrariesForSelfExtract=true \
+		/p:EnableCompressionInSingleFile=true
+	dotnet publish agent/backend/Agent.csproj \
+		-c Release -r win-x64 --self-contained true \
+		/p:PublishSingleFile=true \
+		/p:IncludeNativeLibrariesForSelfExtract=true \
+		/p:EnableCompressionInSingleFile=true
 
-# Kill running orchestrator/agent processes so publish can overwrite
-stop-processes:
-	Write-Host "Stopping any running orchestrator/agent processes..." -ForegroundColor Cyan
-	taskkill /F /IM DeploymentPoC.Orchestrator.exe *>$$null; taskkill /F /IM DeploymentPoC.Agent.exe *>$$null; Start-Sleep -Seconds 2
+# Create distribution directory with all artifacts
+dist: publish
+	mkdir -p dist/artifacts
+	mkdir -p dist/workload-definitions
+	cp orchestrator/backend/bin/Release/net8.0-windows/win-x64/publish/Orchestrator.exe dist/
+	cp agent/backend/bin/Release/net8.0-windows/win-x64/publish/Agent.exe dist/
+	cp orchestrator/backend/appsettings.json dist/
 
-# Build React frontend into orchestrator wwwroot
-build-frontend:
-	Write-Host "Building frontend..." -ForegroundColor Cyan
-	Set-Location apps\orchestrator\web; pnpm install; pnpm run build
-
-# Copy workload JSONs into dist
-copy-workloads:
-	Write-Host "Copying workloads..." -ForegroundColor Cyan
-	if (!(Test-Path .\dist\workloads)) { New-Item -ItemType Directory -Path .\dist\workloads | Out-Null }
-	Copy-Item -Path test-workloads\*.json -Destination .\dist\workloads\ -Force
-
-# Download Amazing Workload artifacts (PowerShell)
-download-artifacts:
-	Write-Host "Downloading artifacts..." -ForegroundColor Cyan
-	.\scripts\download-amazing-workload-artifacts.ps1
-
-# Dev mode: run orchestrator backend (from repo root, using default paths)
+# Run Orchestrator in development mode
 run-orchestrator:
-	Write-Host "Starting orchestrator (dev mode)..." -ForegroundColor Cyan
-	dotnet run --project apps\orchestrator\backend\DeploymentPoC.Orchestrator.csproj
+	cd orchestrator/backend && dotnet run
 
-# Dev mode: run agent backend
+# Run Agent in development mode (requires agent.json from enrollment)
 run-agent:
-	Write-Host "Starting agent (dev mode)..." -ForegroundColor Cyan
-	dotnet run --project apps\agent\backend\DeploymentPoC.Agent.csproj
+	cd agent/backend && dotnet run
 
-# Dev mode: run frontend dev server
-run-frontend:
-	Set-Location apps\orchestrator\web; pnpm run dev
-
-# Clean dist folder (keep .gitignore)
+# Clean build artifacts
 clean:
-	Write-Host "Cleaning dist folder..." -ForegroundColor Cyan
-	if (Test-Path .\dist) { Get-ChildItem -Path .\dist -Exclude .gitignore | Remove-Item -Recurse -Force }
+	dotnet clean DeploymentPoC.sln
+	cd orchestrator/web && rm -rf node_modules dist
+	rm -rf dist/
 
-# FULL WIPE
-full: clean stop-processes build-frontend publish-orchestrator publish-agent download-artifacts copy-workloads 
-	Write-Host "=== Publish complete. Artifacts in .\dist ===" -ForegroundColor Green
+# Show help
+help:
+	@echo "Available targets:"
+	@echo "  make build          - Build .NET solution (Release)"
+	@echo "  make frontend       - Build React frontend"
+	@echo "  make publish        - Publish self-contained executables"
+	@echo "  make dist           - Create distribution directory"
+	@echo "  make run-orchestrator - Run Orchestrator in dev mode"
+	@echo "  make run-agent      - Run Agent in dev mode"
+	@echo "  make clean          - Clean all build artifacts"
+	@echo "  make help           - Show this help"

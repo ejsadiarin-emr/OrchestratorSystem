@@ -192,13 +192,62 @@ You should see the newly enrolled agent with status `REGISTERED`.
 
 ### Step 8: Upload Artifacts
 
-#### 8a: Download a sample artifact
+#### 8a: Download sample artifacts
 
-Run this on the **Windows target machine** to download a real MSI package:
+Run this on the **Windows target machine** to download real installer packages (2 versions each of Go and SSMS):
 
 ```powershell
 cd C:\temp\deployment-poc
 .\scripts\download-sample-artifact.ps1
+```
+
+> If you used `make cp-win`, the script is already in `C:\temp\deployment-poc\scripts\`. Otherwise, copy it manually from `scripts/download-sample-artifact.ps1`.
+
+This downloads:
+- `C:\temp\Go_1.25.9.msi`
+- `C:\temp\Go_1.26.2.msi`
+- `C:\temp\SSMS_22.0.exe` (SSMS 22 Visual Studio Installer bootstrapper)
+
+> **Note on SSMS:** SSMS 22+ does **not** have a standalone MSI. It uses a Visual Studio Installer bootstrapper (`vs_SSMS.exe`). For silent deployment: `vs_SSMS.exe --quiet --norestart --wait`. Older SSMS versions (19.x/20.x) used `SSMS-Setup-ENU.exe /Install /Quiet /NoRestart`.
+
+#### 8b: Upload the artifacts
+
+> **Note:** Windows PowerShell 5.1 does not support the `-Form` parameter on `Invoke-RestMethod`. Use `curl.exe` (the real curl binary, available on Windows 10/11) instead:
+
+```powershell
+# Upload Go 1.25.9
+curl.exe -X POST http://localhost:5000/api/artifacts/upload `
+  -F "packageId=Go" `
+  -F "version=1.25.9" `
+  -F "packageName=Go" `
+  -F "file=@C:\temp\Go_1.25.9.msi"
+
+# Upload Go 1.26.2
+curl.exe -X POST http://localhost:5000/api/artifacts/upload `
+  -F "packageId=Go" `
+  -F "version=1.26.2" `
+  -F "packageName=Go" `
+  -F "file=@C:\temp\Go_1.26.2.msi"
+
+# Bulk import (filename format: PackageId_Version.ext)
+curl.exe -X POST http://localhost:5000/api/artifacts/import `
+  -F "files=@C:\temp\Go_1.25.9.msi" `
+  -F "files=@C:\temp\Go_1.26.2.msi"
+
+# List artifacts
+curl.exe http://localhost:5000/api/artifacts
+```
+
+Or from **WSL/Linux**:
+
+```bash
+curl -X POST http://localhost:5000/api/artifacts/upload \
+  -F "packageId=Go" \
+  -F "version=1.25.9" \
+  -F "packageName=Go" \
+  -F "file=@/mnt/c/temp/Go_1.25.9.msi"
+
+curl http://localhost:5000/api/artifacts
 ```
 
 > If you used `make cp-win`, the script is already in `C:\temp\deployment-poc\scripts\`. Otherwise, copy it manually from `scripts/download-sample-artifact.ps1`.
@@ -254,8 +303,8 @@ curl -X POST http://localhost:5000/api/workloads/upsert \
     "version": "1.0.0",
     "packages": [
       {
-        "packageId": "7-Zip",
-        "version": "24.09",
+        "packageId": "Go",
+        "version": "1.26.2",
         "preInitSteps": ["echo pre-init"],
         "postInitSteps": ["echo post-init"]
       }
@@ -272,8 +321,8 @@ $body = @{
     version = "1.0.0"
     packages = @(
         @{
-            packageId = "7-Zip"
-            version = "24.09"
+            packageId = "Go"
+            version = "1.26.2"
             preInitSteps = @("echo pre-init")
             postInitSteps = @("echo post-init")
         }
@@ -299,8 +348,8 @@ $json = @'
   "version": "2.0.0",
   "packages": [
     {
-      "packageId": "MyPackage",
-      "version": "1.0.0"
+      "packageId": "Go",
+      "version": "1.26.2"
     }
   ]
 }

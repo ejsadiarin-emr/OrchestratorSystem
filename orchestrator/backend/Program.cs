@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Orchestrator.Configuration;
 using Orchestrator.Extensions;
+using Orchestrator.Middleware;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -46,6 +47,7 @@ if (app.Environment.IsDevelopment())
 app.UseCors("AllowAll");
 app.UseStaticFiles();
 app.UseRouting();
+app.UseMiddleware<AgentAuthMiddleware>();
 
 // Map controllers BEFORE SPA fallback
 app.MapControllers();
@@ -61,8 +63,8 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Create required directories
-var artifactPath = app.Services.GetRequiredService<IOptions<ArtifactOptions>>().Value.BasePath;
-var workloadPath = app.Services.GetRequiredService<IOptions<WorkloadOptions>>().Value.Path;
+var artifactPath = app.Services.GetRequiredService<IOptions<ArtifactStoreOptions>>().Value.ResolvePath();
+var workloadPath = app.Services.GetRequiredService<IOptions<WorkloadDefinitionStoreOptions>>().Value.Path;
 Directory.CreateDirectory(artifactPath);
 Directory.CreateDirectory(workloadPath);
 

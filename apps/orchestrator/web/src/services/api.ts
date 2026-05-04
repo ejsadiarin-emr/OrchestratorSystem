@@ -864,7 +864,8 @@ export async function runNodesPreCheckSummary(nodeIds: string[], workloadId: str
     body: JSON.stringify({ nodeIds, workloadId, revisionId }),
   })
   if (!res.ok) throw new Error(`Failed to run pre-check summary: ${res.status}`)
-  return res.json()
+  const data = await res.json() as { nodes: PreCheckSummaryNode[] }
+  return data.nodes
 }
 
 export async function listWorkloads(): Promise<WorkloadDefinition[]> {

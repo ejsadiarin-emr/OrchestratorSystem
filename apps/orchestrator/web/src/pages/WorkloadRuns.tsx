@@ -398,6 +398,10 @@ export default function WorkloadRuns() {
         return 'bg-amber-100 text-amber-700'
       case 'BlockedDowngrade':
         return 'bg-red-100 text-red-700'
+      case 'Reinstall':
+        return 'bg-purple-100 text-purple-700'
+      case 'Unknown':
+        return 'bg-gray-100 text-gray-500'
       default:
         return 'bg-slate-100 text-slate-600'
     }

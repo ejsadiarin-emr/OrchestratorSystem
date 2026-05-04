@@ -391,7 +391,7 @@ export interface NodeDetailResponse extends Node {
   latestPreCheck?: NodePreCheckSummary
 }
 
-export type PreCheckAction = 'Skip' | 'FreshInstall' | 'Update' | 'InstallMissing' | 'BlockedDowngrade'
+export type PreCheckAction = 'Skip' | 'FreshInstall' | 'Update' | 'InstallMissing' | 'BlockedDowngrade' | 'Reinstall' | 'Unknown'
 
 export type WorkloadAssignmentStatus = 'Current' | 'Drifted' | 'Unknown'
 
@@ -407,7 +407,7 @@ export interface PreCheckPackageResult {
 export interface PreCheckSummaryNode {
   nodeId: string
   hostname: string
-  overallStatus: 'passed' | 'failed' | 'warning' | 'info'
+  overallStatus?: 'passed' | 'failed' | 'warning' | 'info'
   workloadStatus: WorkloadAssignmentStatus | 'Absent'
   action: PreCheckAction
   packages: PreCheckPackageResult[]

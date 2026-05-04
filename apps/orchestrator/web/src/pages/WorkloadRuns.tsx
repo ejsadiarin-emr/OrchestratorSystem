@@ -338,8 +338,9 @@ export default function WorkloadRuns() {
     }
   }
 
-  const handleCreateRun = async (event: React.FormEvent) => {
-    event.preventDefault()
+  const handleCreateRun = async (event?: React.FormEvent) => {
+    event?.preventDefault()
+    if (submitting) return
     setFormErrors(current => ({ ...current, submit: '' }))
 
     if (wizardStep !== 4) return
@@ -915,7 +916,8 @@ export default function WorkloadRuns() {
                 </button>
               ) : (
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={() => handleCreateRun()}
                   disabled={submitting || (form.mode === 'uninstall' && !uninstallConfirmed)}
                   className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-50"
                 >

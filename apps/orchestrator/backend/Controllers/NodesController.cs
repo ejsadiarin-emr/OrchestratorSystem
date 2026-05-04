@@ -326,7 +326,6 @@ public class NodesController : ControllerBase
         };
 
         var nodeStates = await _db.NodeWorkloadStates
-            .AsNoTracking()
             .Where(s => s.WorkloadId == request.WorkloadId && request.NodeIds.Contains(s.NodeId))
             .ToDictionaryAsync(s => s.NodeId);
 
@@ -416,6 +415,39 @@ public class NodesController : ControllerBase
                 };
             }).ToList();
 
+            // Reconcile DB status from live probe results so Re-run Pre-Checks actually fixes stale data
+            var allMatch = revisionConfigs.All(cfg =>
+                resultMap.TryGetValue(cfg.PackageId, out var r) &&
+                r.Status == PreCheckStatus.AlreadySatisfied &&
+                r.ActualVersion == cfg.Version);
+            var hasAnyDetected = revisionConfigs.Any(cfg =>
+                resultMap.TryGetValue(cfg.PackageId, out var r) &&
+                r.Status != PreCheckStatus.NotPresent);
+
+            if (nodeStates.TryGetValue(node.NodeId, out var trackedState))
+            {
+                trackedState.Status = allMatch ? "Current" : "Drifted";
+                trackedState.PackageStatesJson = BuildPackageStatesJson(revisionConfigs, resultMap);
+                trackedState.UpdatedAtUtc = DateTime.UtcNow;
+                summaryNode.WorkloadStatus = trackedState.Status;
+            }
+            else if (hasAnyDetected)
+            {
+                var newState = new NodeWorkloadStateEntity
+                {
+                    NodeWorkloadStateId = Guid.NewGuid(),
+                    NodeId = node.NodeId,
+                    WorkloadId = request.WorkloadId,
+                    CurrentRevisionId = null,
+                    PackageStatesJson = BuildPackageStatesJson(revisionConfigs, resultMap),
+                    Status = allMatch ? "Current" : "Drifted",
+                    UpdatedAtUtc = DateTime.UtcNow
+                };
+                _db.NodeWorkloadStates.Add(newState);
+                nodeStates[node.NodeId] = newState;
+                summaryNode.WorkloadStatus = newState.Status;
+            }
+
             var packageStatuses = summaryNode.Packages.Select(p => p.Status).ToList();
             var hasWrongVersionOlder = summaryNode.Packages.Any(p =>
                 p.Status == "WrongVersion" && p.Comparison == "older");
@@ -441,6 +473,8 @@ public class NodesController : ControllerBase
 
             response.Nodes.Add(summaryNode);
         }
+
+        await _db.SaveChangesAsync();
 
         return Ok(response);
     }

@@ -1,5 +1,13 @@
 import { Link, useLocation } from 'react-router-dom'
 import { LayoutDashboard, Package, Boxes, Cpu, KeyRound, PlayCircle } from 'lucide-react'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from '@/components/ui/sidebar'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -14,29 +22,27 @@ export function AppSidebar() {
   const location = useLocation()
 
   return (
-    <aside className="w-64 border-r bg-background flex flex-col">
-      <div className="p-4 border-b">
-        <h2 className="text-lg font-bold tracking-tight">Orchestrator</h2>
-      </div>
-      <nav className="flex-1 p-3 space-y-1">
-        {navItems.map((item) => {
-          const isActive = location.pathname === item.to
-          return (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-foreground hover:bg-muted'
-              }`}
-            >
-              <item.icon className="h-4 w-4" />
-              {item.label}
-            </Link>
-          )
-        })}
-      </nav>
-    </aside>
+    <Sidebar>
+      <SidebarHeader>
+        <h2 className="text-lg font-bold tracking-tight px-2 py-1">Orchestrator</h2>
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarMenu>
+          {navItems.map((item) => {
+            const isActive = location.pathname === item.to
+            return (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton asChild isActive={isActive}>
+                  <Link to={item.to}>
+                    <item.icon className="h-4 w-4" />
+                    <span>{item.label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )
+          })}
+        </SidebarMenu>
+      </SidebarContent>
+    </Sidebar>
   )
 }

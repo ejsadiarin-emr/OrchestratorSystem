@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { SidebarProvider } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/AppSidebar'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { ArtifactsPage } from '@/pages/ArtifactsPage'
@@ -14,7 +15,7 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <div className="flex h-screen">
+        <SidebarProvider>
           <AppSidebar />
           <main className="flex-1 p-6 overflow-auto">
             <Routes>
@@ -26,7 +27,7 @@ export function App() {
               <Route path="/runs" element={<RunsPage />} />
             </Routes>
           </main>
-        </div>
+        </SidebarProvider>
       </BrowserRouter>
     </QueryClientProvider>
   )

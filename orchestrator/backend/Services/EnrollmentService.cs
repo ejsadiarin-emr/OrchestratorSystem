@@ -10,15 +10,18 @@ public class EnrollmentService : IEnrollmentService
     private readonly AppDbContext _dbContext;
     private readonly EnrollmentOptions _options;
     private readonly AgentOptions _agentOptions;
+    private readonly ILogger<EnrollmentService> _logger;
 
     public EnrollmentService(
         AppDbContext dbContext,
         IOptions<EnrollmentOptions> options,
-        IOptions<AgentOptions> agentOptions)
+        IOptions<AgentOptions> agentOptions,
+        ILogger<EnrollmentService> logger)
     {
         _dbContext = dbContext;
         _options = options.Value;
         _agentOptions = agentOptions.Value;
+        _logger = logger;
     }
 
     public async Task<EnrollmentToken> GenerateTokenAsync()
@@ -67,10 +70,13 @@ public class EnrollmentService : IEnrollmentService
 
         await _dbContext.SaveChangesAsync();
 
+        _logger.LogInformation("Agent {AgentId} enrolled successfully from host {Hostname}", agentId, hostname);
+
         return new EnrollmentResult
         {
             AgentId = agentId,
-            AgentSecret = agentSecret
+            AgentSecret = agentSecret,
+            PollingIntervalSeconds = agent.PollingIntervalSeconds
         };
     }
 
@@ -86,5 +92,7 @@ public class EnrollmentService : IEnrollmentService
 
         agent.Status = AgentNodeStatus.UNREGISTERED;
         await _dbContext.SaveChangesAsync();
+
+        _logger.LogInformation("Agent {AgentId} unregistered successfully", agentId);
     }
 }

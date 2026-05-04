@@ -18,7 +18,7 @@ public class EnrollmentController : ControllerBase
         _dbContext = dbContext;
     }
 
-    [HttpPost("token")]
+    [HttpPost("tokens")]
     public async Task<ActionResult<object>> GenerateToken()
     {
         var token = await _enrollmentService.GenerateTokenAsync();
@@ -47,53 +47,4 @@ public class EnrollmentController : ControllerBase
             .ToListAsync();
         return Ok(tokens);
     }
-
-    [HttpPost("enroll")]
-    public async Task<ActionResult<object>> Enroll([FromBody] EnrollRequest request)
-    {
-        try
-        {
-            var result = await _enrollmentService.EnrollAsync(
-                request.Token,
-                request.Hostname,
-                request.IpAddress);
-
-            return Ok(new
-            {
-                agentId = result.AgentId,
-                agentSecret = result.AgentSecret
-            });
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-    }
-
-    [HttpPost("unregister")]
-    public async Task<ActionResult> Unregister([FromBody] UnregisterRequest request)
-    {
-        try
-        {
-            await _enrollmentService.UnregisterAsync(request.AgentId, request.AgentSecret);
-            return Ok();
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-    }
-}
-
-public class EnrollRequest
-{
-    public string Token { get; set; } = string.Empty;
-    public string Hostname { get; set; } = string.Empty;
-    public string IpAddress { get; set; } = string.Empty;
-}
-
-public class UnregisterRequest
-{
-    public string AgentId { get; set; } = string.Empty;
-    public string AgentSecret { get; set; } = string.Empty;
 }

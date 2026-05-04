@@ -203,10 +203,16 @@ cd C:\temp\deployment-poc
 
 > If you used `make cp-win`, the script is already in `C:\temp\deployment-poc\scripts\`. Otherwise, copy it manually from `scripts/download-sample-artifact.ps1`.
 
-This downloads:
-- `C:\temp\Go_1.25.9.msi`
-- `C:\temp\Go_1.26.2.msi`
-- `C:\temp\SSMS_22.0.exe` (SSMS 22 Visual Studio Installer bootstrapper)
+Or on **WSL/Linux** (from the repo root):
+
+```bash
+./scripts/download-sample-artifact.sh
+```
+
+Both scripts download to `.artifact-cache/` (gitignored):
+- `.artifact-cache/Go_1.25.9.msi`
+- `.artifact-cache/Go_1.26.2.msi`
+- `.artifact-cache/SSMS_22.0.exe` (SSMS 22 Visual Studio Installer bootstrapper)
 
 > **Note on SSMS:** SSMS 22+ does **not** have a standalone MSI. It uses a Visual Studio Installer bootstrapper (`vs_SSMS.exe`). For silent deployment: `vs_SSMS.exe --quiet --norestart --wait`. Older SSMS versions (19.x/20.x) used `SSMS-Setup-ENU.exe /Install /Quiet /NoRestart`.
 
@@ -220,19 +226,19 @@ curl.exe -X POST http://localhost:5000/api/artifacts/upload `
   -F "packageId=Go" `
   -F "version=1.25.9" `
   -F "packageName=Go" `
-  -F "file=@C:\temp\Go_1.25.9.msi"
+  -F "file=@.artifact-cache\Go_1.25.9.msi"
 
 # Upload Go 1.26.2
 curl.exe -X POST http://localhost:5000/api/artifacts/upload `
   -F "packageId=Go" `
   -F "version=1.26.2" `
   -F "packageName=Go" `
-  -F "file=@C:\temp\Go_1.26.2.msi"
+  -F "file=@.artifact-cache\Go_1.26.2.msi"
 
 # Bulk import (filename format: PackageId_Version.ext)
 curl.exe -X POST http://localhost:5000/api/artifacts/import `
-  -F "files=@C:\temp\Go_1.25.9.msi" `
-  -F "files=@C:\temp\Go_1.26.2.msi"
+  -F "files=@.artifact-cache\Go_1.25.9.msi" `
+  -F "files=@.artifact-cache\Go_1.26.2.msi"
 
 # List artifacts
 curl.exe http://localhost:5000/api/artifacts
@@ -245,44 +251,7 @@ curl -X POST http://localhost:5000/api/artifacts/upload \
   -F "packageId=Go" \
   -F "version=1.25.9" \
   -F "packageName=Go" \
-  -F "file=@/mnt/c/temp/Go_1.25.9.msi"
-
-curl http://localhost:5000/api/artifacts
-```
-
-> If you used `make cp-win`, the script is already in `C:\temp\deployment-poc\scripts\`. Otherwise, copy it manually from `scripts/download-sample-artifact.ps1`.
-
-This downloads `C:\temp\7-Zip_24.09.msi`, which you will upload in the next step.
-
-#### 8b: Upload the artifact
-
-> **Note:** Windows PowerShell 5.1 does not support the `-Form` parameter on `Invoke-RestMethod`. Use `curl.exe` (the real curl binary, available on Windows 10/11) instead:
-
-```powershell
-# Single upload
-curl.exe -X POST http://localhost:5000/api/artifacts/upload `
-  -F "packageId=7-Zip" `
-  -F "version=24.09" `
-  -F "packageName=7-Zip" `
-  -F "file=@C:\temp\7-Zip_24.09.msi"
-
-# Bulk import (filename must be PackageId_Version.ext)
-curl.exe -X POST http://localhost:5000/api/artifacts/import `
-  -F "files=@C:\temp\7-Zip_24.09.msi"
-
-# List artifacts
-curl.exe http://localhost:5000/api/artifacts
-```
-
-Or from **WSL/Linux**:
-
-```bash
-# Copy the MSI into WSL first, or use a local file
-curl -X POST http://localhost:5000/api/artifacts/upload \
-  -F "packageId=7-Zip" \
-  -F "version=24.09" \
-  -F "packageName=7-Zip" \
-  -F "file=@/mnt/c/temp/7-Zip_24.09.msi"
+  -F "file=@.artifact-cache/Go_1.25.9.msi"
 
 curl http://localhost:5000/api/artifacts
 ```

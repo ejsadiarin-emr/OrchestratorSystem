@@ -9,9 +9,9 @@ public static class ServiceCollectionExtensions
     {
         services.Configure<OrchestratorOptions>(configuration);
         services.Configure<AgentOptions>(configuration.GetSection("Agent"));
-        services.Configure<ArtifactOptions>(configuration.GetSection("ArtifactStore"));
+        services.Configure<ArtifactStoreOptions>(configuration.GetSection("ArtifactStore"));
         services.Configure<EnrollmentOptions>(configuration.GetSection("Enrollment"));
-        services.Configure<WorkloadOptions>(configuration.GetSection("WorkloadDefinitionStore"));
+        services.Configure<WorkloadDefinitionStoreOptions>(configuration.GetSection("WorkloadDefinitionStore"));
         services.Configure<WebHostOptions>(configuration.GetSection("WebHost"));
         return services;
     }
@@ -23,6 +23,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IAgentService, AgentService>();
         services.AddScoped<IArtifactService, ArtifactService>();
         services.AddScoped<IWorkloadService, WorkloadService>();
+        services.AddScoped<IRunService, RunService>();
         services.AddHostedService<WorkloadWatcherService>();
         return services;
     }

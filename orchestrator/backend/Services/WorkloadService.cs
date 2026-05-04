@@ -8,67 +8,89 @@ namespace Orchestrator.Services;
 public class WorkloadService : IWorkloadService
 {
     private readonly AppDbContext _dbContext;
-    private readonly WorkloadOptions _options;
+    private readonly WorkloadDefinitionStoreOptions _options;
+    private readonly ILogger<WorkloadService> _logger;
 
-    public WorkloadService(AppDbContext dbContext, IOptions<WorkloadOptions> options)
+    public WorkloadService(AppDbContext dbContext, IOptions<WorkloadDefinitionStoreOptions> options, ILogger<WorkloadService> logger)
     {
         _dbContext = dbContext;
         _options = options.Value;
+        _logger = logger;
     }
 
-    public async Task<Workload> UpsertAsync(WorkloadDto dto)
+    public async Task<WorkloadImportResult> ImportAsync(IEnumerable<WorkloadDto> dtos)
     {
-        var existing = await _dbContext.Workloads
-            .Include(w => w.Packages)
-            .FirstOrDefaultAsync(w => w.WorkloadId == dto.WorkloadId && w.Version == dto.Version);
+        var result = new WorkloadImportResult();
 
-        Workload workload;
-        if (existing != null)
+        foreach (var dto in dtos)
         {
-            workload = existing;
-            workload.WorkloadName = dto.WorkloadName;
-            _dbContext.WorkloadPackages.RemoveRange(workload.Packages);
-        }
-        else
-        {
-            workload = new Workload
+            try
             {
-                WorkloadId = dto.WorkloadId,
-                WorkloadName = dto.WorkloadName,
-                Version = dto.Version
-            };
-            _dbContext.Workloads.Add(workload);
-        }
+                var existing = await _dbContext.Workloads
+                    .Include(w => w.Packages)
+                    .FirstOrDefaultAsync(w => w.WorkloadId == dto.WorkloadId && w.Version == dto.Version);
 
-        foreach (var pkgDto in dto.Packages)
-        {
-            var package = new WorkloadPackage
+                Workload workload;
+                bool isUpdate = existing != null;
+                if (existing != null)
+                {
+                    workload = existing;
+                    workload.WorkloadName = dto.WorkloadName;
+                    _dbContext.WorkloadPackages.RemoveRange(workload.Packages);
+                }
+                else
+                {
+                    workload = new Workload
+                    {
+                        WorkloadId = dto.WorkloadId,
+                        WorkloadName = dto.WorkloadName,
+                        Version = dto.Version
+                    };
+                    _dbContext.Workloads.Add(workload);
+                }
+
+                foreach (var pkgDto in dto.Packages)
+                {
+                    var package = new WorkloadPackage
+                    {
+                        WorkloadId = dto.WorkloadId,
+                        WorkloadVersion = dto.Version,
+                        PackageId = pkgDto.PackageId,
+                        PackageVersion = pkgDto.Version,
+                        PreInitSteps = pkgDto.PreInitSteps != null ? string.Join("\n", pkgDto.PreInitSteps) : null,
+                        PostInitSteps = pkgDto.PostInitSteps != null ? string.Join("\n", pkgDto.PostInitSteps) : null
+                    };
+                    workload.Packages.Add(package);
+                }
+
+                await _dbContext.SaveChangesAsync();
+
+                // Save JSON definition to file
+                var definitionsPath = Path.GetFullPath(_options.Path);
+                var workloadDir = Path.Combine(definitionsPath, dto.WorkloadId);
+                Directory.CreateDirectory(workloadDir);
+                var filePath = Path.Combine(workloadDir, $"{dto.Version}.json");
+                var json = System.Text.Json.JsonSerializer.Serialize(dto, new System.Text.Json.JsonSerializerOptions
+                {
+                    WriteIndented = true
+                });
+                await File.WriteAllTextAsync(filePath, json);
+                workload.DefinitionPath = filePath;
+                await _dbContext.SaveChangesAsync();
+
+                if (isUpdate)
+                    result.Updated.Add(workload);
+                else
+                    result.Imported.Add(workload);
+            }
+            catch (Exception ex)
             {
-                WorkloadId = dto.WorkloadId,
-                WorkloadVersion = dto.Version,
-                PackageId = pkgDto.PackageId,
-                PackageVersion = pkgDto.Version,
-                PreInitSteps = pkgDto.PreInitSteps != null ? string.Join("\n", pkgDto.PreInitSteps) : null,
-                PostInitSteps = pkgDto.PostInitSteps != null ? string.Join("\n", pkgDto.PostInitSteps) : null
-            };
-            workload.Packages.Add(package);
+                result.Failed.Add((dto.WorkloadId, dto.Version, ex.Message));
+                _logger.LogWarning(ex, "failed to import workload {WorkloadId} v{Version}", dto.WorkloadId, dto.Version);
+            }
         }
 
-        await _dbContext.SaveChangesAsync();
-
-        // Save JSON definition to file
-        var definitionsPath = Path.GetFullPath(_options.Path);
-        Directory.CreateDirectory(definitionsPath);
-        var filePath = Path.Combine(definitionsPath, $"{dto.WorkloadId}_{dto.Version}.json");
-        var json = System.Text.Json.JsonSerializer.Serialize(dto, new System.Text.Json.JsonSerializerOptions
-        {
-            WriteIndented = true
-        });
-        await File.WriteAllTextAsync(filePath, json);
-        workload.DefinitionPath = filePath;
-        await _dbContext.SaveChangesAsync();
-
-        return workload;
+        return result;
     }
 
     public async Task<Workload?> GetByIdAsync(string workloadId, string version)

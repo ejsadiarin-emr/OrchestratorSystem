@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
+using Orchestrator.Models;
 using Orchestrator.Services;
+using System.Text.Json;
 
 namespace Orchestrator.Controllers;
 
@@ -14,32 +16,41 @@ public class ArtifactController : ControllerBase
         _artifactService = artifactService;
     }
 
-    [HttpPost("upload")]
+    [HttpPost]
     [Consumes("multipart/form-data")]
-    public async Task<ActionResult<object>> Upload(
-        [FromForm] string packageId,
-        [FromForm] string version,
-        [FromForm] string packageName,
-        IFormFile file)
+    public async Task<ActionResult<object>> Upload(IFormFile manifest, IFormFile binary)
     {
-        var artifact = await _artifactService.UploadAsync(packageId, version, packageName, file);
-        return Ok(new
+        try
         {
-            artifact.Id,
-            artifact.PackageId,
-            artifact.PackageName,
-            artifact.Version,
-            artifact.InstallerFile,
-            artifact.UploadedAt
-        });
+            PackageManifest packageManifest;
+            await using (var stream = manifest.OpenReadStream())
+            {
+                packageManifest = await JsonSerializer.DeserializeAsync<PackageManifest>(stream)
+                    ?? throw new InvalidOperationException("manifest is empty or invalid");
+            }
+
+            var artifact = await _artifactService.UploadAsync(packageManifest, binary);
+            return Ok(new
+            {
+                artifact.Id,
+                artifact.PackageId,
+                artifact.PackageName,
+                artifact.Version,
+                artifact.InstallerFile,
+                artifact.UploadedAt
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
-    [HttpPost("import")]
+    [HttpPost("bulk")]
     [Consumes("multipart/form-data")]
-    public async Task<ActionResult<object>> Import(List<IFormFile> files)
+    public async Task<ActionResult<object>> BulkImport(IFormFile zipFile)
     {
-        var imported = await _artifactService.ImportAsync(files);
-        var failed = new List<object>();
+        var (imported, failed) = await _artifactService.ImportZipAsync(zipFile);
 
         return Ok(new
         {
@@ -49,7 +60,11 @@ public class ArtifactController : ControllerBase
                 a.Version,
                 a.InstallerFile
             }),
-            failed
+            failed = failed.Select(f => new
+            {
+                fileName = f.fileName,
+                reason = f.reason
+            })
         });
     }
 

@@ -1,190 +1,184 @@
 # DeploymentPoC
 
-Proof-of-Concept for an enterprise deployment orchestration system. The system enables operators to upload installer artifacts, define workload packages, enroll target nodes via secure tokens, and execute orchestrated deployment workloads across a fleet.
+Proof-of-Concept for an enterprise Windows package orchestration system. Operators upload installer artifacts, define versioned workload packages, enroll target nodes via secure tokens, and execute orchestrated deployments (install / update / uninstall) across a fleet of Windows agents.
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Orchestrator (ASP.NET Core)              │
-│  ┌─────────┐  ┌──────────┐  ┌──────────┐  ┌───────────┐  │
-│  │Artifacts│  │ Workloads │  │  Runs    │  │  Nodes    │  │
-│  │Controller│ │Controller│ │Controller │ │ Controller│  │
-│  └─────────┘  └──────────┘  └──────────┘  └───────────┘  │
-│        ↓            ↓             ↓              ↓          │
-│  ┌─────────────────────────────────────────────────────┐  │
-│  │           SQLite (EF Core) + File System              │  │
-│  └─────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                              ↕ (SignalR)
-┌─────────────────────────────────────────────────────────────┐
-│                  Windows Agent (per node)                   │
-│  - Pulls work via SignalR                                   │
-│  - Executes workload packages in sequence                  │
-│  - Reports step status back to orchestrator                │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Orchestrator (ASP.NET Core)                         │
+│  ┌──────────┐  ┌─────────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
+│  │ Artifacts│  │  Workloads  │  │   Runs   │  │  Nodes   │  │  Tokens  │  │
+│  │Controller│  │ Controller  │  │Controller│  │Controller│  │Controller│  │
+│  └──────────┘  └─────────────┘  └──────────┘  └──────────┘  └──────────┘  │
+│        ↓              ↓               ↓              ↓              ↓       │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │         SQLite (EF Core) + On-Disk Artifact Store                   │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│        ↑                                                        ↑           │
+│   (HTTP download)                                    (HTTP POST pre-check)   │
+└─────────────────────────────────────────────────────────────────────────────┘
+         ↑                                            ↓
+         │         Agent ←── HTTP Polling ──→ Orchestrator               │
+         │         (10 s interval)                                         │
+         │                                                                  │
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    Windows Agent (per node, Kestrel :5001)                  │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Polling Loop          Detection Endpoint        Health Endpoint     │   │
+│  │  GET /pending          POST /api/detect          GET /health         │   │
+│  │  Claim runs            Registry / file /                              │   │
+│  │  Report timeline       version_manifest detection                     │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│        ↓                                                                    │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Local Execution: detect → acquire → install/uninstall → verify     │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Notes:
+• SignalR hub at /hubs/agent exists but is currently disabled. Push dispatch is
+  commented out; agents use HTTP polling as the primary task-delivery mechanism.
+• The orchestrator probes the agent directly (HTTP POST to agent :5001 /api/detect)
+  for on-demand pre-checks.
+• Artifacts are downloaded by the agent via chunked HTTP from /api/artifacts/…
 ```
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|------------|
-| Backend | ASP.NET Core 10.0 |
-| Frontend | React 18 + TypeScript + Vite |
+| Orchestrator Backend | ASP.NET Core 10.0 (Kestrel, port 5000 dev / 5124 with Vite proxy) |
+| Orchestrator Frontend | React 18 + TypeScript + Vite + Tailwind v4 + shadcn/ui |
 | Database | SQLite via EF Core |
-| API | REST + SignalR |
-| UI | Tailwind CSS + shadcn/ui |
+| Agent | .NET 10.0 self-contained single-file exe, `UseWindowsService()`, Kestrel on port 5001 |
+| Agent ↔ Orchestrator | **HTTP polling** (primary) — `GET /api/workload-runs/pending` every 10 s |
+| SignalR | Implemented at `/hubs/agent` but **disabled** in MVP |
+| Orchestrator → Agent | Direct HTTP POST to `http://{nodeIp}:5001/api/detect` for pre-checks |
+| Artifact Transfer | HTTP download (chunked, 2 MB chunks, SHA-256 verified) |
+| Test Frameworks | NUnit + Moq (orchestrator), NUnit (agent), Vitest + testing-library (frontend) |
+| Build | `make publish` (frontend + backend + agent to `dist/`) |
 
 ## Prerequisites
 
-- **.NET 10.0 SDK** (for development)
+- **.NET 10.0 SDK**
 - **Node.js 20+** and **pnpm**
 - **Windows** (agent runtime is Windows-only for PoC)
+- **GNU Make** (optional, for convenience commands)
 
 ## Development Setup
 
-### 1. Clone and install dependencies
+### Quick start (Makefile)
+
+```bash
+# Run orchestrator backend (dev)
+make run-orchestrator          # http://localhost:5124
+
+# Run frontend hot-reload dev server
+make run-frontend              # proxies API to :5124
+
+# Run agent (dev)
+make run-agent                 # http://localhost:5001
+```
+
+### Manual start
 
 ```bash
 # Backend
 cd apps/orchestrator/backend
-dotnet restore
+dotnet run                     # http://localhost:5124
 
-# Frontend
-cd ../web
-pnpm install
-```
-
-### 2. Run the orchestrator (development mode)
-
-**Option A: Direct dotnet run**
-```bash
-cd apps/orchestrator/backend
-dotnet run
-# Opens at http://localhost:5124
-```
-
-**Option B: With frontend hot reload**
-```bash
-# Terminal 1: Backend
-cd apps/orchestrator/backend
-dotnet run
-
-# Terminal 2: Frontend  
+# Frontend (Terminal 2)
 cd apps/orchestrator/web
-pnpm dev
-# Frontend proxies to backend at :5124
+pnpm install
+pnpm dev                       # http://localhost:5173, proxies /api to :5124
+
+# Agent (Terminal 3)
+cd apps/agent/backend
+dotnet run                     # http://localhost:5001
 ```
 
-### 3. Verify the application
+### Verify
 
 - Open http://localhost:5124
 - Swagger UI: http://localhost:5124/swagger
 
 ## Production Build
 
-### Build the Orchestrator
+### One-shot publish (recommended)
 
 ```bash
-# Build frontend
+make publish
+```
+
+This kills running processes, builds the frontend into `wwwroot/`, publishes both
+exes as self-contained single-file binaries, and copies test workloads to `dist/`.
+
+### Manual publish
+
+```bash
+# 1. Build frontend (outputs to ../backend/wwwroot/)
 cd apps/orchestrator/web
+pnpm install
 pnpm build
 
-# Build self-contained backend
+# 2. Publish orchestrator
 cd ../backend
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+dotnet publish -c Release -r win-x64 --self-contained true \
+  -p:PublishSingleFile=true \
+  /p:IncludeNativeLibrariesForSelfExtract=true \
+  -o .\..\..\..\dist
+
+# 3. Publish agent
+cd ..\..\agent\backend
+dotnet publish -c Release -r win-x64 --self-contained true \
+  -p:PublishSingleFile=true \
+  /p:IncludeNativeLibrariesForSelfExtract=true \
+  -o .\..\..\..\dist
 ```
 
-**Output:** `apps/orchestrator/backend/bin/Release/net10.0/win-x64/DeploymentPoC.Orchestrator.exe`
+**Output:** `dist/DeploymentPoC.Orchestrator.exe` and `dist/DeploymentPoC.Agent.exe`
 
-The frontend is embedded in the backend's `wwwroot/` folder and served automatically.
-
-### Build the Agent (per target node)
-
-```bash
-cd apps/agent/backend
-dotnet publish -c Release -r win-x64 --self-contained true /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true
-```
-
-**Output:** `apps/agent/backend/bin/Release/net10.0/win-x64/DeploymentPoC.Agent.exe`
-
-### Run Production Builds
+### Run production builds
 
 **Orchestrator:**
-```bash
-./apps/orchestrator/backend/bin/Release/net10.0/win-x64/DeploymentPoC.Orchestrator.exe
-# Opens at http://localhost:5000
+```powershell
+.\dist\DeploymentPoC.Orchestrator.exe
+# http://localhost:5000
 ```
 
 **Agent (on each target node):**
 ```powershell
-.\apps\agent\backend\bin\Release\net10.0\win-x64\DeploymentPoC.Agent.exe
+.\dist\DeploymentPoC.Agent.exe
 # Defaults to http://localhost:5001
-# Override: --urls http://localhost:port
+# Override: --urls http://localhost:<port>
 ```
 
 ## Demo Flow
 
 ### Prerequisites
 - Orchestrator running
-- At least one target Windows node (physical or VM)
-- An installer artifact (MSI or EXE)
+- At least one target Windows node
+- An installer artifact (MSI or EXE) and its `.manifest.json`
 
 ### Step 1: Upload an artifact
 
-The Artifact Store supports three upload modes: standalone media file, single-artifact zip, and bulk zip.
+Artifacts can be uploaded as a standalone file, a single-artifact zip, or a bulk zip.
 
-#### Upload Modes
-
-##### Mode 1: Standalone Media File
-
-Upload a raw installer (MSI or EXE) directly. The UI presents a form to fill in the manifest metadata manually.
-
-##### Mode 2: Single-Artifact Zip
-
-Package one installer media binary and its manifest in a zip. Both files must be at the **zip root** (no subdirectories). The installer and manifest must share the same base name:
-
-```
-my-artifact.zip
-├── Git-2.48.1-64-bit.exe              ← installer media
-└── Git-2.48.1-64-bit.manifest.json   ← manifest with same base name
-```
-
-Pairing is done by base name — `Git-2.48.1-64-bit.exe` pairs with `Git-2.48.1-64-bit.manifest.json`. If the base names don't match, the upload fails with a validation error.
-
-##### Mode 3: Bulk Zip
-
-Package multiple artifacts into one zip. Each artifact is a media file + manifest pair at the zip root, identified by shared base name:
-
-```
-artifacts-bulk.zip
-├── Git-2.48.1-64-bit.exe
-├── Git-2.48.1-64-bit.manifest.json
-├── node-v24.13.0-x64.msi
-├── node-v24.13.0-x64.manifest.json
-├── 7z2600-x64.exe
-└── 7z2600-x64.manifest.json
-```
-
-Each valid pair is ingested as a separate artifact. Invalid or unpaired files are reported as errors.
-
-#### Manifest Format
-
-The manifest (`.manifest.json`) is JSON with these fields:
-
+**Manifest format** (`.manifest.json`):
 ```json
 {
   "packageId": "git",
   "version": "2.48.1",
   "channel": "stable",
   "artifactType": "exe",
-  "verificationResult": "pass",
   "installAdapter": {
     "type": "exe",
     "command": "Git-2.48.1-64-bit.exe",
     "arguments": "/VERYSILENT /NORESTART /NOCANCEL",
     "uninstallCommand": "C:\\Program Files\\Git\\unins000.exe",
     "uninstallArgs": "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART",
+    "upgradeBehavior": "InPlace",
     "expectedExitCodes": [0],
     "timeoutSeconds": 300
   },
@@ -202,305 +196,278 @@ The manifest (`.manifest.json`) is JSON with these fields:
 }
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `packageId` | Yes | Unique identifier for the package (e.g., `git`, `nodejs`) |
-| `version` | Yes | Semantic version string (e.g., `2.48.1`, `24.13.0`) |
-| `channel` | No | `stable` (default), `canary`, or `test` |
-| `artifactType` | No | `exe` or `msi`; auto-detected if omitted |
-| `installAdapter.command` | Yes | Filename or command to execute (e.g., `Git-2.48.1-64-bit.exe`) |
-| `installAdapter.type` | Yes | `exe` or `msi` |
-| `installAdapter.arguments` | No | Install command-line arguments |
-| `installAdapter.uninstallCommand` | No | Dedicated uninstall command (e.g., `unins000.exe`). If omitted, agent resolves from Windows registry |
-| `installAdapter.uninstallArgs` | No | Arguments for the uninstall command |
-| `installAdapter.expectedExitCodes` | No | Valid exit codes (default: `[0]`) |
-| `installAdapter.timeoutSeconds` | No | Install timeout (default: `300`) |
-| `detection.type` | No | `registry` (Windows uninstall registry), `version_manifest` (PATH scan, default), or `file` |
-| `detection.path` | No | DisplayName for registry, binary name for version_manifest, file path for file |
-| `detection.expectedVersion` | No | Expected version string (e.g., `==2.48.1`, `>=3.13.0`) |
-| `policyTags.riskLevel` | No | `low`, `medium`, `high`, or `critical` |
-| `policyTags.approvalRequired` | No | Whether a human must approve before deployment |
-| `policyTags.retryabilityClass` | No | `idempotent`, `non-idempotent`, or `conditional` |
-| `policyTags.idempotencyMode` | No | `none`, `patch`, or `replace` |
+**Upload modes:**
+- **Standalone** — drag-and-drop a raw installer, fill in the manifest form
+- **Single zip** — one media file + manifest pair at zip root (same base name)
+- **Bulk zip** — multiple media + manifest pairs at zip root
 
-#### Upload via UI
+The system auto-analyzes standalone uploads and prefills metadata.
 
-1. Navigate to **Artifact Store** in the sidebar
-2. Choose an upload mode:
-   - **Standalone**: drag-and-drop a raw installer (MSI/EXE), then fill in the manifest form
-   - **Single zip**: drag-and-drop a zip containing one media + manifest pair
-   - **Bulk zip**: drag-and-drop a zip containing multiple artifacts
-3. For standalone uploads, the system auto-analyzes the installer and prefills metadata:
-   - Package ID (defaults to filename)
-   - Version
-   - Channel (stable/canary/test)
-   - Install adapter command
-   - Detection type and path
-   - Risk level
-4. Click **Ingest Artifact** (or **Ingest All** for bulk)
-5. Verify the artifact appears in the Artifact Store table
-
-### Artifact Storage
-
-Artifacts are stored in the `artifacts/` directory (relative to the running executable):
-
+**Artifact storage** (`artifacts/` next to the running executable):
 ```
 artifacts/
 └── {packageId}/
     └── {version}/
-        ├── artifact.bin      # the installer media (MSI/EXE)
-        └── resolved-manifest.json  # metadata JSON
+        ├── artifact.bin
+        └── resolved-manifest.json
 ```
 
-To view stored artifacts:
-
-```bash
-# Production path (relative to executable)
-ls -la apps/orchestrator/backend/bin/Release/net10.0/win-x64/artifacts/
-
-# View manifest for a specific artifact
-cat -la apps/orchestrator/backend/bin/Release/net10.0/win-x64/artifacts/{packageId}/{version}/resolved-manifest.json
+**Chunked upload** (for large files > 2 GB):
+```
+POST /api/artifacts/upload-sessions
+POST /api/artifacts/upload-sessions/{id}/chunks?index=&totalChunks=
+POST /api/artifacts/upload-sessions/{id}/complete
 ```
 
-**Configuration:** Set `ArtifactStore:RootPath` in `appsettings.json` to customize the storage location.
+### Step 2: Create a workload definition and revision
 
-**Production path:** The `artifacts/` folder is created next to the running executable (e.g., `bin/Release/net10.0/win-x64/artifacts/`).
+1. Navigate to **Workloads**
+2. Click **Create Workload** — enter name and description
+3. Click **+ New Revision** on the workload — enter version (e.g. `1.0.0`)
+4. Add packages from the artifact store
+5. Click **Save Draft** or **Publish** (only published revisions can be used in runs)
 
-### Step 2: Create a workload definition
-
-1. Navigate to **Workloads** in the sidebar
-2. Click **Create Workload**
-3. Enter:
-   - Name (e.g., `ej-server-v2`)
-   - Description
-4. Click **Create**
-5. Verify the workload appears in the Workloads table
-
-### Step 3: Create a workload revision
-
-1. Click **+ New Revision** on the workload
-2. Enter version (e.g., `1.0.0`)
-3. Add packages from the artifact list:
-   - Select the artifact uploaded in Step 1
-   - The package appears as a step with install adapter, detection, etc.
-4. Click **Save Draft** (or **Publish** to make it the active revision)
-
-### Step 4: Enroll a node
+### Step 3: Enroll a node
 
 1. Navigate to **Nodes** → **Enrollment Tokens**
-2. Click **Generate Token**
-3. Copy the enrollment token
-4. On the target node, run the agent with the token:
+2. Click **Generate Token** (default TTL: 20 minutes)
+3. Copy the token
+4. On the target node, run:
    ```powershell
-   .\agent.exe --enroll <token> --orchestrator-url http://<orchestrator-host>:5124
+   .\DeploymentPoC.Agent.exe --enroll <token> --orchestrator-url http://<host>:5000
    ```
-   - Agent defaults to `http://localhost:5001` (avoids port collision with orchestrator on 5000/5124)
-   - Override with `--urls http://localhost:port` if needed
-5. Verify the node appears in the Nodes table with status **"Online"** (refreshes automatically every 5s)
-6. The agent sends heartbeats every 15s; if stopped, node status changes to **"Offline"** within 30s
+   This writes `%LOCALAPPDATA%\DeploymentPoC\agent.json` containing the `NodeId` and `OrchestratorUrl`.
+5. Start the agent service (e.g. `sc create DeploymentPoC.Agent binPath= "path\to\agent.exe"` then start it)
+6. Verify the node appears in the Nodes list with status **Online**
 
-### Step 5: Run a workload
+> **Note:** `--enroll` does **not** auto-register the agent as a Windows Service. Use `sc create` or similar.
 
-The system supports three run modes: **install**, **update**, and **uninstall**.
+### Step 4: Run a workload
 
-#### 5a. Fresh install (baseline)
-
-1. Navigate to **Workload Runs**
-2. Click **Create Run**
-3. Select:
-   - Workload (from Step 2)
-   - Revision (published revision from Step 3)
-   - Target nodes (enrolled node from Step 4)
-   - Mode: **install**
-4. Click **Create Run**
-5. Watch the run progress:
-   - Status cycles through: Queued → Running → Completed
-   - Click the run to see step-by-step timeline
-   - Every package in the revision is acquired and installed
-
-#### 5b. Update (differential)
-
-Create a new revision with changed packages, then run in **update** mode. The agent computes a diff and only touches changed packages.
-
-**Example:** Using the test workload files:
-- `test-workloads/workloads-older.json` — baseline with `git-2.47.1`, `nodejs-22.14.0`, `python-3.13.3`
-- `test-workloads/workloads-newer.json` — updated with `git-2.48.1`, `nodejs-24.13.0`, `python-3.14.4` (all versions bumped)
-
-1. Create a new revision (version `2.0.0`) with the updated packages
-2. Publish the revision
-3. Navigate to **Workload Runs** → **Create Run**
-4. Select:
-   - Workload
-   - The new revision (`2.0.0`)
-   - Target node
-   - Mode: **update**
-5. Click **Create Run**
-6. Observe differential behavior in the agent logs:
-   - **Unchanged packages are skipped entirely** (no download, no install)
-   - **Changed packages** are uninstalled (old version) then installed (new version)
-   - **Added packages** are installed
-   - **Removed packages** are uninstalled
-
-**Note:** The agent executes in two phases:
-- Phase 1: Uninstall removed packages (reverse order)
-- Phase 2: Install added and changed packages (normal order)
-
-#### 5c. Uninstall
-
-Uninstall removes all packages in a revision from the target nodes. In the Run Creator, the revision dropdown shows **installed revisions only** (fetched from node workload states), so you can only uninstall what's actually on the nodes.
+#### 4a. Fresh install
 
 1. Navigate to **Workload Runs** → **Create Run**
-2. Select:
-   - Workload
-   - Mode: **uninstall** (revision dropdown switches to installed revisions)
-   - Revision (must be installed on the selected nodes)
-   - Target nodes (filtered to nodes with the selected revision installed)
+2. Select workload, a **published** revision, target node(s), mode **install**
 3. Click **Create Run**
-4. The agent uninstalls every package in the revision from the node in reverse order
+4. Watch progress: **Queued → Running → Completed**
 
-**How uninstall determines the command to run (3-tier resolution):**
+#### 4b. Update (differential)
 
-| Priority | Source | Example |
-|----------|--------|---------|
-| 1 | Explicit `UninstallCommand` | `"C:\Program Files\Git\unins000.exe" /VERYSILENT` |
-| 2 | Windows registry lookup | `MsiExec.exe /X{GUID} /quiet` (from `QuietUninstallString`) |
-| 3 | Skip with warning | No uninstall command available; package skipped |
+1. Create a new revision with changed packages and **Publish** it
+2. Create a run with mode **update**
+3. The system computes a delta:
+   - **Unchanged packages** — skipped entirely
+   - **Changed packages** — uninstalled (old) then installed (new), or updated in-place depending on `upgradeBehavior`
+   - **Added packages** — installed
+   - **Removed packages** — uninstalled (reverse order)
 
-The agent queries all 4 Windows uninstall registry paths (`HKLM`/`HKCU` × 64-bit/32-bit) for `QuietUninstallString` or `UninstallString` by `DisplayName` match. If found, the resolved command is executed. If not found, the package is skipped — no artifact download, no failed execution.
+#### 4c. Uninstall
 
-Artifact download during uninstall only occurs for MSI packages (which need the MSI file for `msiexec /x`) or when `{artifactPath}` appears in the uninstall command.
+1. Create a run with mode **uninstall**
+2. The revision dropdown shows only revisions currently installed on nodes
+3. The agent uninstalls every package in reverse order
 
-#### 5d. Dry-run preview
+#### 4d. Dry-run preview
 
-Before creating a run, preview what would happen using the dry-run endpoint:
-
+Before creating a run, preview the delta:
 ```
 GET /api/workload-runs/preview?workloadId=...&revisionId=...&mode=...&nodeIds=...
 ```
 
-Returns a per-node breakdown:
-- `install` — packages in target but not currently installed
-- `update` — packages in both but with different versions
-- `uninstall` — packages currently installed but not in target (or all packages in uninstall mode)
-- `unchanged` — packages with matching versions (no action needed)
+Returns per-node breakdown of `install`, `update`, `uninstall`, and `unchanged` packages.
 
-This is read-only — no side effects, no database writes.
+#### 4e. Pre-checks (automatic)
 
-#### 5e. Pre-checks (automatic)
-
-Pre-checks run automatically when a workload and revision are both selected in the Run Creator. A badge appears per node:
+Pre-checks run automatically when workload + revision are selected in the Run Creator. A badge appears per node:
 - **pre-check passed** — all packages detected correctly
-- **pre-check: issues** — some packages are missing, wrong version, or not detected
+- **pre-check: issues** — some packages missing, wrong version, or not detected
 
-Hover the badge for per-package details. A manual "Run pre-check" button is also available to re-run on demand.
+The orchestrator sends detection requests directly to the agent's `/api/detect` endpoint (`:5001`).
 
-The agent uses three detection strategies:
-- **Registry** — queries Windows uninstall registry for `DisplayName` and `DisplayVersion` match
-- **Version manifest** — searches PATH and Program Files for the binary
-- **File** — checks file existence and version at a specific path
-
-### Step 6: Observe execution (agent-side)
+### Step 5: Observe execution
 
 On the target node, the agent:
-1. Receives the workload assignment via SignalR
-2. For **install** mode: downloads and installs every package in the revision
-3. For **update** and **uninstall** modes:
-   - Compares the target revision against the node's `CurrentPackages` (from the last completed run)
-   - Computes diff: added, removed, changed, unchanged
-   - Skips unchanged packages entirely
-   - Uninstalls removed packages first (reverse order)
-   - Then installs added/changed packages (normal order)
-4. Reports `StepStatus` after each step to the orchestrator
-5. Sends `Complete` on success or `Fail` on error
-6. The orchestrator updates `CurrentRevisionId` only on `Complete` (not on `AckClaim` or failure)
-7. On disconnect, node status auto-changes to **"Offline"** within 30s (heartbeat monitor)
+1. Polls `/api/workload-runs/pending?agent_id={nodeId}` every 10 seconds
+2. Claims the run (atomic `Queued → Running` transition)
+3. For each package executes: **detect → preInitSteps → acquire → install/uninstall → postInitSteps → verify → report**
+4. Posts timeline events to `/api/workload-runs/{runId}/timeline`
+5. Reports final status (`Completed` or `Failed`) via PATCH
+6. On success, the orchestrator updates `NodeWorkloadState` with the new revision
 
-### Bulk Import for Testing
-
-Two test workload files are included for quick manual testing:
+### Bulk import for testing
 
 ```bash
 # Import baseline workload
-curl -X POST http://localhost:5124/api/workloads/bulk \
-  -H "Content-Type: application/json" \
-  -d @test-workloads/workloads-older.json
+curl -X POST http://localhost:5124/api/workloads/bulk-import \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@test-workloads/workloads-older.json"
 
-# Import updated workload (creates new revisions with bumped versions)
-curl -X POST http://localhost:5124/api/workloads/bulk \
-  -H "Content-Type: application/json" \
-  -d @test-workloads/workloads-newer.json
+# Import updated workload
+curl -X POST http://localhost:5124/api/workloads/bulk-import \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@test-workloads/workloads-newer.json"
 ```
 
-After import, publish each workload's revision, then create runs in `install`, `update`, and `uninstall` modes to observe differential behavior.
+After import, create runs in `install`, `update`, and `uninstall` modes to observe differential behavior.
 
 ## API Reference
 
+### Artifacts
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/artifacts` | POST | Upload artifact |
+| `/api/artifacts` | POST | Upload artifact (standalone or auto-detected ZIP) |
+| `/api/artifacts/bulk` | POST | Bulk import via flat ZIP |
+| `/api/artifacts/upload-sessions` | POST | Create chunked upload session |
+| `/api/artifacts/upload-sessions/{id}/chunks` | POST | Upload chunk |
+| `/api/artifacts/upload-sessions/{id}/complete` | POST | Finalize upload |
 | `/api/artifacts` | GET | List artifacts |
+| `/api/artifacts/{packageId}/{version}` | GET | Download binary (range-enabled) |
+| `/api/artifacts/{packageEntityId:guid}/download` | GET | Download by GUID |
+| `/api/artifacts/{packageId}/{version}` | DELETE | Delete artifact + PackageEntity |
+
+### Workloads
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
 | `/api/workloads` | GET | List workloads |
-| `/api/workloads` | POST | Create workload |
+| `/api/workloads` | POST | Create workload definition |
+| `/api/workloads/{id}` | GET | Get workload detail |
+| `/api/workloads/{id}` | DELETE | Delete workload (cascades) |
 | `/api/workloads/{id}/revisions` | POST | Create revision |
-| `/api/workloads/{id}/publish` | POST | Publish revision |
-| `/api/workload-runs` | POST | Create run |
+| `/api/workloads/{id}/revisions/{revisionId}` | PUT | Update mutable revision fields (steps, shell) |
+| `/api/workloads/{id}/publish` | POST | Publish a revision |
+| `/api/workloads/{id}/installed-revisions` | GET | List revisions installed on nodes |
+| `/api/workloads/bulk-import` | POST | Bulk import from JSON/JSONC file |
+
+### Workload Runs
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
 | `/api/workload-runs` | GET | List runs |
-| `/api/workload-runs/preview` | GET | Dry-run preview (per-node package diff) |
-| `/api/workload-runs/{id}/steps` | GET | Get run steps |
+| `/api/workload-runs` | POST | Create run (one record per node) |
+| `/api/workload-runs/{runId}` | GET | Run detail |
+| `/api/workload-runs/{runId}/steps` | GET | Delta-computed step list |
+| `/api/workload-runs/{runId}/cancel` | POST | Cancel run |
+| `/api/workload-runs/preview` | GET | Dry-run delta preview |
+| `/api/workload-runs/pending` | GET | Agent poll endpoint (also heartbeat) |
+| `/api/workload-runs/{runId}` | PATCH | Agent claims / completes run |
+| `/api/workload-runs/{runId}/timeline` | POST | Agent reports step timeline event |
+
+### Nodes
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
 | `/api/nodes` | GET | List nodes |
-| `/api/nodes/prechecks` | POST | Run pre-checks on nodes |
-| `/api/nodes/workload-states` | GET | List node workload states |
-| `/api/workloads/{id}/installed-revisions` | GET | List revisions installed on any node |
-| `/api/nodes/enroll` | POST | Issue enrollment token |
-| `/hubs/agent` | SignalR | Agent runtime hub (identify, send messages, heartbeats) |
+| `/api/nodes` | POST | Manual node creation |
+| `/api/nodes/{id}` | GET | Node detail |
+| `/api/nodes/{id}` | PUT | Update node |
+| `/api/nodes/{id}/display-name` | PATCH | Update display name |
+| `/api/nodes/{id}` | DELETE | Delete node |
+| `/api/nodes/{id}/details` | GET | Node detail with workloads |
+| `/api/nodes/workload-states` | GET | All node-workload assignment states |
+| `/api/nodes/prechecks` | POST | Trigger pre-checks on agents |
+| `/api/nodes/prechecks/summary` | POST | Pre-check summary (actions per node) |
+| `/api/nodes/enroll` | POST | Generate enrollment token |
+
+### Enrollment Tokens & Agent Download
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/enrollment-tokens` | GET | List tokens |
+| `/api/enrollment-tokens/{token}/consume` | POST | Consume token, create node |
+| `/api/agent/download?token=` | GET | Download agent binary |
+
+### SignalR (implemented but disabled)
+
+| Hub | Path | Status |
+|-----|------|--------|
+| Agent Hub | `/hubs/agent` | Implemented, push dispatch commented out |
 
 ## Project Structure
 
 ```
-apps/orchestrator/
-├── backend/                    # ASP.NET Core API
-│   ├── Controllers/            # API endpoints
-│   ├── Services/              # Business logic
-│   ├── Data/                  # EF Core DbContext, entities
-│   ├── Contracts/             # DTOs
-│   └── Program.cs             # Entry point
-└── web/                        # React frontend
-    ├── src/
-    │   ├── pages/             # Route pages
-    │   ├── components/       # Shared components
-    │   ├── services/         # API client
-    │   └── types.ts          # TypeScript types
-    └── index.html            # Entry point
+apps/
+  orchestrator/backend/   — ASP.NET Core 10.0 REST API + SignalR hub (port 5000)
+  orchestrator/web/       — React 18 + Vite + Tailwind + shadcn/ui
+  agent/backend/          — Windows agent (HTTP polling + own Kestrel on port 5001)
+shared/
+  contracts/              — DTOs/contracts shared between orchestrator and agent
+tests/
+  orchestrator/unit/      — NUnit + Moq
+  orchestrator/integration/
+  agent/unit/
+  agent/integration/
+  contracts/              — Contract serialization tests
 ```
 
-## Key Files
+- Frontend builds **into** `apps/orchestrator/backend/wwwroot/` — served as embedded SPA
+- SQLite DB file at `dist/deployment-poc.db` (production) or `artifacts/` (dev)
+- Agent communicates via **HTTP polling** at `/api/workload-runs/pending`
+- SignalR hub exists at `/hubs/agent` but is currently disabled
 
-- `apps/orchestrator/backend/Program.cs` — App configuration
-- `apps/orchestrator/web/src/services/api.ts` — Frontend API client
-- `apps/orchestrator/web/src/pages/Dashboard.tsx` — Main dashboard
-- `apps/orchestrator/web/src/pages/Workloads.tsx` — Workload management
+## Key Concepts
+
+| Term | Description |
+|------|-------------|
+| **Workload Definition** | Named container for a workload (e.g. "Dev Tools Stack") |
+| **Workload Revision** | Immutable versioned snapshot of packages and steps within a definition. Only one revision can be published at a time. |
+| **Workload Run** | Dispatched execution of a revision against one or more nodes (`install` / `update` / `uninstall`) |
+| **Node Workload State** | Tracks which revision is installed on a node and per-package status (`Current`, `Drifted`, `Unknown`) |
+| **Pre-Check** | On-demand detection probe sent to agent's `/api/detect` endpoint to determine installed state before a run |
+| **Diff Engine** | Computes delta between node's current packages and target revision: Added, Removed, Changed, Unchanged |
+| **Detection Config** | Per-package specification for verifying installation: `registry`, `file`, or `version_manifest` |
+| **Install Adapter** | Per-package specification for install/uninstall: type, command, args, upgrade behavior (`InPlace` / `UninstallFirst`), timeout |
+| **Init Steps** | Shell commands (`preInitSteps`, `postInitSteps`, `preWorkloadSteps`, `postWorkloadSteps`, `preUninstallSteps`, `postUninstallSteps`) run via PowerShell or cmd |
+| **Enrollment Token** | Short-lived, single-use token for node enrollment (default TTL 20 min) |
+
+## Commands Cheat Sheet
+
+```bash
+# Dev
+make run-orchestrator      # backend
+make run-frontend          # frontend dev server
+make run-agent             # agent
+
+# Build
+make build                 # debug build (fast)
+make publish               # full self-contained publish to dist/
+make clean                 # clean dist/
+
+# Tests
+dotnet test                # all .NET tests
+cd apps/orchestrator/web && pnpm test   # frontend tests
+cd apps/orchestrator/web && pnpm lint   # frontend lint
+```
 
 ## Troubleshooting
 
 ### Frontend not loading in production build
 
-Ensure `wwwroot` is in the output directory. The build step copies frontend assets:
+Ensure `wwwroot` exists in the output directory:
 ```bash
 cd apps/orchestrator/web && pnpm build
 # Outputs to ../backend/wwwroot/
 ```
 
-### Node not connecting
+### Node shows Offline
 
-1. Verify network connectivity to orchestrator port
-2. Check the enrollment token hasn't expired
-3. Ensure the agent version is compatible
+1. Verify the agent process is running on the target node
+2. Verify network connectivity between agent and orchestrator
+3. Check that `agent.json` exists in `%LOCALAPPDATA%\DeploymentPoC\`
+4. The heartbeat monitor marks nodes `Offline` if `LastSeenUtc` > 2 minutes (checked every 30 s)
 
 ### Run creation fails
 
-1. Ensure at least one node is enrolled and online
-2. Ensure a published workload revision exists
-3. Check the orchestrator logs for validation errors
+1. Ensure at least one node is enrolled and **Online**
+2. Ensure a **published** workload revision exists (draft revisions cannot be used)
+3. Check that no other run is **Queued** or **Running** for the same node+workload combination
+
+### Agent enrollment fails
+
+1. Verify the token hasn't expired (check **Enrollment Tokens** page)
+2. Verify the token hasn't already been used (single-use)
+3. Ensure `--orchestrator-url` matches the orchestrator's actual URL
 
 ## Documentation
 
@@ -508,5 +475,6 @@ cd apps/orchestrator/web && pnpm build
 - Implementation Tracker: `docs/implementation-tracker-phase1.md`
 - Architecture: `docs/03-architecture-and-design.md`
 - API Contracts: `docs/distributed-installer/10-core-contracts-pack.md`
-- ADRs: `docs/adr/` (architecture decision records)
+- ADRs: `docs/adr/`
   - Uninstall pipeline: `docs/adr/0009-uninstall-pipeline-registry-resolution.md`
+- Full MVP Plan: `MVP_Plan_PackageOrchestration.md`

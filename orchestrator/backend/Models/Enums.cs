@@ -1,0 +1,8 @@
+namespace Orchestrator.Models;
+
+public enum AgentNodeStatus { UNREGISTERED, REGISTERED, LOST, WORKLOAD_ASSIGNED, NEEDS_UPDATE }
+public enum WorkloadRunMode { PRE_CHECK, INSTALL, UPDATE, UNINSTALL }
+public enum WorkloadRunStatus { PENDING, RUNNING, SUCCESS, FAILED, SKIPPED, AWAITING_CONFIRMATION }
+public enum WorkloadRunStepAction { DETECT, PRE_INIT_STEP, INSTALL, POST_INIT_STEP, SKIP, UPDATE, UNINSTALL, VERIFY }
+public enum WorkloadRunStepStatus { PENDING, RUNNING, SUCCESS, FAILED, SKIPPED, PARTIAL_SUCCESS }
+public enum AgentPackageStatus { INSTALLED, MISSING, UNKNOWN }

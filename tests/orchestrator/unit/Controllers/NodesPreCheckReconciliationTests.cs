@@ -336,7 +336,7 @@ public class NodesPreCheckReconciliationTests
         Assert.That(pkgItem, Is.Not.Null);
         Assert.That(pkgItem!.Status, Is.EqualTo("passed"));
 
-        var driftItem = summary.Items.FirstOrDefault(i => i.Name.Contains("drift"));
+        var driftItem = summary.Items.FirstOrDefault(i => i.Name.Contains("packages:"));
         Assert.That(driftItem, Is.Not.Null);
         Assert.That(driftItem!.Status, Is.EqualTo("passed"));
         Assert.That(driftItem.Name, Does.Contain("1/1"));
@@ -391,9 +391,9 @@ public class NodesPreCheckReconciliationTests
         Assert.That(pkgA!.Status, Is.EqualTo("passed"));
         var pkgB = summary.Items.FirstOrDefault(i => i.Name == "pkg-b");
         Assert.That(pkgB, Is.Not.Null);
-        Assert.That(pkgB!.Status, Is.EqualTo("failed"));
+        Assert.That(pkgB!.Status, Is.EqualTo("info"));
 
-        var driftItem = summary.Items.FirstOrDefault(i => i.Name.Contains("drift"));
+        var driftItem = summary.Items.FirstOrDefault(i => i.Name.Contains("packages:"));
         Assert.That(driftItem, Is.Not.Null);
         Assert.That(driftItem!.Status, Is.EqualTo("warning"));
         Assert.That(driftItem.Name, Does.Contain("1/2"));
@@ -441,12 +441,12 @@ public class NodesPreCheckReconciliationTests
         var summary = responses[0].Summary;
         var pkgItem = summary.Items.FirstOrDefault(i => i.Name == "missing-pkg");
         Assert.That(pkgItem, Is.Not.Null);
-        Assert.That(pkgItem!.Status, Is.EqualTo("failed"));
+        Assert.That(pkgItem!.Status, Is.EqualTo("info"));
         Assert.That(pkgItem.Detail, Is.EqualTo("not installed"));
 
-        var driftItem = summary.Items.FirstOrDefault(i => i.Name.Contains("drift"));
+        var driftItem = summary.Items.FirstOrDefault(i => i.Name.Contains("packages:"));
         Assert.That(driftItem, Is.Not.Null);
-        Assert.That(driftItem!.Status, Is.EqualTo("warning"));
+        Assert.That(driftItem!.Status, Is.EqualTo("info"));
         Assert.That(driftItem.Name, Does.Contain("0/1"));
 
         var stateAfter = await _db.NodeWorkloadStates.CountAsync(s => s.NodeId == nodeId);

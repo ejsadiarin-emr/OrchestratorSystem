@@ -83,7 +83,8 @@ public class NodePreCheckSummary
     public List<PreCheckItem> Items { get; set; } = new();
     public string OverallStatus => Items.Count == 0 ? "passed" :
         Items.Any(i => i.Status == "failed") ? "failed" :
-        Items.Any(i => i.Status == "warning") ? "warning" : "passed";
+        Items.Any(i => i.Status == "warning") ? "warning" :
+        Items.Any(i => i.Status == "info") ? "info" : "passed";
 }
 
 public class PreCheckItem

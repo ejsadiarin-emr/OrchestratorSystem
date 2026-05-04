@@ -105,6 +105,8 @@ export default function NodeDetailsModal({ nodeId, open, onClose }: NodeDetailsM
         return <AlertTriangle className="h-5 w-5 text-amber-500" />
       case 'failed':
         return <XCircle className="h-5 w-5 text-red-500" />
+      case 'info':
+        return <CheckCircle className="h-5 w-5 text-slate-400" />
     }
   }
 
@@ -177,7 +179,9 @@ export default function NodeDetailsModal({ nodeId, open, onClose }: NodeDetailsM
                           ? 'bg-emerald-100 text-emerald-800'
                           : data.latestPreCheck.overallStatus === 'warning'
                             ? 'bg-amber-100 text-amber-800'
-                            : 'bg-red-100 text-red-800'
+                            : data.latestPreCheck.overallStatus === 'info'
+                              ? 'bg-slate-100 text-slate-800'
+                              : 'bg-red-100 text-red-800'
                       }`}>
                         {data.latestPreCheck.overallStatus}
                       </span>

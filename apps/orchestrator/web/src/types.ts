@@ -374,7 +374,7 @@ export interface PreCheckItem {
   category: string
   name: string
   packageId?: string
-  status: 'passed' | 'failed' | 'warning'
+  status: 'passed' | 'failed' | 'warning' | 'info'
   detail?: string
   expectedVersion?: string
   actualVersion?: string
@@ -382,7 +382,7 @@ export interface PreCheckItem {
 
 export interface NodePreCheckSummary {
   checkedAt: string
-  overallStatus: 'passed' | 'failed' | 'warning'
+  overallStatus: 'passed' | 'failed' | 'warning' | 'info'
   items: PreCheckItem[]
 }
 

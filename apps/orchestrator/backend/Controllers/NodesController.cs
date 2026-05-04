@@ -555,13 +555,15 @@ public class NodesController : ControllerBase
                     r.Status != PreCheckStatus.NotPresent);
                 var totalCount = detectionConfigs.Count;
 
-                items.AddRange(BuildPerPackageItems(detectionConfigs, agentResultMap, ""));
+                items.AddRange(BuildPerPackageItems(detectionConfigs, agentResultMap, "", isUnassigned: true));
                 items.Add(new PreCheckItem
                 {
                     Category = "package",
-                    Name = $"drift: {presentCount}/{totalCount} packages present",
-                    Status = presentCount == totalCount ? "passed" : "warning",
-                    Detail = presentCount == totalCount ? "all packages present" : "drift detected"
+                    Name = $"packages: {presentCount}/{totalCount} present",
+                    Status = presentCount == totalCount ? "passed" :
+                             presentCount == 0 ? "info" : "warning",
+                    Detail = presentCount == totalCount ? "all packages present" :
+                             presentCount == 0 ? "not installed" : "partially installed"
                 });
             }
             else
@@ -656,7 +658,8 @@ public class NodesController : ControllerBase
     private static List<PreCheckItem> BuildPerPackageItems(
         List<DetectionConfigDto> detectionConfigs,
         Dictionary<Guid, PackageDetectionResult> agentResultMap,
-        string expectedRevisionVersion)
+        string expectedRevisionVersion,
+        bool isUnassigned = false)
     {
         var items = new List<PreCheckItem>();
         foreach (var cfg in detectionConfigs)
@@ -667,7 +670,7 @@ public class NodesController : ControllerBase
                 null => "error",
                 { Status: PreCheckStatus.AlreadySatisfied } => "passed",
                 { Status: PreCheckStatus.WrongVersion } => "warning",
-                { Status: PreCheckStatus.NotPresent } => "failed",
+                { Status: PreCheckStatus.NotPresent } => isUnassigned ? "info" : "failed",
                 _ => "unknown"
             };
             items.Add(new PreCheckItem

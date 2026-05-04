@@ -767,7 +767,7 @@ export default function WorkloadRuns() {
                                   not installed
                                 </span>
                               )}
-                              {precheckResults.has(node.id) && (() => {
+                                {precheckResults.has(node.id) && (() => {
                                 const summary = precheckResults.get(node.id)!
                                 const issueItems = summary.items.filter(i => i.status !== 'passed')
                                 const titleText = summary.overallStatus === 'passed'
@@ -782,11 +782,17 @@ export default function WorkloadRuns() {
                                         ? 'bg-emerald-100 text-emerald-700'
                                         : summary.overallStatus === 'warning'
                                           ? 'bg-amber-100 text-amber-700'
-                                          : 'bg-red-100 text-red-700'
+                                          : summary.overallStatus === 'info'
+                                            ? 'bg-slate-100 text-slate-600'
+                                            : 'bg-red-100 text-red-700'
                                     }`}
                                     title={titleText}
                                   >
-                                    {summary.overallStatus === 'passed' ? 'pre-check passed' : 'pre-check: issues'}
+                                    {summary.overallStatus === 'passed'
+                                      ? 'pre-check passed'
+                                      : summary.overallStatus === 'info'
+                                        ? 'pre-check: not installed'
+                                        : 'pre-check: issues'}
                                   </span>
                                 )
                               })()}

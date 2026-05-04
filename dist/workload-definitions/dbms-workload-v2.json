@@ -1,0 +1,19 @@
+{
+  "workloadId": "dbms-workload",
+  "workloadName": "DBMS Workload",
+  "version": "2.0",
+  "packages": [
+    {
+      "packageId": "ssms-2019",
+      "version": "15.0.18390.0",
+      "preInitSteps": ["net stop SQLBrowser"],
+      "postInitSteps": ["net start SQLBrowser"]
+    },
+    {
+      "packageId": "dbeaver-ce",
+      "version": "24.1.0",
+      "preInitSteps": [],
+      "postInitSteps": ["mkdir \"C:\\ProgramData\\DBeaverData\""]
+    }
+  ]
+}

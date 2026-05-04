@@ -1,0 +1,13 @@
+{
+  "workloadId": "dbms-workload",
+  "workloadName": "DBMS Workload",
+  "version": "1.0",
+  "packages": [
+    {
+      "packageId": "ssms-2019",
+      "version": "15.0.18390.0",
+      "preInitSteps": ["net stop SQLBrowser"],
+      "postInitSteps": ["net start SQLBrowser"]
+    }
+  ]
+}

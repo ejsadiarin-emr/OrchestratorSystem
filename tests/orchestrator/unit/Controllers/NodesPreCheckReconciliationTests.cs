@@ -258,6 +258,11 @@ public class NodesPreCheckReconciliationTests
         var pkgItem = summary.Items.FirstOrDefault(i => i.Category == "package" && i.Name == "test-pkg");
         Assert.That(pkgItem, Is.Not.Null);
         Assert.That(pkgItem!.Status, Is.EqualTo("passed"));
+
+        var state = await _db.NodeWorkloadStates.FirstAsync(s => s.NodeId == nodeId);
+        Assert.That(state.Status, Is.EqualTo("Current"));
+        Assert.That(state.PackageStatesJson, Does.Contain("\"comparison\":\"same\""));
+        Assert.That(state.PackageStatesJson, Does.Contain("\"expectedVersion\":\"1.0.0\""));
     }
 
     [Test]
@@ -341,8 +346,9 @@ public class NodesPreCheckReconciliationTests
         Assert.That(driftItem!.Status, Is.EqualTo("passed"));
         Assert.That(driftItem.Name, Does.Contain("1/1"));
 
-        var stateAfter = await _db.NodeWorkloadStates.CountAsync(s => s.NodeId == nodeId);
-        Assert.That(stateAfter, Is.EqualTo(0), "No DB state should be created for unassigned workloads");
+        var stateAfter = await _db.NodeWorkloadStates.FirstOrDefaultAsync(s => s.NodeId == nodeId);
+        Assert.That(stateAfter, Is.Not.Null, "DB state should be created for unassigned workloads with detected packages");
+        Assert.That(stateAfter!.Status, Is.EqualTo("Current"));
     }
 
     [Test]
@@ -398,8 +404,9 @@ public class NodesPreCheckReconciliationTests
         Assert.That(driftItem!.Status, Is.EqualTo("warning"));
         Assert.That(driftItem.Name, Does.Contain("1/2"));
 
-        var stateAfter = await _db.NodeWorkloadStates.CountAsync(s => s.NodeId == nodeId);
-        Assert.That(stateAfter, Is.EqualTo(0), "No DB state should be created for unassigned workloads");
+        var stateAfter = await _db.NodeWorkloadStates.FirstOrDefaultAsync(s => s.NodeId == nodeId);
+        Assert.That(stateAfter, Is.Not.Null, "DB state should be created for unassigned workloads with detected packages");
+        Assert.That(stateAfter!.Status, Is.EqualTo("Drifted"));
     }
 
     [Test]
@@ -485,9 +492,12 @@ public class NodesPreCheckReconciliationTests
         var pkgItem = summary.Items.FirstOrDefault(i => i.Category == "package" && i.Name == "test-pkg");
         Assert.That(pkgItem, Is.Not.Null);
         Assert.That(pkgItem!.Status, Is.EqualTo("warning"));
+        Assert.That(pkgItem.Detail, Does.Contain("newer"));
 
         var state = await _db.NodeWorkloadStates.FirstAsync(s => s.NodeId == nodeId);
         Assert.That(state.PackageStatesJson, Does.Contain(packageId.ToString()));
+        Assert.That(state.PackageStatesJson, Does.Contain("\"comparison\":\"newer\""));
+        Assert.That(state.Status, Is.EqualTo("Drifted"));
     }
 
     [Test]
@@ -525,6 +535,9 @@ public class NodesPreCheckReconciliationTests
         Assert.That(driftItem, Is.Not.Null);
         Assert.That(driftItem!.Status, Is.EqualTo("warning"));
         Assert.That(driftItem.Name, Does.Contain("1/2"));
+
+        var state = await _db.NodeWorkloadStates.FirstAsync(s => s.NodeId == nodeId);
+        Assert.That(state.Status, Is.EqualTo("Drifted"));
     }
 
     [Test]

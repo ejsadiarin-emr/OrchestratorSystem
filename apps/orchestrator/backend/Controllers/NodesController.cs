@@ -4,6 +4,7 @@ using System.Text.Json;
 using DeploymentPoC.Contracts.Runtime.Probes;
 using DeploymentPoC.Contracts.Runtime.RunPayloads;
 using DeploymentPoC.Orchestrator.Contracts.Api;
+using DeploymentPoC.Orchestrator.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -208,7 +209,7 @@ public class NodesController : ControllerBase
                 WorkloadRevision = s.CurrentRevision != null ? s.CurrentRevision.Version : "",
                 CurrentRevisionId = s.CurrentRevisionId,
                 RunId = Guid.Empty,
-                Status = InferStatus(s),
+                Status = s.Status,
                 UpdatedAt = s.UpdatedAtUtc.ToString("O")
             })
             .ToListAsync();
@@ -235,7 +236,7 @@ public class NodesController : ControllerBase
         {
             WorkloadId = s.WorkloadId,
             Name = s.Workload.Name,
-            Status = InferStatus(s),
+            Status = s.Status,
             CurrentVersion = s.CurrentRevision?.Version ?? ""
         }).ToList();
 
@@ -276,10 +277,6 @@ public class NodesController : ControllerBase
             ? await LoadDetectionConfigsByWorkloadAsync(request.WorkloadId)
             : null;
 
-        var timeoutSeconds = _configuration.GetValue<int>("AgentProbeTimeoutSeconds", 30);
-        var client = _httpClientFactory.CreateClient();
-        client.Timeout = TimeSpan.FromSeconds(timeoutSeconds);
-
         var results = new List<NodePreCheckResponse>();
 
         foreach (var node in nodes)
@@ -292,81 +289,11 @@ public class NodesController : ControllerBase
                 Hostname = node.Hostname
             };
 
-            NodeDetectResponse? agentResponse = null;
-            bool probeSuccessful = false;
+            var (agentResponse, error) = await ProbeNodeAsync(node, nodeConfigs);
 
-            try
+            if (error is not null || agentResponse is null)
             {
-                var allPackageRequests = nodeConfigs
-                    .SelectMany(kvp => kvp.Value)
-                    .Select(c => new PackageDetectionRequest
-                    {
-                        PackageId = c.PackageId,
-                        Name = c.Name,
-                        Version = c.Version,
-                        Detection = c.Detection
-                    })
-                    .DistinctBy(c => c.PackageId)
-                    .ToList();
-
-                var requestBody = new DetectRequest { Packages = allPackageRequests };
-
-                var json = JsonSerializer.Serialize(requestBody);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                _logger.LogInformation("Probing agent on node {NodeId} ({Hostname}) at {IpAddress} for {PackageCount} packages",
-                    node.NodeId, node.Hostname, node.IpAddress, allPackageRequests.Count);
-
-                var response = await client.PostAsync(
-                    $"http://{node.IpAddress}:5001/api/detect", content);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    _logger.LogWarning(
-                        "Agent probe returned non-200 for node {NodeId} ({Hostname}): {StatusCode}",
-                        node.NodeId, node.Hostname, (int)response.StatusCode);
-                    nodeResult.Error = $"Agent returned status {(int)response.StatusCode}";
-                    results.Add(nodeResult);
-                    continue;
-                }
-
-                var responseJson = await response.Content.ReadAsStringAsync();
-                agentResponse = JsonSerializer.Deserialize<NodeDetectResponse>(
-                    responseJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-                if (agentResponse is null)
-                {
-                    _logger.LogWarning(
-                        "Failed to deserialize agent response for node {NodeId} ({Hostname})",
-                        node.NodeId, node.Hostname);
-                    nodeResult.Error = "Failed to deserialize agent response";
-                    results.Add(nodeResult);
-                    continue;
-                }
-
-                probeSuccessful = true;
-            }
-            catch (TaskCanceledException)
-            {
-                _logger.LogWarning("Agent probe timed out for node {NodeId} ({Hostname})",
-                    node.NodeId, node.Hostname);
-                nodeResult.Error = "Agent probe timed out";
-            }
-            catch (HttpRequestException ex)
-            {
-                _logger.LogWarning("Agent unreachable for node {NodeId} ({Hostname}): {Error}",
-                    node.NodeId, node.Hostname, ex.Message);
-                nodeResult.Error = $"Agent unreachable: {ex.Message}";
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Unexpected error probing node {NodeId} ({Hostname})",
-                    node.NodeId, node.Hostname);
-                nodeResult.Error = $"Unexpected error: {ex.Message}";
-            }
-
-            if (!probeSuccessful || agentResponse is null)
-            {
+                nodeResult.Error = error;
                 results.Add(nodeResult);
                 continue;
             }
@@ -378,6 +305,144 @@ public class NodesController : ControllerBase
 
         await _db.SaveChangesAsync();
         return Ok(results);
+    }
+
+    [HttpPost("prechecks/summary")]
+    public async Task<ActionResult<PreCheckSummaryResponse>> RunPreCheckSummary([FromBody] RunPreCheckSummaryRequest request)
+    {
+        if (request.NodeIds is null || request.NodeIds.Count == 0)
+        {
+            return BadRequest(new { message = "At least one node ID is required" });
+        }
+
+        var nodes = await _db.Nodes
+            .Where(n => request.NodeIds.Contains(n.NodeId))
+            .ToListAsync();
+
+        var revisionConfigs = await LoadDetectionConfigsForRevisionAsync(request.RevisionId);
+        var workloadDetectionConfigs = new Dictionary<Guid, List<DetectionConfigDto>>
+        {
+            [request.WorkloadId] = revisionConfigs
+        };
+
+        var nodeStates = await _db.NodeWorkloadStates
+            .AsNoTracking()
+            .Where(s => s.WorkloadId == request.WorkloadId && request.NodeIds.Contains(s.NodeId))
+            .ToDictionaryAsync(s => s.NodeId);
+
+        var response = new PreCheckSummaryResponse
+        {
+            Nodes = new List<PreCheckSummaryNode>()
+        };
+
+        foreach (var node in nodes)
+        {
+            var summaryNode = new PreCheckSummaryNode
+            {
+                NodeId = node.NodeId,
+                Hostname = node.Hostname
+            };
+
+            if (nodeStates.TryGetValue(node.NodeId, out var state))
+            {
+                summaryNode.WorkloadStatus = state.Status switch
+                {
+                    "Current" => "Current",
+                    "Drifted" => "Drifted",
+                    _ => "Unknown"
+                };
+            }
+            else
+            {
+                summaryNode.WorkloadStatus = "Absent";
+            }
+
+            var (agentResponse, error) = await ProbeNodeAsync(node, workloadDetectionConfigs);
+
+            if (error is not null || agentResponse is null)
+            {
+                summaryNode.Action = "Unknown";
+                summaryNode.ActionDetail = error ?? "Probe failed";
+                response.Nodes.Add(summaryNode);
+                continue;
+            }
+
+            // Enrich probe results with comparisons (mirrors ReconcileProbeResults)
+            var resultMap = agentResponse.Results.ToDictionary(r => r.PackageId);
+            foreach (var cfg in revisionConfigs)
+            {
+                if (resultMap.TryGetValue(cfg.PackageId, out var result) && result.Status == PreCheckStatus.WrongVersion)
+                {
+                    result.ExpectedVersion = cfg.Version;
+                    var comparison = VersionComparisonService.CompareVersions(result.ActualVersion, cfg.Version);
+                    result.Comparison = comparison switch
+                    {
+                        < 0 => "older",
+                        > 0 => "newer",
+                        0 => "same",
+                        null => "unknown"
+                    };
+                }
+                else if (resultMap.TryGetValue(cfg.PackageId, out var result2))
+                {
+                    result2.ExpectedVersion = cfg.Version;
+                    if (result2.Status == PreCheckStatus.AlreadySatisfied)
+                    {
+                        result2.Comparison = "same";
+                    }
+                }
+            }
+
+            summaryNode.Packages = revisionConfigs.Select(cfg =>
+            {
+                if (resultMap.TryGetValue(cfg.PackageId, out var result))
+                {
+                    return new PreCheckSummaryPackage
+                    {
+                        PackageId = cfg.PackageId,
+                        Name = cfg.Name,
+                        Status = result.Status.ToString(),
+                        Comparison = result.Comparison,
+                        ActualVersion = result.ActualVersion,
+                        ExpectedVersion = result.ExpectedVersion ?? cfg.Version
+                    };
+                }
+                return new PreCheckSummaryPackage
+                {
+                    PackageId = cfg.PackageId,
+                    Name = cfg.Name,
+                    Status = "NotPresent",
+                    ExpectedVersion = cfg.Version
+                };
+            }).ToList();
+
+            var packageStatuses = summaryNode.Packages.Select(p => p.Status).ToList();
+            var hasWrongVersionOlder = summaryNode.Packages.Any(p =>
+                p.Status == "WrongVersion" && p.Comparison == "older");
+            var hasWrongVersionNewer = summaryNode.Packages.Any(p =>
+                p.Status == "WrongVersion" && p.Comparison == "newer");
+            var hasNotPresent = packageStatuses.Contains("NotPresent");
+            var allAlreadySatisfied = packageStatuses.All(s => s == "AlreadySatisfied");
+
+            summaryNode.Action = (hasWrongVersionNewer, summaryNode.WorkloadStatus, allAlreadySatisfied, hasWrongVersionOlder, hasNotPresent) switch
+            {
+                (true, _, _, _, _) => "BlockedDowngrade",
+                (_, "Absent", _, _, _) => "FreshInstall",
+                (_, "Current", true, _, _) => "Skip",
+                (_, _, _, true, _) => "Update",
+                (_, _, _, _, true) => "InstallMissing",
+                _ => "Unknown"
+            };
+
+            if (summaryNode.Action == "Unknown")
+            {
+                summaryNode.ActionDetail = "Unable to determine action from probe results";
+            }
+
+            response.Nodes.Add(summaryNode);
+        }
+
+        return Ok(response);
     }
 
     [HttpPost("{id:guid}/prechecks")]
@@ -499,6 +564,121 @@ public class NodesController : ControllerBase
         return Ok(summary);
     }
 
+    private async Task<(NodeDetectResponse? Response, string? Error)> ProbeNodeAsync(
+        NodeEntity node,
+        Dictionary<Guid, List<DetectionConfigDto>> workloadDetectionConfigs)
+    {
+        var timeoutSeconds = _configuration.GetValue<int>("AgentProbeTimeoutSeconds", 30);
+        var client = _httpClientFactory.CreateClient();
+
+        try
+        {
+            var allPackageRequests = workloadDetectionConfigs
+                .SelectMany(kvp => kvp.Value)
+                .Select(c => new PackageDetectionRequest
+                {
+                    PackageId = c.PackageId,
+                    Name = c.Name,
+                    Version = c.Version,
+                    Detection = c.Detection
+                })
+                .DistinctBy(c => c.PackageId)
+                .ToList();
+
+            var requestBody = new DetectRequest { Packages = allPackageRequests };
+
+            var json = JsonSerializer.Serialize(requestBody);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            _logger.LogInformation("Probing agent on node {NodeId} ({Hostname}) at {IpAddress} for {PackageCount} packages",
+                node.NodeId, node.Hostname, node.IpAddress, allPackageRequests.Count);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+            var response = await client.PostAsync(
+                $"http://{node.IpAddress}:5001/api/detect", content, cts.Token);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Agent probe returned non-200 for node {NodeId} ({Hostname}): {StatusCode}",
+                    node.NodeId, node.Hostname, (int)response.StatusCode);
+                return (null, $"Agent returned status {(int)response.StatusCode}");
+            }
+
+            var responseJson = await response.Content.ReadAsStringAsync();
+            var agentResponse = JsonSerializer.Deserialize<NodeDetectResponse>(
+                responseJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (agentResponse is null)
+            {
+                _logger.LogWarning(
+                    "Failed to deserialize agent response for node {NodeId} ({Hostname})",
+                    node.NodeId, node.Hostname);
+                return (null, "Failed to deserialize agent response");
+            }
+
+            return (agentResponse, null);
+        }
+        catch (TaskCanceledException)
+        {
+            _logger.LogWarning("Agent probe timed out for node {NodeId} ({Hostname})",
+                node.NodeId, node.Hostname);
+            return (null, "Agent probe timed out");
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning("Agent unreachable for node {NodeId} ({Hostname}): {Error}",
+                node.NodeId, node.Hostname, ex.Message);
+            return (null, $"Agent unreachable: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error probing node {NodeId} ({Hostname})",
+                node.NodeId, node.Hostname);
+            return (null, $"Unexpected error: {ex.Message}");
+        }
+    }
+
+    private async Task<List<DetectionConfigDto>> LoadDetectionConfigsForRevisionAsync(Guid revisionId)
+    {
+        var revision = await _db.WorkloadRevisions
+            .Include(r => r.Packages)
+            .FirstOrDefaultAsync(r => r.RevisionId == revisionId);
+
+        if (revision == null)
+            return new List<DetectionConfigDto>();
+
+        var packageIds = revision.Packages.Select(p => p.PackageId).Distinct().ToList();
+        var packages = await _db.Packages
+            .Where(p => packageIds.Contains(p.PackageId))
+            .ToListAsync();
+
+        var packageMap = packages.ToDictionary(p => p.PackageId);
+
+        var configs = new List<DetectionConfigDto>();
+        foreach (var wp in revision.Packages)
+        {
+            if (!packageMap.TryGetValue(wp.PackageId, out var pkg))
+                continue;
+
+            var detection = string.IsNullOrWhiteSpace(pkg.DetectionConfigJson)
+                ? new DetectionConfig()
+                : JsonSerializer.Deserialize<DetectionConfig>(
+                    pkg.DetectionConfigJson,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new DetectionConfig();
+
+            configs.Add(new DetectionConfigDto
+            {
+                PackageId = pkg.PackageId,
+                Name = pkg.Name,
+                Version = pkg.Version,
+                Detection = detection
+            });
+        }
+
+        return configs;
+    }
+
     private async Task<NodePreCheckSummary> ReconcileProbeResults(
         NodeEntity node,
         NodeDetectResponse agentResponse,
@@ -506,6 +686,33 @@ public class NodesController : ControllerBase
     {
         var items = new List<PreCheckItem>();
         var agentResultMap = agentResponse.Results.ToDictionary(r => r.PackageId);
+
+        foreach (var kvp in workloadDetectionConfigs)
+        {
+            foreach (var cfg in kvp.Value)
+            {
+                if (agentResultMap.TryGetValue(cfg.PackageId, out var result) && result.Status == PreCheckStatus.WrongVersion)
+                {
+                    result.ExpectedVersion = cfg.Version;
+                    var comparison = VersionComparisonService.CompareVersions(result.ActualVersion, cfg.Version);
+                    result.Comparison = comparison switch
+                    {
+                        < 0 => "older",
+                        > 0 => "newer",
+                        0 => "same",
+                        null => "unknown"
+                    };
+                }
+                else if (agentResultMap.TryGetValue(cfg.PackageId, out var result2))
+                {
+                    result2.ExpectedVersion = cfg.Version;
+                    if (result2.Status == PreCheckStatus.AlreadySatisfied)
+                    {
+                        result2.Comparison = "same";
+                    }
+                }
+            }
+        }
 
         items.Add(new PreCheckItem
         {
@@ -549,7 +756,7 @@ public class NodesController : ControllerBase
 
             if (existingState is null)
             {
-                // Unassigned workload — report probe results without creating DB state
+                // Unassigned workload — report probe results and create DB state if packages detected
                 var presentCount = detectionConfigs.Count(d =>
                     agentResultMap.TryGetValue(d.PackageId, out var r) &&
                     r.Status != PreCheckStatus.NotPresent);
@@ -565,6 +772,26 @@ public class NodesController : ControllerBase
                     Detail = presentCount == totalCount ? "all packages present" :
                              presentCount == 0 ? "not installed" : "partially installed"
                 });
+
+                if (hasAnyDetected)
+                {
+                    var allMatch = detectionConfigs.All(d =>
+                        agentResultMap.TryGetValue(d.PackageId, out var r) &&
+                        r.Status == PreCheckStatus.AlreadySatisfied &&
+                        r.ActualVersion == d.Version);
+
+                    var newState = new NodeWorkloadStateEntity
+                    {
+                        NodeWorkloadStateId = Guid.NewGuid(),
+                        NodeId = node.NodeId,
+                        WorkloadId = workloadId,
+                        CurrentRevisionId = null,
+                        PackageStatesJson = BuildPackageStatesJson(detectionConfigs, agentResultMap),
+                        Status = allMatch ? "Current" : "Drifted",
+                        UpdatedAtUtc = DateTime.UtcNow
+                    };
+                    _db.NodeWorkloadStates.Add(newState);
+                }
             }
             else
             {
@@ -600,6 +827,7 @@ public class NodesController : ControllerBase
                         // Scenario A — Match; update PackageStatesJson so
                         // BuildReadOnlyPreCheckSummary reflects current good state
                         existingState.PackageStatesJson = BuildPackageStatesJson(detectionConfigs, agentResultMap);
+                        existingState.Status = "Current";
                         existingState.UpdatedAtUtc = DateTime.UtcNow;
                         items.AddRange(BuildPerPackageItems(detectionConfigs, agentResultMap, dbVersion));
                     }
@@ -609,6 +837,7 @@ public class NodesController : ControllerBase
                         // Update PackageStatesJson to reflect actual state
                         // NEVER auto-promote CurrentRevisionId
                         existingState.PackageStatesJson = BuildPackageStatesJson(detectionConfigs, agentResultMap);
+                        existingState.Status = "Drifted";
                         existingState.UpdatedAtUtc = DateTime.UtcNow;
 
                         var presentCount = detectionConfigs.Count(d =>
@@ -648,6 +877,8 @@ public class NodesController : ControllerBase
             {
                 ["name"] = cfg.Name,
                 ["actualVersion"] = agentResult?.ActualVersion ?? "",
+                ["expectedVersion"] = agentResult?.ExpectedVersion ?? cfg.Version,
+                ["comparison"] = agentResult?.Comparison ?? "unknown",
                 ["status"] = agentResult?.Status.ToString() ?? "Unknown",
                 ["updatedAt"] = DateTime.UtcNow.ToString("O")
             };
@@ -682,7 +913,7 @@ public class NodesController : ControllerBase
                 Detail = agentResult?.Status switch
                 {
                     PreCheckStatus.AlreadySatisfied => "",
-                    PreCheckStatus.WrongVersion => $"wrong version: expected {cfg.Version}, found {agentResult?.ActualVersion}",
+                    PreCheckStatus.WrongVersion => $"wrong version: expected {cfg.Version}, found {agentResult?.ActualVersion} ({agentResult?.Comparison})",
                     PreCheckStatus.NotPresent => "not installed",
                     null => "probe failed",
                     _ => ""

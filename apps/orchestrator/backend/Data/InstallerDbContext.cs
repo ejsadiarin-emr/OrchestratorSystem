@@ -234,6 +234,7 @@ public sealed class InstallerDbContext : DbContext
         {
             entity.HasKey(x => x.NodeWorkloadStateId);
             entity.Property(x => x.PackageStatesJson).HasMaxLength(8192);
+            entity.Property(x => x.Status).HasMaxLength(32).HasDefaultValue("Unknown");
             entity.HasOne(x => x.Node)
                 .WithMany(x => x.NodeWorkloadStates)
                 .HasForeignKey(x => x.NodeId)
@@ -247,6 +248,10 @@ public sealed class InstallerDbContext : DbContext
                 .HasForeignKey(x => x.CurrentRevisionId)
                 .OnDelete(DeleteBehavior.SetNull);
             entity.HasIndex(x => new { x.NodeId, x.WorkloadId }).IsUnique();
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_NodeWorkloadState_Status", "\"Status\" IN ('Current','Drifted','Unknown')");
+            });
         });
 
         modelBuilder.Entity<WorkloadRunTimelineEntity>(entity =>

@@ -178,10 +178,11 @@ public class NodeWorkloadStateServiceRevisionTests
         var state = await assertDb.NodeWorkloadStates.FirstOrDefaultAsync(s => s.NodeId == nodeId && s.WorkloadId == workloadId);
         Assert.That(state, Is.Not.Null);
         Assert.That(state!.CurrentRevisionId, Is.EqualTo(revisionId));
+        Assert.That(state.Status, Is.EqualTo("Current"));
     }
 
     [Test]
-    public async Task Complete_DoesNotUpdateCurrentRevisionId_WhenNoWorkWasDone()
+    public async Task Complete_DoesUpdateCurrentRevisionId_WhenNoWorkWasDone()
     {
         var existingRevisionId = Guid.NewGuid();
         var (runId, nodeId, workloadId, revisionId) = await SeedRunAndStateAsync(withExistingState: true, currentRevisionId: existingRevisionId);
@@ -217,7 +218,8 @@ public class NodeWorkloadStateServiceRevisionTests
         var assertDb = assertScope.ServiceProvider.GetRequiredService<InstallerDbContext>();
         var state = await assertDb.NodeWorkloadStates.FirstOrDefaultAsync(s => s.NodeId == nodeId && s.WorkloadId == workloadId);
         Assert.That(state, Is.Not.Null);
-        Assert.That(state!.CurrentRevisionId, Is.EqualTo(existingRevisionId));
+        Assert.That(state!.CurrentRevisionId, Is.EqualTo(revisionId));
+        Assert.That(state.Status, Is.EqualTo("Current"));
     }
 
     [Test]
@@ -243,6 +245,7 @@ public class NodeWorkloadStateServiceRevisionTests
         var state = await assertDb.NodeWorkloadStates.FirstOrDefaultAsync(s => s.NodeId == nodeId && s.WorkloadId == workloadId);
         Assert.That(state, Is.Not.Null);
         Assert.That(state!.CurrentRevisionId, Is.EqualTo(existingRevisionId));
+        Assert.That(state.Status, Is.EqualTo("Drifted"));
     }
 
     [Test]
@@ -266,5 +269,6 @@ public class NodeWorkloadStateServiceRevisionTests
         var state = await assertDb.NodeWorkloadStates.FirstOrDefaultAsync(s => s.NodeId == nodeId && s.WorkloadId == workloadId);
         Assert.That(state, Is.Not.Null);
         Assert.That(state!.CurrentRevisionId, Is.Null);
+        Assert.That(state.Status, Is.EqualTo("Unknown"));
     }
 }

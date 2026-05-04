@@ -130,16 +130,16 @@ public sealed class NodeWorkloadStateService
 
         if (hadWork)
         {
-            await UpdateNodeWorkloadStateStatusAsync(db, nodeId, runId, "completed", setCurrentRevision: true);
+            await UpdateNodeWorkloadStateStatusAsync(db, nodeId, runId, "completed", setCurrentRevision: true, workloadStatus: "Current");
             _logger.LogInformation(
                 "Complete processed with work done: RunId={RunId}, NodeId={NodeId}, RevisionId={RevisionId} set as current",
                 runId, nodeId);
         }
         else
         {
-            await UpdateNodeWorkloadStateStatusAsync(db, nodeId, runId, "completed", setCurrentRevision: false);
+            await UpdateNodeWorkloadStateStatusAsync(db, nodeId, runId, "completed", setCurrentRevision: true, workloadStatus: "Current");
             _logger.LogInformation(
-                "Complete processed with no work done: RunId={RunId}, NodeId={NodeId}, CurrentRevisionId unchanged",
+                "Complete processed with no work done: RunId={RunId}, NodeId={NodeId}, RevisionId={RevisionId} set as current",
                 runId, nodeId);
         }
 
@@ -163,7 +163,7 @@ public sealed class NodeWorkloadStateService
         }
 
         var payload = TryDeserializePayload<FinalizationPayload>(envelope.Payload);
-        await UpdateNodeWorkloadStateStatusAsync(db, nodeId, runId, "failed");
+        await UpdateNodeWorkloadStateStatusAsync(db, nodeId, runId, "failed", workloadStatus: "Drifted");
         await AddTimelineEntryAsync(db, runId, nodeId, MessageTypes.Fail, envelope.Sequence, detail: payload?.Error ?? "Run failed");
 
         _logger.LogInformation("Fail processed: RunId={RunId}, NodeId={NodeId}, Error={Error}", runId, nodeId, payload?.Error);
@@ -252,7 +252,7 @@ public sealed class NodeWorkloadStateService
         state.UpdatedAtUtc = DateTime.UtcNow;
     }
 
-    internal static async Task UpdateNodeWorkloadStateStatusAsync(InstallerDbContext db, Guid nodeId, Guid runId, string status, bool setCurrentRevision = false)
+    internal static async Task UpdateNodeWorkloadStateStatusAsync(InstallerDbContext db, Guid nodeId, Guid runId, string status, bool setCurrentRevision = false, string? workloadStatus = null)
     {
         var run = await db.WorkloadRuns.FirstOrDefaultAsync(r => r.RunId == runId && r.NodeId == nodeId);
         if (run is null)
@@ -268,6 +268,10 @@ public sealed class NodeWorkloadStateService
             if (setCurrentRevision)
             {
                 state.CurrentRevisionId = run.RevisionId;
+            }
+            if (!string.IsNullOrEmpty(workloadStatus))
+            {
+                state.Status = workloadStatus;
             }
             state.UpdatedAtUtc = DateTime.UtcNow;
         }

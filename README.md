@@ -48,23 +48,17 @@ Notes:
 
 | Component | Technology |
 |-----------|------------|
-| Orchestrator Backend | ASP.NET Core 10.0 (Kestrel, port 5000 dev / 5124 with Vite proxy) |
-| Orchestrator Frontend | React 18 + TypeScript + Vite + Tailwind v4 + shadcn/ui |
+| Backend | ASP.NET Core 10.0 |
+| Frontend | React 18 + TypeScript + Vite |
 | Database | SQLite via EF Core |
-| Agent | .NET 10.0 self-contained single-file exe, `UseWindowsService()`, Kestrel on port 5001 |
-| Agent ↔ Orchestrator | **HTTP polling** (primary) — `GET /api/workload-runs/pending` every 10 s |
-| SignalR | Implemented at `/hubs/agent` but **disabled** in MVP |
-| Orchestrator → Agent | Direct HTTP POST to `http://{nodeIp}:5001/api/detect` for pre-checks |
-| Artifact Transfer | HTTP download (chunked, 2 MB chunks, SHA-256 verified) |
-| Test Frameworks | NUnit + Moq (orchestrator), NUnit (agent), Vitest + testing-library (frontend) |
-| Build | `make publish` (frontend + backend + agent to `dist/`) |
+| API | REST + SignalR |
+| UI | Tailwind CSS + shadcn/ui |
 
 ## Prerequisites
 
-- **.NET 10.0 SDK**
+- **.NET 10.0 SDK** (for development)
 - **Node.js 20+** and **pnpm**
 - **Windows** (agent runtime is Windows-only for PoC)
-- **GNU Make** (optional, for convenience commands)
 
 ## Development Setup
 

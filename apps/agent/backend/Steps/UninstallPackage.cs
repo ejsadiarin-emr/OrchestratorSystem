@@ -41,8 +41,12 @@ public static class UninstallPackage
             arguments = $"/x \"{artifactPath}\" {arguments}".Trim();
         }
 
-        // Expand placeholder {artifactPath} in arguments
-        arguments = arguments.Replace("{artifactPath}", artifactPath, StringComparison.OrdinalIgnoreCase);
+        // Expand placeholder {artifactPath} in command and arguments
+        if (!string.IsNullOrEmpty(artifactPath))
+        {
+            command = command.Replace("{artifactPath}", artifactPath, StringComparison.OrdinalIgnoreCase);
+            arguments = arguments.Replace("{artifactPath}", artifactPath, StringComparison.OrdinalIgnoreCase);
+        }
 
         var expectedExitCodes = config.ExpectedExitCodes is { Count: > 0 }
             ? config.ExpectedExitCodes
@@ -148,7 +152,7 @@ public static class UninstallPackage
                             if (string.IsNullOrWhiteSpace(name))
                                 continue;
 
-                            if (!string.Equals(name, displayName, StringComparison.OrdinalIgnoreCase))
+                            if (!name.Contains(displayName, StringComparison.OrdinalIgnoreCase))
                                 continue;
 
                             var quietUninstall = subKey.GetValue("QuietUninstallString") as string;
@@ -157,7 +161,25 @@ public static class UninstallPackage
                             if (string.IsNullOrWhiteSpace(rawCommand))
                                 continue;
 
-                            return ParseCommandString(rawCommand);
+                            var parsed = ParseCommandString(rawCommand);
+
+                            // MSI installers often register /I (modify) instead of /X (uninstall).
+                            // Normalize to /X and ensure quiet mode for silent uninstall.
+                            if (string.Equals(Path.GetFileName(parsed.Command), "MsiExec.exe", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var args = parsed.Arguments;
+                                if (args.StartsWith("/I", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    args = "/X" + args[2..];
+                                }
+                                if (!args.Contains("/qn", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    args = args + " /qn";
+                                }
+                                parsed = (parsed.Command, args.Trim());
+                            }
+
+                            return parsed;
                         }
                         catch (UnauthorizedAccessException) { }
                         catch (System.Security.SecurityException) { }

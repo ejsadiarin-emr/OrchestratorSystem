@@ -196,11 +196,11 @@ public class PipelineExecutor
                     }
                     else
                     {
-                        _logger.LogWarning(
-                            "No uninstall command configured or found in registry for {PackageName}. Skipping.",
+                        _logger.LogError(
+                            "No uninstall command configured or found in registry for {PackageName}. Uninstall cannot proceed.",
                             package.Name);
-                        await SendStepStatusAsync(sendMessageAsync, context, "UninstallSkippedNoCommand", package, true, "no_uninstall_command_available", stepCt);
-                        context.RecordStep("UninstallSkippedNoCommand", package.PackageIndex, package.PackageId, true, "no_uninstall_command_available");
+                        await SendStepStatusAsync(sendMessageAsync, context, "UninstallSkippedNoCommand", package, false, "no_uninstall_command_available", stepCt);
+                        context.RecordStep("UninstallSkippedNoCommand", package.PackageIndex, package.PackageId, false, "no_uninstall_command_available");
                         continue;
                     }
                 }
@@ -250,6 +250,12 @@ public class PipelineExecutor
                     }
                 }
 
+                _logger.LogInformation(
+                    "Executing uninstall: Command={Command}, Args={Args}, Type={Type}",
+                    effectiveConfig.UninstallCommand,
+                    effectiveConfig.UninstallArgs,
+                    effectiveConfig.Type);
+
                 var uninstallResult = await UninstallPackage.ExecuteAsync(effectiveConfig, destinationPath, stepCt);
                 await SendStepStatusAsync(sendMessageAsync, context, "UninstallPackage", package, uninstallResult.Success, uninstallResult.Error, stepCt);
                 context.RecordStep("UninstallPackage", package.PackageIndex, package.PackageId, uninstallResult.Success, uninstallResult.Error);
@@ -260,6 +266,54 @@ public class PipelineExecutor
                         "Pipeline halted at UninstallPackage: PackageIndex={PackageIndex}, Error={Error}",
                         package.PackageIndex,
                         uninstallResult.Error);
+                    return await FinalizeAsync(sendMessageAsync, context, ct);
+                }
+            }
+
+            // Post-uninstall verification with retry for async uninstallers
+            foreach (var package in targetPackages)
+            {
+                var stepCt = ct;
+                const int maxRetries = 3;
+                const int retryDelaySeconds = 5;
+                bool isStillInstalled = false;
+
+                for (int attempt = 1; attempt <= maxRetries; attempt++)
+                {
+                    _logger.LogInformation(
+                        "Step PostUninstallVerify: PackageIndex={PackageIndex}, PackageId={PackageId}, DetectionType={DetectionType}, Attempt={Attempt}",
+                        package.PackageIndex,
+                        package.PackageId,
+                        package.Detection.Type,
+                        attempt);
+
+                    var detectResult = await PackageDetector.DetectAsync(package.Detection, stepCt);
+                    isStillInstalled = detectResult.Status != PreCheckStatus.NotPresent;
+
+                    if (!isStillInstalled)
+                        break;
+
+                    if (attempt < maxRetries)
+                    {
+                        _logger.LogInformation(
+                            "PostUninstallVerify retry {Attempt}/{MaxRetries} for {PackageName} — still detected, waiting {Delay}s...",
+                            attempt,
+                            maxRetries,
+                            package.Name,
+                            retryDelaySeconds);
+                        await Task.Delay(TimeSpan.FromSeconds(retryDelaySeconds), stepCt);
+                    }
+                }
+
+                await SendStepStatusAsync(sendMessageAsync, context, "PostUninstallVerify", package, !isStillInstalled, isStillInstalled ? "still_installed" : null, stepCt);
+                context.RecordStep("PostUninstallVerify", package.PackageIndex, package.PackageId, !isStillInstalled, isStillInstalled ? "still_installed" : null);
+
+                if (isStillInstalled)
+                {
+                    _logger.LogError(
+                        "Pipeline halted at PostUninstallVerify: PackageIndex={PackageIndex}, PackageId={PackageId}",
+                        package.PackageIndex,
+                        package.PackageId);
                     return await FinalizeAsync(sendMessageAsync, context, ct);
                 }
             }
@@ -326,11 +380,11 @@ public class PipelineExecutor
                     }
                     else
                     {
-                        _logger.LogWarning(
-                            "No uninstall command configured or found in registry for {PackageName}. Skipping.",
+                        _logger.LogError(
+                            "No uninstall command configured or found in registry for {PackageName}. Uninstall cannot proceed.",
                             package.Name);
-                        await SendStepStatusAsync(sendMessageAsync, context, "UninstallSkippedNoCommand", uninstallPackage, true, "no_uninstall_command_available", stepCt);
-                        context.RecordStep("UninstallSkippedNoCommand", uninstallPackage.PackageIndex, uninstallPackage.PackageId, true, "no_uninstall_command_available");
+                        await SendStepStatusAsync(sendMessageAsync, context, "UninstallSkippedNoCommand", uninstallPackage, false, "no_uninstall_command_available", stepCt);
+                        context.RecordStep("UninstallSkippedNoCommand", uninstallPackage.PackageIndex, uninstallPackage.PackageId, false, "no_uninstall_command_available");
                         continue;
                     }
                 }

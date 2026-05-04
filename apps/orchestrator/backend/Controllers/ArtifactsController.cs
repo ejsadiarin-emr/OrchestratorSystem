@@ -126,6 +126,8 @@ public sealed class ArtifactsController : ControllerBase
                     SourcePath = result.ResolvedManifest.InstallAdapter?.Command ?? string.Empty,
                     InstallType = result.ResolvedManifest.InstallAdapter?.Type ?? "exe",
                     InstallArgs = result.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
+                    UninstallArgs = result.ResolvedManifest.InstallAdapter?.UninstallArgs ?? string.Empty,
+                    UninstallCommand = result.ResolvedManifest.InstallAdapter?.UninstallCommand ?? string.Empty,
                     ExpectedExitCodesJson = JsonSerializer.Serialize(
                         result.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
                     DetectionConfigJson = JsonSerializer.Serialize(result.ResolvedManifest.Detection),
@@ -204,34 +206,36 @@ public sealed class ArtifactsController : ControllerBase
             return Conflict(new { message = $"Artifact '{packageId2}' version '{version2}' already exists." });
         }
 
-        await _artifactStore.SaveArtifactAndManifestAsync(packageId2, version2, stream, resolvedManifestJson2, HttpContext.RequestAborted, fileName: file.FileName);
+            await _artifactStore.SaveArtifactAndManifestAsync(packageId2, version2, stream, resolvedManifestJson2, HttpContext.RequestAborted, fileName: file.FileName);
 
-        var packageEntityId2 = DeterministicGuid($"{packageId2}-{version2}");
-        var existingPackage2 = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId2, HttpContext.RequestAborted);
-        if (existingPackage2 is null)
-        {
-            _db.Packages.Add(new PackageEntity
+            var packageEntityId2 = DeterministicGuid($"{packageId2}-{version2}");
+            var existingPackage2 = await _db.Packages.SingleOrDefaultAsync(p => p.PackageId == packageEntityId2, HttpContext.RequestAborted);
+            if (existingPackage2 is null)
             {
-                PackageId = packageEntityId2,
-                Name = ingestResult.ResolvedManifest.PackageId,
-                Version = ingestResult.ResolvedManifest.Version,
-                SourcePath = ingestResult.ResolvedManifest.InstallAdapter?.Command ?? string.Empty,
-                InstallType = ingestResult.ResolvedManifest.InstallAdapter?.Type ?? "exe",
-                InstallArgs = ingestResult.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
-                ExpectedExitCodesJson = JsonSerializer.Serialize(
-                    ingestResult.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
-                DetectionConfigJson = JsonSerializer.Serialize(ingestResult.ResolvedManifest.Detection),
-                TimeoutSeconds = ingestResult.ResolvedManifest.InstallAdapter?.TimeoutSeconds ?? 300,
-                CreatedAtUtc = DateTime.UtcNow
-            });
-            await _db.SaveChangesAsync(HttpContext.RequestAborted);
-        }
+                _db.Packages.Add(new PackageEntity
+                {
+                    PackageId = packageEntityId2,
+                    Name = ingestResult.ResolvedManifest.PackageId,
+                    Version = ingestResult.ResolvedManifest.Version,
+                    SourcePath = ingestResult.ResolvedManifest.InstallAdapter?.Command ?? string.Empty,
+                    InstallType = ingestResult.ResolvedManifest.InstallAdapter?.Type ?? "exe",
+                    InstallArgs = ingestResult.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
+                    UninstallArgs = ingestResult.ResolvedManifest.InstallAdapter?.UninstallArgs ?? string.Empty,
+                    UninstallCommand = ingestResult.ResolvedManifest.InstallAdapter?.UninstallCommand ?? string.Empty,
+                    ExpectedExitCodesJson = JsonSerializer.Serialize(
+                        ingestResult.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
+                    DetectionConfigJson = JsonSerializer.Serialize(ingestResult.ResolvedManifest.Detection),
+                    TimeoutSeconds = ingestResult.ResolvedManifest.InstallAdapter?.TimeoutSeconds ?? 300,
+                    CreatedAtUtc = DateTime.UtcNow
+                });
+                await _db.SaveChangesAsync(HttpContext.RequestAborted);
+            }
 
-        return StatusCode(StatusCodes.Status201Created, new
-        {
-            resolvedManifest = ingestResult.ResolvedManifest,
-            packageEntityId = packageEntityId2
-        });
+            return StatusCode(StatusCodes.Status201Created, new
+            {
+                resolvedManifest = ingestResult.ResolvedManifest,
+                packageEntityId = packageEntityId2
+            });
     }
 
     private static bool IsZipByMagicBytes(Stream stream)
@@ -299,6 +303,8 @@ public sealed class ArtifactsController : ControllerBase
                     SourcePath = result.ResolvedManifest.InstallAdapter?.Command ?? string.Empty,
                     InstallType = result.ResolvedManifest.InstallAdapter?.Type ?? "exe",
                     InstallArgs = result.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
+                    UninstallArgs = result.ResolvedManifest.InstallAdapter?.UninstallArgs ?? string.Empty,
+                    UninstallCommand = result.ResolvedManifest.InstallAdapter?.UninstallCommand ?? string.Empty,
                     ExpectedExitCodesJson = JsonSerializer.Serialize(
                         result.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
                     DetectionConfigJson = JsonSerializer.Serialize(result.ResolvedManifest.Detection),
@@ -635,6 +641,8 @@ public sealed class ArtifactsController : ControllerBase
                     SourcePath = result.ResolvedManifest.InstallAdapter?.Command ?? string.Empty,
                     InstallType = result.ResolvedManifest.InstallAdapter?.Type ?? "exe",
                     InstallArgs = result.ResolvedManifest.InstallAdapter?.Arguments ?? string.Empty,
+                    UninstallArgs = result.ResolvedManifest.InstallAdapter?.UninstallArgs ?? string.Empty,
+                    UninstallCommand = result.ResolvedManifest.InstallAdapter?.UninstallCommand ?? string.Empty,
                     ExpectedExitCodesJson = JsonSerializer.Serialize(
                         result.ResolvedManifest.InstallAdapter?.ExpectedExitCodes ?? new List<int> { 0, 3010 }),
                     DetectionConfigJson = JsonSerializer.Serialize(result.ResolvedManifest.Detection),

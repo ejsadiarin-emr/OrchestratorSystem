@@ -32,9 +32,10 @@ public static class DiffEngine
         // Packages with different versions should be reported as Removed, not Changed.
         if (string.Equals(mode, "uninstall", StringComparison.OrdinalIgnoreCase))
         {
-            removed = removed.Concat(changed).ToList();
+            removed = removed.Concat(changed).Concat(unchanged).ToList();
             changed = new List<PackageAssignment>();
             added = new List<PackageAssignment>();
+            unchanged = new List<PackageAssignment>();
         }
 
         if (preCheckResults is not null && preCheckResults.Count > 0)

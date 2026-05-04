@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: orchestrator/web/package-lock.json
+
+      - name: Restore .NET dependencies
+        run: dotnet restore
+
+      - name: Build .NET solution
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Build React frontend
+        working-directory: ./orchestrator/web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Publish Orchestrator
+        run: |
+          dotnet publish orchestrator/backend/Orchestrator.csproj `
+            -c Release -r win-x64 --self-contained true `
+            /p:PublishSingleFile=true `
+            /p:IncludeNativeLibrariesForSelfExtract=true `
+            /p:EnableCompressionInSingleFile=true
+
+      - name: Publish Agent
+        run: |
+          dotnet publish agent/backend/Agent.csproj `
+            -c Release -r win-x64 --self-contained true `
+            /p:PublishSingleFile=true `
+            /p:IncludeNativeLibrariesForSelfExtract=true `
+            /p:EnableCompressionInSingleFile=true
+
+      - name: Create distribution
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          New-Item -ItemType Directory -Force -Path dist/artifacts | Out-Null
+          New-Item -ItemType Directory -Force -Path dist/workload-definitions | Out-Null
+          Copy-Item orchestrator/backend/bin/Release/net8.0-windows/win-x64/publish/Orchestrator.exe dist/
+          Copy-Item agent/backend/bin/Release/net8.0-windows/win-x64/publish/Agent.exe dist/
+          Copy-Item orchestrator/backend/appsettings.json dist/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-poc
+          path: dist/

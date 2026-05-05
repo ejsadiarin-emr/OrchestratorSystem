@@ -377,7 +377,6 @@ export interface PreCheckItem {
   packageId?: string
   status: 'passed' | 'failed' | 'warning' | 'info'
   detail?: string
-  expectedVersion?: string
   actualVersion?: string
 }
 
@@ -403,6 +402,7 @@ export interface PreCheckPackageResult {
   detail?: string
   expectedVersion?: string
   actualVersion?: string
+  comparison?: string
 }
 
 export interface PreCheckSummaryNode {

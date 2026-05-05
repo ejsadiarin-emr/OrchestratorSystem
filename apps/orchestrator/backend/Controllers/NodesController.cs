@@ -366,31 +366,7 @@ public class NodesController : ControllerBase
                 continue;
             }
 
-            // Enrich probe results with comparisons (mirrors ReconcileProbeResults)
             var resultMap = agentResponse.Results.ToDictionary(r => r.PackageId);
-            foreach (var cfg in revisionConfigs)
-            {
-                if (resultMap.TryGetValue(cfg.PackageId, out var result) && result.Status == PreCheckStatus.WrongVersion)
-                {
-                    result.ExpectedVersion = cfg.Version;
-                    var comparison = VersionComparisonService.CompareVersions(result.ActualVersion, cfg.Version);
-                    result.Comparison = comparison switch
-                    {
-                        < 0 => "older",
-                        > 0 => "newer",
-                        0 => "same",
-                        null => "unknown"
-                    };
-                }
-                else if (resultMap.TryGetValue(cfg.PackageId, out var result2))
-                {
-                    result2.ExpectedVersion = cfg.Version;
-                    if (result2.Status == PreCheckStatus.AlreadySatisfied)
-                    {
-                        result2.Comparison = "same";
-                    }
-                }
-            }
 
             summaryNode.Packages = revisionConfigs.Select(cfg =>
             {
@@ -401,9 +377,9 @@ public class NodesController : ControllerBase
                         PackageId = cfg.PackageId,
                         Name = cfg.Name,
                         Status = result.Status.ToString(),
-                        Comparison = result.Comparison,
+                        Comparison = ComputeComparison(result.ActualVersion, cfg.Version),
                         ActualVersion = result.ActualVersion,
-                        ExpectedVersion = result.ExpectedVersion ?? cfg.Version
+                        ExpectedVersion = cfg.Version
                     };
                 }
                 return new PreCheckSummaryPackage
@@ -411,6 +387,7 @@ public class NodesController : ControllerBase
                     PackageId = cfg.PackageId,
                     Name = cfg.Name,
                     Status = "NotPresent",
+                    Comparison = null,
                     ExpectedVersion = cfg.Version
                 };
             }).ToList();
@@ -721,33 +698,6 @@ public class NodesController : ControllerBase
         var items = new List<PreCheckItem>();
         var agentResultMap = agentResponse.Results.ToDictionary(r => r.PackageId);
 
-        foreach (var kvp in workloadDetectionConfigs)
-        {
-            foreach (var cfg in kvp.Value)
-            {
-                if (agentResultMap.TryGetValue(cfg.PackageId, out var result) && result.Status == PreCheckStatus.WrongVersion)
-                {
-                    result.ExpectedVersion = cfg.Version;
-                    var comparison = VersionComparisonService.CompareVersions(result.ActualVersion, cfg.Version);
-                    result.Comparison = comparison switch
-                    {
-                        < 0 => "older",
-                        > 0 => "newer",
-                        0 => "same",
-                        null => "unknown"
-                    };
-                }
-                else if (agentResultMap.TryGetValue(cfg.PackageId, out var result2))
-                {
-                    result2.ExpectedVersion = cfg.Version;
-                    if (result2.Status == PreCheckStatus.AlreadySatisfied)
-                    {
-                        result2.Comparison = "same";
-                    }
-                }
-            }
-        }
-
         items.Add(new PreCheckItem
         {
             Category = "os",
@@ -911,8 +861,10 @@ public class NodesController : ControllerBase
             {
                 ["name"] = cfg.Name,
                 ["actualVersion"] = agentResult?.ActualVersion ?? "",
-                ["expectedVersion"] = agentResult?.ExpectedVersion ?? cfg.Version,
-                ["comparison"] = agentResult?.Comparison ?? "unknown",
+                ["expectedVersion"] = cfg.Version,
+                ["comparison"] = agentResult is not null
+                    ? ComputeComparison(agentResult.ActualVersion, cfg.Version)
+                    : "unknown",
                 ["status"] = agentResult?.Status.ToString() ?? "Unknown",
                 ["updatedAt"] = DateTime.UtcNow.ToString("O")
             };
@@ -947,7 +899,7 @@ public class NodesController : ControllerBase
                 Detail = agentResult?.Status switch
                 {
                     PreCheckStatus.AlreadySatisfied => "",
-                    PreCheckStatus.WrongVersion => $"wrong version: expected {cfg.Version}, found {agentResult?.ActualVersion} ({agentResult?.Comparison})",
+                    PreCheckStatus.WrongVersion => $"wrong version: expected {cfg.Version}, found {agentResult?.ActualVersion} ({ComputeComparison(agentResult?.ActualVersion, cfg.Version)})",
                     PreCheckStatus.NotPresent => "not installed",
                     null => "probe failed",
                     _ => ""
@@ -1150,6 +1102,18 @@ public class NodesController : ControllerBase
         return exception.InnerException is SqliteException sqliteEx
             && sqliteEx.SqliteErrorCode == 19
             && sqliteEx.Message.Contains("UNIQUE constraint failed: Nodes.Hostname", StringComparison.Ordinal);
+    }
+
+    private static string ComputeComparison(string? actualVersion, string expectedVersion)
+    {
+        var cmp = VersionComparisonService.CompareVersions(actualVersion, expectedVersion);
+        return cmp switch
+        {
+            < 0 => "older",
+            > 0 => "newer",
+            0 => "same",
+            null => "unknown"
+        };
     }
 
     private sealed class DetectionConfigDto

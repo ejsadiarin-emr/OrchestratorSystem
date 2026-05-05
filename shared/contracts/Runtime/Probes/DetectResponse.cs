@@ -13,8 +13,6 @@ public sealed class PackageDetectionResult
     public string Name { get; set; } = string.Empty;
     public PreCheckStatus Status { get; set; }
     public string? ActualVersion { get; set; }
-    public string? ExpectedVersion { get; set; }
-    public string? Comparison { get; set; } // "same" | "older" | "newer" | "unknown"
 }
 
 public sealed class DiskInfo

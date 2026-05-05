@@ -45,11 +45,11 @@ We need integration tests that demonstrate how agents are installed on a "remote
 - **Rationale:** Enrollment is a one-time, stateful operation. A container that has already enrolled cannot meaningfully test enrollment again without wiping its persisted config. Maximum isolation is worth the Docker start/stop overhead.
 
 ### 8. Enrollment Reset Mechanism
-- **Decision:** Add `--reset-enrollment` CLI flag to the agent.
-- **Rationale:** Gives operators a clean way to force re-enrollment without manually hunting down config files. The test runs `docker exec agent --reset-enrollment`, then restarts the container with `--enroll <new_token>`.
+- **Decision:** Add `--reset` CLI flag to the agent.
+- **Rationale:** Gives operators a clean way to force re-enrollment without manually hunting down config files. The test runs `docker exec agent --reset`, then restarts the container with `--enroll <new_token>`.
 - **Test flow for reset:**
   1. Issue Token A, start container with `--enroll A` → Online.
-  2. `docker exec agent --reset-enrollment`.
+  2. `docker exec agent --reset`.
   3. Issue Token B, restart container with `--enroll B` → Online again.
   4. Verify old NodeId is gone, new NodeId exists.
 
@@ -68,7 +68,7 @@ We need integration tests that demonstrate how agents are installed on a "remote
 ### 10. Agent restart behavior when already enrolled
 - **Decision:** Auto-reconnect is the implicit default.
 - **Agent startup logic:**
-  - `--reset-enrollment` → wipe config, exit.
+  - `--reset` → wipe config, exit.
   - `--enroll <token>` + `--orchestrator-url <url>` → consume token, write config, start runtime.
   - No enrollment flags + config file exists → read `agent.json`, start runtime (auto-reconnect).
   - No enrollment flags + no config file → exit with error: "Not enrolled. Run with --enroll <token> or --orchestrator-url <url>."
@@ -108,7 +108,7 @@ We need integration tests that demonstrate how agents are installed on a "remote
 
 ### 14. `--enroll` passed with existing config
 - **Decision:** Agent fails fast with error message.
-- **Agent behavior:** If `--enroll` is passed but `agent.json` already exists, exit with error: "Already enrolled. Use --reset-enrollment to re-enroll, or omit --enroll to auto-connect."
+- **Agent behavior:** If `--enroll` is passed but `agent.json` already exists, exit with error: "Already enrolled. Use --reset to re-enroll, or omit --enroll to auto-connect."
 - **Rationale:** Prevents accidental overwrite of active enrollment and orphaning the old node record in the orchestrator.
 
 ### 15. Dockerfile build strategy
@@ -132,9 +132,9 @@ We need integration tests that demonstrate how agents are installed on a "remote
 - [ ] Ensure `EnrollmentController.ConsumeToken` returns `410 Gone` (expired), `409 Conflict` (consumed), `404 Not Found` (missing).
 
 ### Agent changes
-- [ ] Parse CLI args in `Program.cs`: `--enroll`, `--orchestrator-url`, `--reset-enrollment`.
+- [ ] Parse CLI args in `Program.cs`: `--enroll`, `--orchestrator-url`, `--reset`.
 - [ ] Implement config persistence: read/write `agent.json` with `NodeId` and `OrchestratorUrl`.
-- [ ] Implement startup logic: `--reset-enrollment` → wipe config, exit; `--enroll` + `--orchestrator-url` → consume token, write config, start runtime; no flags + config exists → auto-reconnect; no flags + no config → exit error.
+- [ ] Implement startup logic: `--reset` → wipe config, exit; `--enroll` + `--orchestrator-url` → consume token, write config, start runtime; no flags + config exists → auto-reconnect; no flags + no config → exit error.
 - [ ] Implement enrollment HTTP client: `POST /api/enrollment-tokens/{token}/consume` with error handling.
 - [ ] Fail fast if `--enroll` passed but config already exists.
 - [ ] Cross-platform config paths: `%LOCALAPPDATA%/DeploymentPoC/agent.json` (Windows), `/var/lib/deploymentpoc/agent.json` (Linux).
@@ -150,7 +150,7 @@ We need integration tests that demonstrate how agents are installed on a "remote
 ### Integration tests
 - [ ] **Test: Happy path enrollment** — Issue token, start container with `--enroll`, poll nodes API until Online.
 - [ ] **Test: Auto-reconnect after restart** — Enroll, stop container, restart without `--enroll`, poll until Online.
-- [ ] **Test: Reset and re-enroll** — Enroll, `--reset-enrollment`, enroll with new token, assert new NodeId.
+- [ ] **Test: Reset and re-enroll** — Enroll, `--reset`, enroll with new token, assert new NodeId.
 - [ ] **Test: Expired token** — Start container with expired token, assert exit code 1, assert no node created.
 - [ ] **Test: Already consumed token** — Start container with consumed token, assert exit code 1, assert no node created.
 - [ ] **Test: Enroll with existing config** — Start enrolled container with `--enroll`, assert exit code 1.

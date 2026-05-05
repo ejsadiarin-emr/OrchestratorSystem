@@ -12,7 +12,7 @@
 
 This audit was requested to assess the agent backend (`apps/agent/backend/`) for the purpose of enabling work on two tracker tasks:
 
-1. **W3-02b — Agent CLI enrollment** (`--enroll`, `--reset-enrollment`) + config persistence
+1. **W3-02b — Agent CLI enrollment** (`--enroll`, `--reset`) + config persistence
 2. **W8-02a — Testcontainers agent enrollment integration tests**
 
 ### Document References
@@ -64,7 +64,7 @@ The agent backend has a **solid runtime pipeline and SignalR integration** but i
 
 | Tracker Task | PRD Ref | Gap | Impact |
 |---|---|---|---|
-| **W3-02b** — Agent CLI enrollment | FR-004, AC-005 | No `--enroll`, `--orchestrator-url`, `--reset-enrollment` argument parsing in `Program.cs`. No `AgentEnrollmentService`. No `agent.json` config persistence. | **Blocks all enrollment testing.** Agent cannot self-register without manual config injection. |
+| **W3-02b** — Agent CLI enrollment | FR-004, AC-005 | No `--enroll`, `--orchestrator-url`, `--reset` argument parsing in `Program.cs`. No `AgentEnrollmentService`. No `agent.json` config persistence. | **Blocks all enrollment testing.** Agent cannot self-register without manual config injection. |
 | **W3-02b** — Config persistence | FR-004, AC-005 | `Agent:NodeId` is read from `IConfiguration` (appsettings/env) but never persisted to disk. No `agent.json` model or read/write logic. | Agent identity is ephemeral. Reinstall = new node. |
 | **W3-02b** — Enrollment HTTP client | FR-004, AC-005 | No HTTP client logic to call `POST /api/enrollment-tokens/{token}/consume`. | Agent cannot complete enrollment handshake. |
 | **W3-02b** — Token error handling | FR-004, AC-005 | No handling for 410 (expired), 409 (consumed), 404 (missing) enrollment responses. | Poor operator experience on failure. |
@@ -125,7 +125,7 @@ The agent backend has a **solid runtime pipeline and SignalR integration** but i
    - `Services/AgentEnrollmentService.cs` — HTTP client for `POST /api/enrollment-tokens/{token}/consume`, handles 410/409/404.
    - `Program.cs` CLI parsing — inspect `args` before building the web host. Support:
      - `--enroll <token> --orchestrator-url <url>` → enroll, write `agent.json`, start runtime.
-     - `--reset-enrollment` → delete `agent.json`, exit.
+     - `--reset` → delete `agent.json`, exit.
      - No flags + `agent.json` exists → read config, start runtime.
      - No flags + no config → exit with error.
    - Config path: `%LOCALAPPDATA%/DeploymentPoC/agent.json` (Windows), `/var/lib/deploymentpoc/agent.json` (Linux).

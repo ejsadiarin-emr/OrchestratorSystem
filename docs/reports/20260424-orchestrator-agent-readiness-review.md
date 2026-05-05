@@ -344,7 +344,7 @@ The backend can push agent connection events in real-time, but the frontend is c
 **File:** `Program.cs` (lines 1-101)
 
 **Findings:**
-- **CLI parsing** supports `--enroll <token>`, `--orchestrator-url <url>`, and `--reset-enrollment` (lines 15-33).
+- **CLI parsing** supports `--enroll <token>`, `--orchestrator-url <url>`, and `--reset` (lines 15-33).
 - **Enrollment flow:** If both `--enroll` and `--orchestrator-url` are provided, it calls `AgentEnrollmentService.ConsumeEnrollmentTokenAsync`, saves `agent.json`, and proceeds to `app.Run()` (lines 46-74).
 - **Auto-connect:** If no CLI args, loads persisted config from disk (lines 66-74).
 - **WebApplication** is built with:
@@ -601,7 +601,7 @@ Source: `docs/implementation-tracker-phase1.md`
 | **W2-03** Lease manager + stale policy | **Blocks AC-101 acceptance.** No lease expiration, no `AssignedStale`, no auto-fail. |
 | **W2-04b** Policy engine - preUpgradeActions enforcement | **Blocks AC-007 partially.** `PreUpgradeActions` list exists in payload but is never executed. |
 | **W3-02** Bootstrap token -> mTLS steady-state auth | **Blocks AC-102 acceptance.** No certificate exchange, no identity binding. |
-| **W3-02b** Agent CLI enrollment (`--enroll`, `--reset-enrollment`) + config persistence | **Partially implemented since 2026-04-23 audit.** `Program.cs` now parses CLI args, `AgentEnrollmentService` persists `agent.json`. However, there are no integration tests (W8-02a still blocked). |
+| **W3-02b** Agent CLI enrollment (`--enroll`, `--reset`) + config persistence | **Partially implemented since 2026-04-23 audit.** `Program.cs` now parses CLI args, `AgentEnrollmentService` persists `agent.json`. However, there are no integration tests (W8-02a still blocked). |
 | **W4-01** Config snapshot/migration/restore | **Blocks AC-007.** `ConfigSnapshotEntity` exists in schema but no service logic creates or restores snapshots. |
 | **W5-01a** Security baseline - RBAC + audit integrity | **Blocks AC-102.** No `RbacService`, no `AuthorizationMiddleware`, no role checks on API endpoints. |
 | **W5-01b** Security baseline - trust verification + secret hygiene | **Blocks AC-102.** `PostInstallVerify` is a stub. No artifact signature verification in agent pipeline. |

@@ -146,7 +146,7 @@ export default function Nodes() {
   }
 
   const cliCommand = createdToken
-    ? `DeploymentPoC.Agent.exe --enroll ${createdToken.token} --orchestrator-url=${createdToken.orchestratorUrl} --name "Optional Name"`
+    ? `DeploymentPoC.Agent.exe --enroll ${createdToken.token} --orchestrator-url ${createdToken.orchestratorUrl}`
     : ''
 
   const copyToClipboard = async (text: string) => {

@@ -69,7 +69,7 @@ These tasks are retained as historical completion and are not reopened.
 | W3-01   | Windows agent service scaffold + runtime loop hardening                                                           | S2     | W2-01        | TBD (Agent)                | Done        | AC-004                                 |
 | W3-02   | Bootstrap token -> mTLS steady-state auth flow                                                                   | S2     | W3-01        | TBD (Security/Agent)       | Not Started | AC-005, AC-102                         |
 | W3-02a  | Enrollment token generation + agent download endpoint                                                            | S2     | W3-01        | TBD (Backend/Frontend)      | Done        | AC-005                                 |
-| W3-02b  | Agent CLI enrollment (`--enroll`, `--reset-enrollment`) + config persistence                                     | S2     | W3-02a       | TBD (Agent)                | Not Started | AC-005                                 |
+| W3-02b  | Agent CLI enrollment (`--enroll`, `--reset`) + config persistence                                     | S2     | W3-02a       | TBD (Agent)                | Not Started | AC-005                                 |
 | W3-03   | Agent workload pipeline (ordered package-step execution)                                                         | S2     | W3-01, W1-05 | TBD (Agent)                | Done        | AC-004, AC-006                         |
 | W3-04   | Node workload state persistence/reporting                                                                        | S2     | W3-03        | TBD (Agent/Backend)        | Done        | AC-001, AC-002                         |
 | W4-01   | Config snapshot/migration/restore linkage for mutation paths                                                     | S3     | W3-03        | TBD (Agent/Backend)        | Not Started | AC-007                                 |
@@ -452,7 +452,7 @@ These tasks are retained as historical completion and are not reopened.
 - Owner: `TBD (Agent)`
 - Status: `Not Started`
 - Depends on: W3-02a
-- Objective: implement agent-side enrollment CLI (`--enroll`, `--orchestrator-url`, `--reset-enrollment`) and cross-platform config persistence (`agent.json`).
+- Objective: implement agent-side enrollment CLI (`--enroll`, `--orchestrator-url`, `--reset`) and cross-platform config persistence (`agent.json`).
 - Target modules:
     - `apps/agent/backend/Program.cs` (CLI arg parsing, startup logic)
     - `apps/agent/backend/Services/AgentEnrollmentService.cs` (new)
@@ -461,8 +461,8 @@ These tasks are retained as historical completion and are not reopened.
     - `dotnet test tests/agent/integration --filter Enrollment`
 - Acceptance links: AC-005
 - Checklist:
-    - [ ] Parse `--enroll <token>`, `--orchestrator-url <url>`, `--reset-enrollment`.
-    - [ ] `--reset-enrollment` wipes config file and exits.
+    - [ ] Parse `--enroll <token>`, `--orchestrator-url <url>`, `--reset`.
+    - [ ] `--reset` wipes config file and exits.
     - [ ] `--enroll` + existing config → fail fast with error message.
     - [ ] `--enroll` + `--orchestrator-url` → consume token via HTTP, write `agent.json`, start runtime.
     - [ ] No flags + config exists → read `agent.json`, auto-reconnect to SignalR.
@@ -675,7 +675,7 @@ These tasks are retained as historical completion and are not reopened.
     - [ ] Test polls `GET /api/nodes` until node `status == "Online"` (timeout 30s).
     - [ ] **Happy path:** token consumed, config persisted, SignalR Identify called, node Online.
     - [ ] **Auto-reconnect:** restart container without `--enroll`, node returns Online.
-    - [ ] **Reset + re-enroll:** `--reset-enrollment`, new token, new NodeId, Online.
+    - [ ] **Reset + re-enroll:** `--reset`, new token, new NodeId, Online.
     - [ ] **Expired token:** container exits non-zero, no node created.
     - [ ] **Consumed token:** container exits non-zero, no node created.
     - [ ] **Enroll with existing config:** container exits non-zero.

@@ -27,7 +27,7 @@ if (!string.IsNullOrEmpty(parsedArgs.EnrollToken) && !string.IsNullOrEmpty(parse
     config = enrollmentService.LoadConfig();
     if (config is not null)
     {
-        Console.Error.WriteLine("Already enrolled. Use --reset-enrollment to re-enroll, or omit --enroll to auto-connect.");
+        Console.Error.WriteLine("Already enrolled. Use --reset to re-enroll, or omit --enroll to auto-connect.");
         return 1;
     }
 
@@ -103,11 +103,11 @@ public static class AgentProgram
             {
                 orchestratorUrl = args[++i];
             }
-            else if (args[i] == "--display-name" && i + 1 < args.Length)
+            else if (args[i] == "--name" && i + 1 < args.Length)
             {
                 displayName = args[++i];
             }
-            else if (args[i] == "--reset-enrollment")
+            else if (args[i] == "--reset")
             {
                 resetEnrollment = true;
             }

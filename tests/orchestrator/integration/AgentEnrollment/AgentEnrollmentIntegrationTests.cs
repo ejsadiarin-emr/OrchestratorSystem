@@ -89,7 +89,7 @@ public class AgentEnrollmentIntegrationTests
         _agentContainer = await StartAgentContainerAsync(token, configPath: configDir);
         var firstNode = await WaitForNodeOnlineAsync(TimeSpan.FromSeconds(30));
 
-        var execResult = await _agentContainer.ExecAsync(new[] { "./DeploymentPoC.Agent", "--reset-enrollment" });
+        var execResult = await _agentContainer.ExecAsync(new[] { "./DeploymentPoC.Agent", "--reset" });
         Assert.That(execResult.ExitCode, Is.EqualTo(0));
 
         await _agentContainer.StopAsync();

@@ -235,6 +235,7 @@ public sealed class InstallerDbContext : DbContext
             entity.HasKey(x => x.NodeWorkloadStateId);
             entity.Property(x => x.PackageStatesJson).HasMaxLength(8192);
             entity.Property(x => x.Status).HasMaxLength(32).HasDefaultValue("Unknown");
+            entity.Property(x => x.LastProbedAtUtc);
             entity.HasOne(x => x.Node)
                 .WithMany(x => x.NodeWorkloadStates)
                 .HasForeignKey(x => x.NodeId)

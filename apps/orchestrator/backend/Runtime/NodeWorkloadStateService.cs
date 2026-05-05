@@ -301,7 +301,7 @@ public sealed class NodeWorkloadStateService
         {
             state.CurrentRevisionId = null;
             state.PackageStatesJson = "{}";
-            state.Status = "Unknown";
+            state.Status = "Drifted";
             state.UpdatedAtUtc = DateTime.UtcNow;
         }
     }

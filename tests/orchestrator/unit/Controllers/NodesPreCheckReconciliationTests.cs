@@ -814,6 +814,189 @@ public class NodesPreCheckReconciliationTests
             "Each node should get only its own revision's packages");
     }
 
+    [Test]
+    public async Task UnknownWorkloadStatus_AllAlreadySatisfied_ReturnsSkip()
+    {
+        var (workloadId, revisionId, nodeId, packageId, _) = SeedScenarioBase(_db, packageStatesJson: "{}");
+        var state = await _db.NodeWorkloadStates.FirstAsync(s => s.NodeId == nodeId);
+        state.Status = "Unknown";
+        await _db.SaveChangesAsync();
+
+        var agentResponse = BuildAgentResponse(new List<PackageDetectionResult>
+        {
+            new() { PackageId = packageId, Name = "test-pkg", Status = PreCheckStatus.AlreadySatisfied, ActualVersion = "1.0.0" }
+        });
+        var handler = new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(agentResponse, Encoding.UTF8, "application/json") });
+        var controller = CreateController(handler);
+
+        var result = await controller.RunPreCheckSummary(new RunPreCheckSummaryRequest
+        {
+            NodeIds = new List<Guid> { nodeId },
+            WorkloadId = workloadId,
+            RevisionId = revisionId
+        });
+
+        Assert.That(result.Result, Is.TypeOf<OkObjectResult>());
+        var okResult = (OkObjectResult)result.Result!;
+        var response = okResult.Value as PreCheckSummaryResponse;
+        Assert.That(response, Is.Not.Null);
+        Assert.That(response!.Nodes.Count, Is.EqualTo(1));
+        Assert.That(response.Nodes[0].Action, Is.EqualTo("Skip"));
+    }
+
+    [Test]
+    public async Task UnknownWorkloadStatus_SomeWrongVersionOlder_ReturnsUpdate()
+    {
+        var (workloadId, revisionId, nodeId, packageId, _) = SeedScenarioBase(_db, packageStatesJson: "{}");
+        var state = await _db.NodeWorkloadStates.FirstAsync(s => s.NodeId == nodeId);
+        state.Status = "Unknown";
+        await _db.SaveChangesAsync();
+
+        var agentResponse = BuildAgentResponse(new List<PackageDetectionResult>
+        {
+            new() { PackageId = packageId, Name = "test-pkg", Status = PreCheckStatus.WrongVersion, ActualVersion = "0.9.0" }
+        });
+        var handler = new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(agentResponse, Encoding.UTF8, "application/json") });
+        var controller = CreateController(handler);
+
+        var result = await controller.RunPreCheckSummary(new RunPreCheckSummaryRequest
+        {
+            NodeIds = new List<Guid> { nodeId },
+            WorkloadId = workloadId,
+            RevisionId = revisionId
+        });
+
+        Assert.That(result.Result, Is.TypeOf<OkObjectResult>());
+        var okResult = (OkObjectResult)result.Result!;
+        var response = okResult.Value as PreCheckSummaryResponse;
+        Assert.That(response!.Nodes[0].Action, Is.EqualTo("Update"));
+    }
+
+    [Test]
+    public async Task UnknownWorkloadStatus_SomeNotPresent_ReturnsInstallMissing()
+    {
+        var (workloadId, revisionId, nodeId, packageId, _) = SeedScenarioBase(_db, packageStatesJson: "{}");
+        var state = await _db.NodeWorkloadStates.FirstAsync(s => s.NodeId == nodeId);
+        state.Status = "Unknown";
+        await _db.SaveChangesAsync();
+
+        var agentResponse = BuildAgentResponse(new List<PackageDetectionResult>
+        {
+            new() { PackageId = packageId, Name = "test-pkg", Status = PreCheckStatus.NotPresent }
+        });
+        var handler = new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(agentResponse, Encoding.UTF8, "application/json") });
+        var controller = CreateController(handler);
+
+        var result = await controller.RunPreCheckSummary(new RunPreCheckSummaryRequest
+        {
+            NodeIds = new List<Guid> { nodeId },
+            WorkloadId = workloadId,
+            RevisionId = revisionId
+        });
+
+        Assert.That(result.Result, Is.TypeOf<OkObjectResult>());
+        var okResult = (OkObjectResult)result.Result!;
+        var response = okResult.Value as PreCheckSummaryResponse;
+        Assert.That(response!.Nodes[0].Action, Is.EqualTo("InstallMissing"));
+    }
+
+    [Test]
+    public async Task DriftedWorkloadStatus_AllAlreadySatisfied_ReturnsUpdate()
+    {
+        var (workloadId, revisionId, nodeId, packageId, _) = SeedScenarioBase(_db, packageStatesJson: "{}");
+        var state = await _db.NodeWorkloadStates.FirstAsync(s => s.NodeId == nodeId);
+        state.Status = "Drifted";
+        await _db.SaveChangesAsync();
+
+        var agentResponse = BuildAgentResponse(new List<PackageDetectionResult>
+        {
+            new() { PackageId = packageId, Name = "test-pkg", Status = PreCheckStatus.AlreadySatisfied, ActualVersion = "0.9.0" }
+        });
+        var handler = new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(agentResponse, Encoding.UTF8, "application/json") });
+        var controller = CreateController(handler);
+
+        var result = await controller.RunPreCheckSummary(new RunPreCheckSummaryRequest
+        {
+            NodeIds = new List<Guid> { nodeId },
+            WorkloadId = workloadId,
+            RevisionId = revisionId
+        });
+
+        Assert.That(result.Result, Is.TypeOf<OkObjectResult>());
+        var okResult = (OkObjectResult)result.Result!;
+        var response = okResult.Value as PreCheckSummaryResponse;
+        Assert.That(response!.Nodes[0].Action, Is.EqualTo("Update"));
+    }
+
+    [Test]
+    public async Task ProbeFailure_ReturnsUnknownWithDetail()
+    {
+        var nodeId = Guid.NewGuid();
+        _db.Nodes.Add(new NodeEntity { NodeId = nodeId, Hostname = "offline-node", IpAddress = "10.0.0.99", OsVersion = "Windows", AgentVersion = "1.0" });
+        await _db.SaveChangesAsync();
+
+        var throwingHandler = new ThrowingHttpMessageHandler(new HttpRequestException("Connection refused"));
+        var controller = CreateController(throwingHandler);
+
+        var result = await controller.RunPreCheckSummary(new RunPreCheckSummaryRequest
+        {
+            NodeIds = new List<Guid> { nodeId },
+            WorkloadId = Guid.NewGuid(),
+            RevisionId = Guid.NewGuid()
+        });
+
+        Assert.That(result.Result, Is.TypeOf<OkObjectResult>());
+        var okResult = (OkObjectResult)result.Result!;
+        var response = okResult.Value as PreCheckSummaryResponse;
+        Assert.That(response, Is.Not.Null);
+        Assert.That(response!.Nodes.Count, Is.EqualTo(1));
+        Assert.That(response.Nodes[0].Action, Is.EqualTo("Unknown"));
+        Assert.That(response.Nodes[0].ActionDetail, Is.Not.Null);
+    }
+
+    [Test]
+    public async Task BuildReadOnlyPreCheckSummary_UsesUpdatedTimestamp()
+    {
+        var nodeId = Guid.NewGuid();
+        var workloadId = Guid.NewGuid();
+        var expectedTimestamp = new DateTime(2026, 1, 15, 10, 30, 0, DateTimeKind.Utc);
+
+        _db.Nodes.Add(new NodeEntity
+        {
+            NodeId = nodeId,
+            Hostname = "ts-node",
+            IpAddress = "10.0.0.50",
+            OsVersion = "Windows 11",
+            AgentVersion = "1.0.0"
+        });
+        _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity { WorkloadId = workloadId, Name = "ts-workload" });
+        _db.NodeWorkloadStates.Add(new NodeWorkloadStateEntity
+        {
+            NodeWorkloadStateId = Guid.NewGuid(),
+            NodeId = nodeId,
+            WorkloadId = workloadId,
+            PackageStatesJson = "{}",
+            Status = "Unknown",
+            UpdatedAtUtc = expectedTimestamp
+        });
+        await _db.SaveChangesAsync();
+
+        var controller = CreateController(new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}", Encoding.UTF8, "application/json") }));
+
+        var result = await controller.GetDetails(nodeId);
+
+        Assert.That(result.Result, Is.TypeOf<OkObjectResult>());
+        var okResult = (OkObjectResult)result.Result!;
+        var detail = okResult.Value as NodeDetailResponse;
+        Assert.That(detail, Is.Not.Null);
+        Assert.That(detail!.LatestPreCheck.CheckedAt, Is.EqualTo(expectedTimestamp));
+    }
+
     private sealed class StubHttpMessageHandler : HttpMessageHandler
     {
         private readonly HttpResponseMessage _response;

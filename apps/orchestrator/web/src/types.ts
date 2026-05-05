@@ -411,5 +411,6 @@ export interface PreCheckSummaryNode {
   overallStatus?: 'passed' | 'failed' | 'warning' | 'info'
   workloadStatus: WorkloadAssignmentStatus | 'Absent'
   action: PreCheckAction
+  actionDetail?: string
   packages: PreCheckPackageResult[]
 }

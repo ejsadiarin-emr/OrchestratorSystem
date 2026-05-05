@@ -360,6 +360,7 @@ public class NodesController : ControllerBase
 
             if (error is not null || agentResponse is null)
             {
+                _logger.LogWarning("Pre-check probe failed for node {NodeId}: {Error}", node.NodeId, error ?? "Probe failed");
                 summaryNode.Action = "Unknown";
                 summaryNode.ActionDetail = error ?? "Probe failed";
                 response.Nodes.Add(summaryNode);
@@ -406,6 +407,7 @@ public class NodesController : ControllerBase
                 trackedState.Status = allMatch ? "Current" : "Drifted";
                 trackedState.PackageStatesJson = BuildPackageStatesJson(revisionConfigs, resultMap);
                 trackedState.UpdatedAtUtc = DateTime.UtcNow;
+                trackedState.LastProbedAtUtc = DateTime.UtcNow;
                 summaryNode.WorkloadStatus = trackedState.Status;
             }
             else if (hasAnyDetected)
@@ -418,7 +420,8 @@ public class NodesController : ControllerBase
                     CurrentRevisionId = null,
                     PackageStatesJson = BuildPackageStatesJson(revisionConfigs, resultMap),
                     Status = allMatch ? "Current" : "Drifted",
-                    UpdatedAtUtc = DateTime.UtcNow
+                    UpdatedAtUtc = DateTime.UtcNow,
+                    LastProbedAtUtc = DateTime.UtcNow
                 };
                 _db.NodeWorkloadStates.Add(newState);
                 nodeStates[node.NodeId] = newState;
@@ -433,11 +436,19 @@ public class NodesController : ControllerBase
             var hasNotPresent = packageStatuses.Contains("NotPresent");
             var allAlreadySatisfied = packageStatuses.All(s => s == "AlreadySatisfied");
 
-            summaryNode.Action = (hasWrongVersionNewer, summaryNode.WorkloadStatus, allAlreadySatisfied, hasWrongVersionOlder, hasNotPresent) switch
+            var effectiveWorkloadStatus = summaryNode.WorkloadStatus;
+            if (effectiveWorkloadStatus == "Unknown")
+            {
+                effectiveWorkloadStatus = hasAnyDetected ? "Drifted" : "Absent";
+            }
+
+            summaryNode.Action = (hasWrongVersionNewer, effectiveWorkloadStatus, allAlreadySatisfied, hasWrongVersionOlder, hasNotPresent) switch
             {
                 (true, _, _, _, _) => "BlockedDowngrade",
                 (_, "Absent", _, _, _) => "FreshInstall",
                 (_, "Current", true, _, _) => "Skip",
+                (_, "Drifted", true, _, _) => "Update",
+                (_, "Unknown", true, _, _) => "Skip",
                 (_, _, _, true, _) => "Update",
                 (_, _, _, _, true) => "InstallMissing",
                 _ => "Unknown"
@@ -1081,9 +1092,13 @@ public class NodesController : ControllerBase
             }
         }
 
+        var checkedAt = entity.NodeWorkloadStates.Any()
+            ? entity.NodeWorkloadStates.Max(s => s.UpdatedAtUtc)
+            : DateTime.UtcNow;
+
         return new NodePreCheckSummary
         {
-            CheckedAt = DateTime.UtcNow,
+            CheckedAt = checkedAt,
             Items = items
         };
     }

@@ -713,7 +713,7 @@ export default function WorkloadRuns() {
                       {preCheckSummary.map(node => (
                         <div key={node.nodeId} className="flex items-center gap-3 rounded-md px-2 py-2 text-sm">
                           <span className="flex-1 font-medium text-[var(--text-strong)]">{node.hostname}</span>
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${actionBadgeClasses(node.action)}`}>
+                          <span title={node.actionDetail || ''} className={`rounded-full px-2 py-0.5 text-xs font-medium ${actionBadgeClasses(node.action)}`}>
                             {node.action}
                           </span>
                         </div>
@@ -818,7 +818,7 @@ export default function WorkloadRuns() {
                         <div key={n.id} className="flex items-center gap-2 text-xs">
                           <span className="font-medium text-[var(--text-strong)]">{n.hostname}</span>
                           {summary && (
-                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${actionBadgeClasses(summary.action)}`}>
+                            <span title={summary.actionDetail || ''} className={`rounded-full px-2 py-0.5 text-xs font-medium ${actionBadgeClasses(summary.action)}`}>
                               {summary.action}
                             </span>
                           )}

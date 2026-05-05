@@ -12,4 +12,5 @@ public sealed class NodeWorkloadStateEntity
     public string PackageStatesJson { get; set; } = "{}";
     public string Status { get; set; } = "Unknown";
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
+    public DateTime? LastProbedAtUtc { get; set; }
 }

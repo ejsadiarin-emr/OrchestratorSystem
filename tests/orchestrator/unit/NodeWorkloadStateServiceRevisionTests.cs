@@ -45,7 +45,7 @@ public class NodeWorkloadStateServiceRevisionTests
         return new NodeWorkloadStateService(_serviceProvider, loggerMock.Object);
     }
 
-    private async Task<(Guid runId, Guid nodeId, Guid workloadId, Guid revisionId)> SeedRunAndStateAsync(bool withExistingState = true, Guid? currentRevisionId = null)
+    private async Task<(Guid runId, Guid nodeId, Guid workloadId, Guid revisionId)> SeedRunAndStateAsync(bool withExistingState = true, Guid? currentRevisionId = null, string mode = "install", string? packageStatesJson = null)
     {
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<InstallerDbContext>();
@@ -95,7 +95,7 @@ public class NodeWorkloadStateServiceRevisionTests
             RevisionId = revisionId,
             NodeId = nodeId,
             NodeDisplayName = "Test Node",
-            Mode = "install",
+            Mode = mode,
             State = "Queued",
             CreatedAtUtc = DateTime.UtcNow,
             UpdatedAtUtc = DateTime.UtcNow
@@ -109,7 +109,7 @@ public class NodeWorkloadStateServiceRevisionTests
                 NodeId = nodeId,
                 WorkloadId = workloadId,
                 CurrentRevisionId = currentRevisionId,
-                PackageStatesJson = "{}"
+                PackageStatesJson = packageStatesJson ?? "{}"
             });
         }
 
@@ -270,5 +270,61 @@ public class NodeWorkloadStateServiceRevisionTests
         Assert.That(state, Is.Not.Null);
         Assert.That(state!.CurrentRevisionId, Is.Null);
         Assert.That(state.Status, Is.EqualTo("Unknown"));
+    }
+
+    [Test]
+    public async Task AckClaim_PreservesExistingPackageStatesJson()
+    {
+        var existingPackageStates = "{\"pkg-1\":{\"StepName\":\"InstallOrUpgrade\",\"Status\":\"success\"}}";
+        var existingRevisionId = Guid.NewGuid();
+        var (runId, nodeId, workloadId, revisionId) = await SeedRunAndStateAsync(
+            withExistingState: true,
+            currentRevisionId: existingRevisionId,
+            packageStatesJson: existingPackageStates);
+
+        var service = CreateService();
+        var envelope = new MessageEnvelope
+        {
+            MessageType = MessageTypes.AckClaim,
+            RunId = runId.ToString(),
+            AgentId = nodeId.ToString(),
+            Sequence = 1
+        };
+
+        await service.ProcessMessageAsync(envelope, "conn-1");
+
+        using var assertScope = _serviceProvider.CreateScope();
+        var assertDb = assertScope.ServiceProvider.GetRequiredService<InstallerDbContext>();
+        var state = await assertDb.NodeWorkloadStates.FirstOrDefaultAsync(s => s.NodeId == nodeId && s.WorkloadId == workloadId);
+        Assert.That(state, Is.Not.Null);
+        Assert.That(state!.PackageStatesJson, Is.EqualTo(existingPackageStates));
+    }
+
+    [Test]
+    public async Task Complete_Uninstall_SetsStatusToDrifted()
+    {
+        var existingRevisionId = Guid.NewGuid();
+        var (runId, nodeId, workloadId, revisionId) = await SeedRunAndStateAsync(
+            withExistingState: true,
+            currentRevisionId: existingRevisionId,
+            mode: "uninstall");
+
+        var service = CreateService();
+        var envelope = new MessageEnvelope
+        {
+            MessageType = MessageTypes.Complete,
+            RunId = runId.ToString(),
+            AgentId = nodeId.ToString(),
+            Sequence = 1
+        };
+
+        await service.ProcessMessageAsync(envelope, "conn-1");
+
+        using var assertScope = _serviceProvider.CreateScope();
+        var assertDb = assertScope.ServiceProvider.GetRequiredService<InstallerDbContext>();
+        var state = await assertDb.NodeWorkloadStates.FirstOrDefaultAsync(s => s.NodeId == nodeId && s.WorkloadId == workloadId);
+        Assert.That(state, Is.Not.Null);
+        Assert.That(state!.CurrentRevisionId, Is.Null);
+        Assert.That(state.Status, Is.EqualTo("Drifted"));
     }
 }

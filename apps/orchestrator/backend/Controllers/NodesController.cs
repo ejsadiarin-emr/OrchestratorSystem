@@ -1086,7 +1086,9 @@ public class NodesController : ControllerBase
                     Name = state.Workload?.Name ?? state.WorkloadId.ToString(),
                     ActualVersion = state.CurrentRevision?.Version ?? "",
                     Status = InferStatus(state),
-                    Detail = "Run pre-check to probe agent"
+                    Detail = state.Status is not null && !state.Status.Equals("Unknown", StringComparison.OrdinalIgnoreCase)
+                        ? $"State: {state.Status.ToLowerInvariant()} — Run pre-check to probe agent"
+                        : "Run pre-check to probe agent"
                 });
             }
         }

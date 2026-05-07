@@ -1318,6 +1318,8 @@ export async function createWorkloadRun(request: CreateWorkloadRunRequest): Prom
       const b = body as { code?: string }
       if (b.code === 'DOWNGRADE_BLOCKED') {
         message = 'Cannot create run: downgrade detected. Use Preview to see details.'
+      } else if (b.code === 'VERSION_JUMP_BLOCKED') {
+        message = 'Cannot create run: version jump detected. Only sequential revisions are allowed.'
       }
     } else {
       const b = body as { message?: string; errors?: ValidationFieldError[] }

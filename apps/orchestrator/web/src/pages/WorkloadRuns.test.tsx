@@ -180,7 +180,7 @@ describe('Workload Runs page', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
 
     // select all online nodes via helper link
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Select all online' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Select all eligible online' }))
 
     // verify online nodes checked, offline node not
     const nodeCheckbox1 = within(dialog).getByLabelText('Plant Line A')
@@ -275,7 +275,7 @@ describe('Workload Runs page', () => {
 
     // Step 1 -> Step 2
     fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Select all online' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Select all eligible online' }))
 
     // Step 2 -> Step 3
     fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))

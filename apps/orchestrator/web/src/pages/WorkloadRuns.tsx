@@ -12,7 +12,8 @@ import {
   runNodesPreCheckSummary,
 } from '../services/api'
 import { subscribeToRunProgress } from '../services/realtime'
-import type { Node, NodeWorkloadState, PreCheckAction, PreCheckSummaryNode, WorkloadDefinition, WorkloadRevision, WorkloadRun, WorkloadRunStatus } from '../types'
+import type { EligibilityStatus, Node, NodeWorkloadState, PreCheckAction, PreCheckSummaryNode, WorkloadDefinition, WorkloadRevision, WorkloadRun, WorkloadRunStatus } from '../types'
+import { isDowngrade, isSequentialUpgrade } from '../utils/versionComparison'
 import { Modal, ModalContent, ModalDescription, ModalFooter, ModalHeader, ModalTitle } from '../components/ui/modal'
 import { Stepper } from '../components/ui/stepper'
 
@@ -232,6 +233,84 @@ export default function WorkloadRuns() {
     return map
   }, [nodeWorkloadStates, form.workloadId, form.mode, form.revisionId])
 
+  const publishedRevisionVersions = useMemo(
+    () => publishedRevisions.map(r => r.revision),
+    [publishedRevisions],
+  )
+
+  const selectedRevision = useMemo(() => {
+    return publishedRevisions.find(r => r.id === form.revisionId)
+  }, [publishedRevisions, form.revisionId])
+
+  const nodeEligibility = useMemo(() => {
+    const map = new Map<string, EligibilityStatus>()
+    for (const node of nodes) {
+      const nodeState = nodeWorkloadStateByNodeId.get(node.id)
+      const installedVersion = nodeState?.workloadRevision
+      const isExactRevision = nodeState?.currentRevisionId === form.revisionId
+
+      if (form.mode === 'uninstall') {
+        if (nodeWorkloadStateByNodeId.has(node.id)) {
+          map.set(node.id, { kind: 'eligible', action: 'FreshInstall' })
+        } else {
+          map.set(node.id, { kind: 'ineligible', reason: 'WrongVersion' })
+        }
+        continue
+      }
+
+      // Install mode
+      if (!installedVersion) {
+        map.set(node.id, { kind: 'eligible', action: 'FreshInstall' })
+      } else if (isExactRevision) {
+        if (form.reinstall) {
+          map.set(node.id, { kind: 'eligible', action: 'Reinstall' })
+        } else {
+          map.set(node.id, { kind: 'eligible', action: 'AlreadyCurrent' })
+        }
+      } else if (isDowngrade(installedVersion, selectedRevision?.revision ?? '')) {
+        map.set(node.id, { kind: 'ineligible', reason: 'Downgrade' })
+      } else if (
+        isSequentialUpgrade(
+          installedVersion,
+          selectedRevision?.revision ?? '',
+          publishedRevisionVersions,
+        )
+      ) {
+        map.set(node.id, { kind: 'eligible', action: 'SequentialUpdate' })
+      } else {
+        map.set(node.id, { kind: 'ineligible', reason: 'VersionJump' })
+      }
+    }
+    return map
+  }, [
+    nodes,
+    nodeWorkloadStateByNodeId,
+    form.mode,
+    form.revisionId,
+    form.reinstall,
+    selectedRevision,
+    publishedRevisionVersions,
+  ])
+
+  useEffect(() => {
+    // Auto-deselect ineligible nodes when eligibility changes
+    setForm(current => {
+      const eligibleIds = new Set(
+        nodes
+          .filter(n => {
+            const eligibility = nodeEligibility.get(n.id)
+            return eligibility?.kind === 'eligible'
+          })
+          .map(n => n.id),
+      )
+      const newTargetNodeIds = current.targetNodeIds.filter(id => eligibleIds.has(id))
+      if (newTargetNodeIds.length !== current.targetNodeIds.length) {
+        return { ...current, targetNodeIds: newTargetNodeIds }
+      }
+      return current
+    })
+  }, [nodeEligibility, nodes])
+
   const uninstallNodes = useMemo(
     () => nodes.filter(n => n.status === 'online' && nodeWorkloadStateByNodeId.has(n.id)),
     [nodes, nodeWorkloadStateByNodeId],
@@ -258,10 +337,6 @@ export default function WorkloadRuns() {
         return a.hostname.localeCompare(b.hostname)
       })
   }, [nodes, nodeFilter, form.mode, nodeWorkloadStateByNodeId])
-
-  const selectedRevision = useMemo(() => {
-    return publishedRevisions.find(r => r.id === form.revisionId)
-  }, [publishedRevisions, form.revisionId])
 
   const anySelectedNodeHasRevision = useMemo(() => {
     if (!selectedRevision) return false
@@ -306,7 +381,9 @@ export default function WorkloadRuns() {
       case 3:
         if (preCheckSummaryLoading) return false
         if (!preCheckSummary) return false
-        return !preCheckSummary.some(n => n.action === 'BlockedDowngrade')
+        return !preCheckSummary.some(
+          n => n.action === 'BlockedDowngrade' || n.action === 'BlockedVersionJump',
+        )
       case 4:
         return true
       default:
@@ -399,6 +476,8 @@ export default function WorkloadRuns() {
         return 'bg-amber-100 text-amber-700'
       case 'BlockedDowngrade':
         return 'bg-red-100 text-red-700'
+      case 'BlockedVersionJump':
+        return 'bg-orange-100 text-orange-700'
       case 'Reinstall':
         return 'bg-purple-100 text-purple-700'
       case 'Unknown':
@@ -582,13 +661,18 @@ export default function WorkloadRuns() {
                     <button
                       type="button"
                       onClick={() => {
-                        const onlineIds = filteredNodes.filter(n => n.status === 'online').map(n => n.id)
-                        setForm(current => ({ ...current, targetNodeIds: onlineIds }))
+                        const eligibleOnlineIds = filteredNodes
+                          .filter(n => {
+                            const eligibility = nodeEligibility.get(n.id)
+                            return n.status === 'online' && eligibility?.kind === 'eligible'
+                          })
+                          .map(n => n.id)
+                        setForm(current => ({ ...current, targetNodeIds: eligibleOnlineIds }))
                         setFormErrors(current => ({ ...current, targetNodeIds: '' }))
                       }}
                       className="text-[var(--accent)] hover:underline"
                     >
-                      Select all online
+                      Select all eligible online
                     </button>
                     <span className="text-[var(--text-soft)]">|</span>
                     <button
@@ -623,15 +707,73 @@ export default function WorkloadRuns() {
                       const isOnline = node.status === 'online'
                       const isSelected = form.targetNodeIds.includes(node.id)
                       const nodeState = nodeWorkloadStateByNodeId.get(node.id)
-                      const installedVersion = nodeState?.currentRevisionId
+                      const installedVersion = nodeState?.workloadRevision
                       const hasDrift = nodeState && nodeState.packageStatesJson ? true : false
                       const isExactRevision = nodeState?.currentRevisionId === form.revisionId
+                      const eligibility = nodeEligibility.get(node.id)
+                      const isEligible = eligibility?.kind === 'eligible'
+
+                      const eligibilityBadge = () => {
+                        if (!form.workloadId || !form.revisionId) return null
+                        if (!eligibility) return null
+                        if (eligibility.kind === 'eligible') {
+                          switch (eligibility.action) {
+                            case 'FreshInstall':
+                              return (
+                                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                                  Fresh Install
+                                </span>
+                              )
+                            case 'SequentialUpdate':
+                              return (
+                                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                                  Update {installedVersion ? `v${installedVersion}→v${selectedRevision?.revision}` : ''}
+                                </span>
+                              )
+                            case 'Reinstall':
+                              return (
+                                <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700">
+                                  Reinstall
+                                </span>
+                              )
+                            case 'AlreadyCurrent':
+                              return (
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+                                  Already Current
+                                </span>
+                              )
+                          }
+                        } else {
+                          switch (eligibility.reason) {
+                            case 'Downgrade':
+                              return (
+                                <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                                  Downgrade Blocked
+                                </span>
+                              )
+                            case 'VersionJump':
+                              return (
+                                <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">
+                                  Skip v{selectedRevision?.revision}
+                                </span>
+                              )
+                            case 'WrongVersion':
+                              return (
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+                                  Wrong Version
+                                </span>
+                              )
+                          }
+                        }
+                      }
+
+                      const canSelect = isOnline && isEligible
 
                       return (
                         <label
                           key={node.id}
                           className={`flex items-center gap-3 rounded-md px-2 py-2 text-sm ${
-                            isOnline
+                            canSelect
                               ? 'cursor-pointer hover:bg-[var(--surface-subtle)]'
                               : 'opacity-50 cursor-not-allowed'
                           }`}
@@ -639,10 +781,10 @@ export default function WorkloadRuns() {
                           <input
                             type="checkbox"
                             checked={isSelected}
-                            disabled={!isOnline}
+                            disabled={!canSelect}
                             aria-label={node.displayName || node.hostname}
                             onChange={event => {
-                              if (!isOnline) return
+                              if (!canSelect) return
                               const newIds = event.target.checked
                                 ? [...form.targetNodeIds, node.id]
                                 : form.targetNodeIds.filter(id => id !== node.id)
@@ -684,6 +826,7 @@ export default function WorkloadRuns() {
                               not installed
                             </span>
                           )}
+                          {eligibilityBadge()}
                         </label>
                       )
                     })
@@ -704,9 +847,18 @@ export default function WorkloadRuns() {
                   </div>
                 ) : preCheckSummary ? (
                   <>
-                    {preCheckSummary.some(n => n.action === 'BlockedDowngrade') && (
-                      <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-                        Cannot proceed: downgrade detected on {preCheckSummary.filter(n => n.action === 'BlockedDowngrade').length} node(s).
+                    {(preCheckSummary.some(n => n.action === 'BlockedDowngrade') || preCheckSummary.some(n => n.action === 'BlockedVersionJump')) && (
+                      <div className="space-y-1">
+                        {preCheckSummary.some(n => n.action === 'BlockedDowngrade') && (
+                          <div className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+                            Cannot proceed: downgrade detected on {preCheckSummary.filter(n => n.action === 'BlockedDowngrade').length} node(s).
+                          </div>
+                        )}
+                        {preCheckSummary.some(n => n.action === 'BlockedVersionJump') && (
+                          <div className="rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-sm text-orange-700">
+                            Cannot proceed: version jump detected on {preCheckSummary.filter(n => n.action === 'BlockedVersionJump').length} node(s).
+                          </div>
+                        )}
                       </div>
                     )}
                     <div className="max-h-64 overflow-y-auto rounded-lg border border-[var(--surface-border)] p-2 space-y-1">

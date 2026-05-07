@@ -394,7 +394,7 @@ export interface NodeDetailResponse extends Node {
 export type PreCheckAction = 'Skip' | 'FreshInstall' | 'Update' | 'InstallMissing' | 'BlockedDowngrade' | 'BlockedVersionJump' | 'Reinstall' | 'Unknown'
 
 export type EligibilityStatus =
-  | { kind: 'eligible'; action: 'FreshInstall' | 'SequentialUpdate' | 'Reinstall' | 'AlreadyCurrent' }
+  | { kind: 'eligible'; action: 'FreshInstall' | 'SequentialUpdate' | 'Reinstall' | 'AlreadyCurrent' | 'Uninstall' }
   | { kind: 'ineligible'; reason: 'Downgrade' | 'VersionJump' | 'WrongVersion' }
 
 export type WorkloadAssignmentStatus = 'Current' | 'Drifted' | 'Unknown'

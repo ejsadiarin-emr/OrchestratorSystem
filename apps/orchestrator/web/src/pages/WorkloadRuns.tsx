@@ -251,7 +251,7 @@ export default function WorkloadRuns() {
 
       if (form.mode === 'uninstall') {
         if (nodeWorkloadStateByNodeId.has(node.id)) {
-          map.set(node.id, { kind: 'eligible', action: 'FreshInstall' })
+          map.set(node.id, { kind: 'eligible', action: 'Uninstall' })
         } else {
           map.set(node.id, { kind: 'ineligible', reason: 'WrongVersion' })
         }
@@ -740,6 +740,12 @@ export default function WorkloadRuns() {
                               return (
                                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
                                   Already Current
+                                </span>
+                              )
+                            case 'Uninstall':
+                              return (
+                                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700">
+                                  Uninstall
                                 </span>
                               )
                           }

@@ -329,6 +329,14 @@ public class NodesController : ControllerBase
             .Where(s => s.WorkloadId == request.WorkloadId && request.NodeIds.Contains(s.NodeId))
             .ToDictionaryAsync(s => s.NodeId);
 
+        var allPublishedRevisions = await _db.WorkloadRevisions
+            .AsNoTracking()
+            .Where(r => r.WorkloadId == request.WorkloadId && r.IsPublished)
+            .OrderBy(r => r.Version)
+            .ToListAsync();
+
+        var allRevisionVersions = allPublishedRevisions.Select(r => r.Version).ToList();
+
         var response = new PreCheckSummaryResponse
         {
             Nodes = new List<PreCheckSummaryNode>()
@@ -397,7 +405,7 @@ public class NodesController : ControllerBase
             var allMatch = revisionConfigs.All(cfg =>
                 resultMap.TryGetValue(cfg.PackageId, out var r) &&
                 r.Status == PreCheckStatus.AlreadySatisfied &&
-                r.ActualVersion == cfg.Version);
+                VersionComparisonService.Matches(cfg.Version, r.ActualVersion));
             var hasAnyDetected = revisionConfigs.Any(cfg =>
                 resultMap.TryGetValue(cfg.PackageId, out var r) &&
                 r.Status != PreCheckStatus.NotPresent);
@@ -442,14 +450,29 @@ public class NodesController : ControllerBase
                 effectiveWorkloadStatus = hasAnyDetected ? "Drifted" : "Absent";
             }
 
-            summaryNode.Action = (hasWrongVersionNewer, effectiveWorkloadStatus, allAlreadySatisfied, hasWrongVersionOlder, hasNotPresent) switch
+            var isVersionJump = false;
+            if (nodeStates.TryGetValue(node.NodeId, out var nodeState) && nodeState.CurrentRevisionId != null)
             {
-                (true, _, _, _, _) => "BlockedDowngrade",
-                (_, "Absent", _, _, _) => "FreshInstall",
-                (_, "Current", true, _, _) => "Skip",
-                (_, "Drifted", true, _, _) => "Update",
-                (_, _, _, true, _) => "Update",
-                (_, _, _, _, true) => "InstallMissing",
+                var currentRevision = allPublishedRevisions.FirstOrDefault(r => r.RevisionId == nodeState.CurrentRevisionId);
+                if (currentRevision != null)
+                {
+                    var targetRevision = allPublishedRevisions.FirstOrDefault(r => r.RevisionId == request.RevisionId);
+                    if (targetRevision != null)
+                    {
+                        isVersionJump = !VersionComparisonService.IsSequentialRevision(currentRevision.Version, targetRevision.Version, allRevisionVersions);
+                    }
+                }
+            }
+
+            summaryNode.Action = (hasWrongVersionNewer, isVersionJump, effectiveWorkloadStatus, allAlreadySatisfied, hasWrongVersionOlder, hasNotPresent) switch
+            {
+                (true, _, _, _, _, _) => "BlockedDowngrade",
+                (_, true, _, _, _, _) => "BlockedVersionJump",
+                (_, _, "Absent", _, _, _) => "FreshInstall",
+                (_, _, "Current", true, _, _) => "Skip",
+                (_, _, "Drifted", true, _, _) => "Update",
+                (_, _, _, _, true, _) => "Update",
+                (_, _, _, _, _, true) => "InstallMissing",
                 _ => "Unknown"
             };
 
@@ -730,7 +753,7 @@ public class NodesController : ControllerBase
             Name = "Disk Space",
             Status = agentResponse.DiskInfo.FreeBytes > 0 ? "passed" : "warning",
             Detail = agentResponse.DiskInfo.FreeBytes > 0
-                ? $"Free: {agentResponse.DiskInfo.FreeBytes / (1024 * 1024)} MB / Total: {agentResponse.DiskInfo.TotalBytes / (1024 * 1024)} MB"
+                ? $"Free: {FormatBytes(agentResponse.DiskInfo.FreeBytes)} / Total: {FormatBytes(agentResponse.DiskInfo.TotalBytes)}"
                 : "Disk info unavailable"
         });
 
@@ -772,7 +795,7 @@ public class NodesController : ControllerBase
                     var allMatch = detectionConfigs.All(d =>
                         agentResultMap.TryGetValue(d.PackageId, out var r) &&
                         r.Status == PreCheckStatus.AlreadySatisfied &&
-                        r.ActualVersion == d.Version);
+                        VersionComparisonService.Matches(d.Version, r.ActualVersion));
 
                     var newState = new NodeWorkloadStateEntity
                     {
@@ -814,7 +837,7 @@ public class NodesController : ControllerBase
                     var allMatch = detectionConfigs.All(d =>
                         agentResultMap.TryGetValue(d.PackageId, out var r) &&
                         r.Status == PreCheckStatus.AlreadySatisfied &&
-                        r.ActualVersion == d.Version);
+                        VersionComparisonService.Matches(d.Version, r.ActualVersion));
 
                     if (allMatch)
                     {
@@ -1113,6 +1136,15 @@ public class NodesController : ControllerBase
                 : "pending";
         }
         return "running";
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024.0 * 1024):F1} MB";
+        if (bytes < 1024L * 1024 * 1024 * 1024) return $"{bytes / (1024.0 * 1024 * 1024):F1} GB";
+        return $"{bytes / (1024.0 * 1024 * 1024 * 1024):F1} TB";
     }
 
     private static bool IsDuplicateHostnameConstraintViolation(DbUpdateException exception)

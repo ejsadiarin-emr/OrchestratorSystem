@@ -106,6 +106,17 @@ public sealed class WorkloadRunsController : ControllerBase
                     details = downgradeErrors
                 });
             }
+
+            var versionJumpErrors = await CheckForVersionJumpsAsync(distinctNodeIds, request.RevisionId, request.WorkloadId);
+            if (versionJumpErrors.Count > 0)
+            {
+                return UnprocessableEntity(new
+                {
+                    code = "VERSION_JUMP_BLOCKED",
+                    message = "Cannot install workload — one or more nodes would skip a required revision. Only sequential upgrades are allowed.",
+                    details = versionJumpErrors
+                });
+            }
         }
 
         if (mode == "uninstall")
@@ -1185,6 +1196,55 @@ public sealed class WorkloadRunsController : ControllerBase
                         });
                     }
                 }
+            }
+        }
+
+        return errors;
+    }
+
+    private async Task<List<object>> CheckForVersionJumpsAsync(List<Guid> nodeIds, Guid targetRevisionId, Guid workloadId)
+    {
+        var errors = new List<object>();
+
+        var targetRevision = await _db.WorkloadRevisions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.RevisionId == targetRevisionId && r.WorkloadId == workloadId);
+
+        if (targetRevision == null)
+            return errors;
+
+        var allRevisions = await _db.WorkloadRevisions
+            .AsNoTracking()
+            .Where(r => r.WorkloadId == workloadId && r.IsPublished)
+            .OrderBy(r => r.Version)
+            .ToListAsync();
+
+        var allRevisionVersions = allRevisions.Select(r => r.Version).ToList();
+
+        var nodeStates = await _db.NodeWorkloadStates
+            .AsNoTracking()
+            .Include(s => s.CurrentRevision)
+            .Where(s => s.WorkloadId == workloadId && nodeIds.Contains(s.NodeId) && s.CurrentRevisionId != null)
+            .ToListAsync();
+
+        foreach (var state in nodeStates)
+        {
+            if (state.CurrentRevision == null)
+                continue;
+
+            var currentVersion = state.CurrentRevision.Version;
+            var targetVersion = targetRevision.Version;
+
+            if (!VersionComparisonService.IsSequentialRevision(currentVersion, targetVersion, allRevisionVersions))
+            {
+                var node = await _db.Nodes.AsNoTracking().FirstOrDefaultAsync(n => n.NodeId == state.NodeId);
+                errors.Add(new
+                {
+                    nodeId = state.NodeId,
+                    hostname = node?.Hostname ?? "",
+                    currentVersion = currentVersion,
+                    targetVersion = targetVersion
+                });
             }
         }
 

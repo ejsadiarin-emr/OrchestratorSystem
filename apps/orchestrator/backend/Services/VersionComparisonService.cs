@@ -43,6 +43,62 @@ public static class VersionComparisonService
         return result.HasValue && result.Value < 0;
     }
 
+    public static bool Matches(string? expected, string? actual)
+    {
+        if (string.IsNullOrWhiteSpace(expected) || string.IsNullOrWhiteSpace(actual))
+            return false;
+
+        var expectedNorm = NormalizeVersion(expected);
+        var actualNorm = NormalizeVersion(actual);
+
+        if (expectedNorm.Length == 0 || actualNorm.Length == 0)
+            return false;
+
+        var minLength = Math.Min(expectedNorm.Length, actualNorm.Length);
+        for (int i = 0; i < minLength; i++)
+        {
+            if (expectedNorm[i] != actualNorm[i])
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Checks if targetVersion is the immediate next version after currentVersion
+    /// in the ordered list of all published versions.
+    /// </summary>
+    public static bool IsSequentialRevision(string? currentVersion, string targetVersion, IEnumerable<string> allPublishedVersions)
+    {
+        if (string.IsNullOrWhiteSpace(currentVersion))
+            return true; // Fresh install, no constraint
+
+        var sorted = allPublishedVersions
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Distinct()
+            .OrderBy(v => v, new VersionStringComparer())
+            .ToList();
+
+        var currentIdx = sorted.IndexOf(currentVersion);
+        var targetIdx = sorted.IndexOf(targetVersion);
+
+        if (currentIdx < 0 || targetIdx < 0)
+            return false;
+
+        return targetIdx == currentIdx + 1;
+    }
+
+    private class VersionStringComparer : IComparer<string>
+    {
+        public int Compare(string? x, string? y)
+        {
+            var result = CompareVersions(x, y);
+            if (result.HasValue)
+                return result.Value;
+            return string.Compare(x, y, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     private static long[] NormalizeVersion(string version)
     {
         if (string.IsNullOrWhiteSpace(version))

@@ -127,7 +127,7 @@ public class PreCheckSummaryNode
     public Guid NodeId { get; set; }
     public string Hostname { get; set; } = string.Empty;
     public string WorkloadStatus { get; set; } = string.Empty; // "Current", "Drifted", "Absent", "Unknown"
-    public string Action { get; set; } = string.Empty; // "Skip", "FreshInstall", "Update", "InstallMissing", "Reinstall", "BlockedDowngrade"
+    public string Action { get; set; } = string.Empty; // "Skip", "FreshInstall", "Update", "InstallMissing", "Reinstall", "BlockedDowngrade", "BlockedVersionJump"
     public string? ActionDetail { get; set; }
     public List<PreCheckSummaryPackage> Packages { get; set; } = new();
 }

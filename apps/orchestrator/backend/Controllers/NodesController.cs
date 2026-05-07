@@ -448,7 +448,6 @@ public class NodesController : ControllerBase
                 (_, "Absent", _, _, _) => "FreshInstall",
                 (_, "Current", true, _, _) => "Skip",
                 (_, "Drifted", true, _, _) => "Update",
-                (_, "Unknown", true, _, _) => "Skip",
                 (_, _, _, true, _) => "Update",
                 (_, _, _, _, true) => "InstallMissing",
                 _ => "Unknown"
@@ -1086,14 +1085,14 @@ public class NodesController : ControllerBase
                     Category = "package",
                     Name = state.Workload?.Name ?? state.WorkloadId.ToString(),
                     ActualVersion = state.CurrentRevision?.Version ?? "",
-                    Status = "unknown",
+                    Status = InferStatus(state),
                     Detail = "Run pre-check to probe agent"
                 });
             }
         }
 
         var checkedAt = entity.NodeWorkloadStates.Any()
-            ? entity.NodeWorkloadStates.Max(s => s.UpdatedAtUtc)
+            ? entity.NodeWorkloadStates.Max(s => s.LastProbedAtUtc ?? s.UpdatedAtUtc)
             : DateTime.UtcNow;
 
         return new NodePreCheckSummary
@@ -1107,7 +1106,9 @@ public class NodesController : ControllerBase
     {
         if (string.IsNullOrEmpty(state.PackageStatesJson) || state.PackageStatesJson == "{}")
         {
-            return "pending";
+            return state.Status is not null && !state.Status.Equals("Unknown", StringComparison.OrdinalIgnoreCase)
+                ? state.Status.ToLowerInvariant()
+                : "pending";
         }
         return "running";
     }

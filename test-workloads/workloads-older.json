@@ -13,6 +13,14 @@
       "if (Get-Command node -ErrorAction SilentlyContinue) { Write-Host 'Node.js installed successfully' } else { Write-Warning 'Node.js not found on PATH' }",
       "if (Get-Command python -ErrorAction SilentlyContinue) { Write-Host 'Python installed successfully' } else { Write-Warning 'Python not found on PATH' }"
     ],
+    "preUninstallSteps": [
+      "Write-Host 'Dev Tools Stack (older) pre-uninstall: preparing for removal...'",
+      "Write-Host 'Closing developer tooling before uninstall'"
+    ],
+    "postUninstallSteps": [
+      "Write-Host 'Dev Tools Stack (older) post-uninstall: cleanup complete'",
+      "Write-Host 'Developer tooling removed'"
+    ],
     "defaultShell": "powershell",
     "packages": [
       {
@@ -59,6 +67,14 @@
       "dotnet --info 2>&1 | Select-Object -First 5",
       "Write-Host '.NET runtime installation complete'"
     ],
+    "preUninstallSteps": [
+      "Write-Host 'Runtime Environment (older) pre-uninstall: checking .NET dependencies...'",
+      "Write-Host 'Stopping agent services before uninstall'"
+    ],
+    "postUninstallSteps": [
+      "Write-Host 'Runtime Environment (older) post-uninstall: cleanup complete'",
+      "Write-Host 'Runtime components removed'"
+    ],
     "defaultShell": "powershell",
     "packages": [
       {
@@ -100,6 +116,12 @@
     ],
     "postWorkloadSteps": [
       "Write-Host 'Utility Pack (older) post-workload: all utilities installed'"
+    ],
+    "preUninstallSteps": [
+      "Write-Host 'Utility Pack (older) pre-uninstall: preparing utilities for removal...'"
+    ],
+    "postUninstallSteps": [
+      "Write-Host 'Utility Pack (older) post-uninstall: cleanup complete'"
     ],
     "defaultShell": "powershell",
     "packages": [
@@ -143,6 +165,12 @@
     "postWorkloadSteps": [
       "Write-Host 'DBMS Workload (older) post-workload: all DB tools installed'"
     ],
+    "preUninstallSteps": [
+      "Write-Host 'DBMS Workload (older) pre-uninstall: closing database tools...'"
+    ],
+    "postUninstallSteps": [
+      "Write-Host 'DBMS Workload (older) post-uninstall: cleanup complete'"
+    ],
     "defaultShell": "powershell",
     "packages": [
       {
@@ -173,6 +201,12 @@
     "postWorkloadSteps": [
       "Write-Host 'Editor Workload (older) post-workload: editor installation complete'"
     ],
+    "preUninstallSteps": [
+      "Write-Host 'Editor Workload (older) pre-uninstall: closing editor...'"
+    ],
+    "postUninstallSteps": [
+      "Write-Host 'Editor Workload (older) post-uninstall: cleanup complete'"
+    ],
     "defaultShell": "powershell",
     "packages": [
       {
@@ -202,6 +236,14 @@
     "postWorkloadSteps": [
       "Write-Host 'Amazing Workload (older) post-workload: development environment ready'",
       "Write-Host 'Summary: DBeaver + Python + SSMS installed and verified'"
+    ],
+    "preUninstallSteps": [
+      "Write-Host 'Amazing Workload (older) pre-uninstall: preparing environment for removal...'",
+      "Write-Host 'Closing database tools before uninstall'"
+    ],
+    "postUninstallSteps": [
+      "Write-Host 'Amazing Workload (older) post-uninstall: cleanup complete'",
+      "Write-Host 'Summary: Database tools and Python removed'"
     ],
     "defaultShell": "powershell",
     "packages": [
@@ -244,6 +286,14 @@
     "postWorkloadSteps": [
       "Write-Host 'Amazing Workload (older) post-workload: development environment ready'",
       "Write-Host 'Summary: SSMS installed and verified'"
+    ],
+    "preUninstallSteps": [
+      "Write-Host 'SSMS Workload (older) pre-uninstall: preparing environment for removal...'",
+      "Write-Host 'Closing SSMS before uninstall'"
+    ],
+    "postUninstallSteps": [
+      "Write-Host 'SSMS Workload (older) post-uninstall: cleanup complete'",
+      "Write-Host 'Summary: SSMS removed'"
     ],
     "defaultShell": "powershell",
     "packages": [

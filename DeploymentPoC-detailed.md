@@ -936,7 +936,7 @@ Body: { file: <JSON/JSONC file> }
 POST /api/workload-runs
 Body: { workloadId, revisionId, mode: "install"|"update"|"uninstall", idempotencyKey, nodeIds[], forceInstall?, reinstall? }
 -> Creates WorkloadRun records (one per node)
--> Validates: no concurrent active runs on same node+workload, no downgrade
+-> Validates: no concurrent active runs on same node+workload, no downgrade, no non-sequential upgrade
 -> Returns { runId, state, riskLevel? }
 
 GET /api/workload-runs?status=
@@ -1078,6 +1078,14 @@ For every package processed during Install or Update mode, the Agent follows thi
 7. REPORT         -- post step result to Orchestrator timeline
 ```
 
+Workload-level steps run around the package loop in non-uninstall modes:
+
+```
+PRE_WORKLOAD_STEPS  -- execute each command in preWorkloadSteps[]
+[per-package sequence above]
+POST_WORKLOAD_STEPS -- execute each command in postWorkloadSteps[]
+```
+
 **Elevation handling:** If the install process exits with code 1603 (-1) or throws `Win32Exception` with `NativeErrorCode == 740` (ERROR_ELEVATION_REQUIRED), the Agent retries with `UseShellExecute = true` and `Verb = "runas"` (UAC elevation prompt). Elevation denied (Win32 error 1223) returns `elevation_denied`.
 
 **MSI handling:** If `InstallAdapterConfig.Type == "msi"` and the command equals the artifact path, the Agent wraps the command as `msiexec /i "{artifactPath}" {arguments}`. Default MSI args: `/quiet /norestart`.
@@ -1138,6 +1146,7 @@ Select Node(s)
          |
    Select new Workload Revision
    -> If selected version <= current assigned version -> REJECT (downgrade blocked)
+   -> If selected version is not the immediate next revision -> REJECT (non-sequential upgrade)
          |
    Run PRE_CHECK (targeted to new revision packages)
    DB Reconcile
@@ -1160,6 +1169,8 @@ Select Node(s)
    DB Reconcile -> Update NodeWorkloadState revision
 ```
 
+Sequential upgrades are enforced for nodes with an existing revision: only the immediately next workload revision is eligible (e.g., v1 -> v2). Jumping from v1 -> v3 is rejected.
+
 **Package-level version handling during Update:**
 
 | Agent version vs. Target version | Action |
@@ -1180,19 +1191,21 @@ Select Node(s)
          |
    Select workload revision to uninstall
          |
-   Run PRE_CHECK (confirm packages actually exist on Agent)
-         |
-   Execute pipeline in uninstall mode:
-     All target packages become "Removed" in DiffEngine
-     Uninstall in reverse PackageIndex order
-     `preUninstallSteps` and `postUninstallSteps` are executed
-         |
-   DB Reconcile:
-     - Update NodeWorkloadState
-     - Clear CurrentRevisionId
+    Run PRE_CHECK (confirm packages actually exist on Agent)
+          |
+    Execute pipeline in uninstall mode:
+      All target packages become "Removed" in DiffEngine
+      Uninstall in reverse PackageIndex order
+      `preUninstallSteps` and `postUninstallSteps` are executed (workload-level)
+          |
+    DB Reconcile:
+      - Update NodeWorkloadState
+      - Clear CurrentRevisionId
 ```
 
 > `preInitSteps` / `postInitSteps` are **not executed** during Uninstall mode. However, `preUninstallSteps` and `postUninstallSteps` **are** executed — this was implemented as part of the workload-revision-level step support.
+
+In uninstall mode, workload-level `preWorkloadSteps`/`postWorkloadSteps` are skipped in favor of `preUninstallSteps`/`postUninstallSteps`.
 
 ---
 
@@ -1243,6 +1256,8 @@ Workloads use a **Revision** model — each revision has a `Version` string and 
 | Only in new revision (new PackageIndex) | Install |
 | Only in old revision (PackageIndex removed) | Auto-uninstall after new packages confirmed |
 | Agent has newer version than target | Block (downgrade rejected) |
+
+Sequential upgrades are enforced: nodes can only advance one revision at a time (no jumping revisions).
 
 > **Difference from original plan:** The original plan described packages being matched by `packageId` across workload versions. The actual implementation uses `PackageIndex` position-based comparison — packages at the same index in different revisions are compared, and index differences determine add/remove/change actions.
 

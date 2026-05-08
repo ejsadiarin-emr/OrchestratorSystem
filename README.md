@@ -260,6 +260,7 @@ POST /api/artifacts/upload-sessions/{id}/complete
 1. Create a run with mode **uninstall**
 2. The revision dropdown shows only revisions currently installed on nodes
 3. The agent uninstalls every package in reverse order
+4. `preUninstallSteps` and `postUninstallSteps` run at the workload level (package init and workload steps are skipped in uninstall mode)
 
 #### 4d. Dry-run preview
 
@@ -283,10 +284,11 @@ The orchestrator sends detection requests directly to the agent's `/api/detect` 
 On the target node, the agent:
 1. Polls `/api/workload-runs/pending?agent_id={nodeId}` every 10 seconds
 2. Claims the run (atomic `Queued → Running` transition)
-3. For each package executes: **detect → preInitSteps → acquire → install/uninstall → postInitSteps → verify → report**
-4. Posts timeline events to `/api/workload-runs/{runId}/timeline`
-5. Reports final status (`Completed` or `Failed`) via PATCH
-6. On success, the orchestrator updates `NodeWorkloadState` with the new revision
+3. Runs workload-level steps when applicable: `preWorkloadSteps` / `postWorkloadSteps` (install/update) or `preUninstallSteps` / `postUninstallSteps` (uninstall)
+4. For each package executes: **detect → preInitSteps → acquire → install/update → postInitSteps → verify → report** (init steps are skipped in uninstall)
+5. Posts timeline events to `/api/workload-runs/{runId}/timeline`
+6. Reports final status (`Completed` or `Failed`) via PATCH
+7. On success, the orchestrator updates `NodeWorkloadState` with the new revision
 
 ### Bulk import for testing
 
@@ -413,6 +415,7 @@ tests/
 | **Detection Config** | Per-package specification for verifying installation: `registry`, `file`, or `version_manifest` |
 | **Install Adapter** | Per-package specification for install/uninstall: type, command, args, upgrade behavior (`InPlace` / `UninstallFirst`), timeout |
 | **Init Steps** | Shell commands (`preInitSteps`, `postInitSteps`, `preWorkloadSteps`, `postWorkloadSteps`, `preUninstallSteps`, `postUninstallSteps`) run via PowerShell or cmd |
+| **Init Steps Behavior** | Install/update runs `preWorkloadSteps`/`postWorkloadSteps` and per-package init steps; uninstall runs `preUninstallSteps`/`postUninstallSteps` and skips per-package init steps and workload steps |
 | **Enrollment Token** | Short-lived, single-use token for node enrollment (default TTL 20 min) |
 
 ## Commands Cheat Sheet

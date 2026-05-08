@@ -997,6 +997,169 @@ public class NodesPreCheckReconciliationTests
         Assert.That(detail!.LatestPreCheck.CheckedAt, Is.EqualTo(expectedTimestamp));
     }
 
+    [Test]
+    public async Task PrefixMatch_LongerActualVersion_DoesNotMarkDrifted()
+    {
+        var (workloadId, revisionId, nodeId, packageId, _) = SeedScenarioBase(_db);
+
+        var agentResponse = BuildAgentResponse(new List<PackageDetectionResult>
+        {
+            new() { PackageId = packageId, Name = "test-pkg", Status = PreCheckStatus.AlreadySatisfied, ActualVersion = "1.0.0.202604191653" }
+        });
+        var handler = new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(agentResponse, Encoding.UTF8, "application/json") });
+        var controller = CreateController(handler);
+
+        var result = await controller.RunPreChecks(new RunPreCheckRequest
+        {
+            NodeIds = new List<Guid> { nodeId },
+            WorkloadId = workloadId
+        });
+
+        Assert.That(result.Result, Is.TypeOf<OkObjectResult>());
+        var okResult = (OkObjectResult)result.Result!;
+        var responses = okResult.Value as List<NodePreCheckResponse>;
+        Assert.That(responses, Is.Not.Null);
+        Assert.That(responses![0].Error, Is.Null);
+
+        var summary = responses[0].Summary;
+        var pkgItem = summary.Items.FirstOrDefault(i => i.Category == "package" && i.Name == "test-pkg");
+        Assert.That(pkgItem, Is.Not.Null);
+        Assert.That(pkgItem!.Status, Is.EqualTo("passed"));
+
+        var state = await _db.NodeWorkloadStates.FirstAsync(s => s.NodeId == nodeId);
+        Assert.That(state.Status, Is.EqualTo("Current"));
+    }
+
+    [Test]
+    public async Task PrefixMatch_ShorterExpectedVersion_DoesNotMarkDrifted()
+    {
+        var (workloadId, revisionId, nodeId, packageId, _) = SeedScenarioBase(_db);
+
+        var agentResponse = BuildAgentResponse(new List<PackageDetectionResult>
+        {
+            new() { PackageId = packageId, Name = "test-pkg", Status = PreCheckStatus.AlreadySatisfied, ActualVersion = "1.0" }
+        });
+        var handler = new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(agentResponse, Encoding.UTF8, "application/json") });
+        var controller = CreateController(handler);
+
+        var result = await controller.RunPreChecks(new RunPreCheckRequest
+        {
+            NodeIds = new List<Guid> { nodeId },
+            WorkloadId = workloadId
+        });
+
+        Assert.That(result.Result, Is.TypeOf<OkObjectResult>());
+        var okResult = (OkObjectResult)result.Result!;
+        var responses = okResult.Value as List<NodePreCheckResponse>;
+        Assert.That(responses, Is.Not.Null);
+        Assert.That(responses![0].Error, Is.Null);
+
+        var state = await _db.NodeWorkloadStates.FirstAsync(s => s.NodeId == nodeId);
+        Assert.That(state.Status, Is.EqualTo("Current"));
+    }
+
+    [Test]
+    public async Task PrefixMatch_DriftedState_AllSatisfied_ReturnsSkip()
+    {
+        var (workloadId, revisionId, nodeId, packageId, _) = SeedScenarioBase(_db, packageStatesJson: "{}");
+        var state = await _db.NodeWorkloadStates.FirstAsync(s => s.NodeId == nodeId);
+        state.Status = "Drifted";
+        await _db.SaveChangesAsync();
+
+        var agentResponse = BuildAgentResponse(new List<PackageDetectionResult>
+        {
+            new() { PackageId = packageId, Name = "test-pkg", Status = PreCheckStatus.AlreadySatisfied, ActualVersion = "1.0.0.202604191653" }
+        });
+        var handler = new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(agentResponse, Encoding.UTF8, "application/json") });
+        var controller = CreateController(handler);
+
+        var result = await controller.RunPreCheckSummary(new RunPreCheckSummaryRequest
+        {
+            NodeIds = new List<Guid> { nodeId },
+            WorkloadId = workloadId,
+            RevisionId = revisionId
+        });
+
+        Assert.That(result.Result, Is.TypeOf<OkObjectResult>());
+        var okResult = (OkObjectResult)result.Result!;
+        var response = okResult.Value as PreCheckSummaryResponse;
+        Assert.That(response, Is.Not.Null);
+        Assert.That(response!.Nodes.Count, Is.EqualTo(1));
+        Assert.That(response.Nodes[0].Action, Is.EqualTo("Skip"));
+    }
+
+    [Test]
+    public async Task DiskFormatting_HumanReadableUnits()
+    {
+        var (workloadId, revisionId, nodeId, packageId, _) = SeedScenarioBase(_db);
+
+        var agentResponse = BuildAgentResponse(
+            new List<PackageDetectionResult>
+            {
+                new() { PackageId = packageId, Name = "test-pkg", Status = PreCheckStatus.AlreadySatisfied, ActualVersion = "1.0.0" }
+            },
+            freeBytes: 164_151_000_000,
+            totalBytes: 500_000_000_000);
+        var handler = new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(agentResponse, Encoding.UTF8, "application/json") });
+        var controller = CreateController(handler);
+
+        var result = await controller.RunPreChecks(new RunPreCheckRequest
+        {
+            NodeIds = new List<Guid> { nodeId },
+            WorkloadId = workloadId
+        });
+
+        Assert.That(result.Result, Is.TypeOf<OkObjectResult>());
+        var okResult = (OkObjectResult)result.Result!;
+        var responses = okResult.Value as List<NodePreCheckResponse>;
+        Assert.That(responses, Is.Not.Null);
+        Assert.That(responses![0].Error, Is.Null);
+
+        var summary = responses[0].Summary;
+        var diskItem = summary.Items.FirstOrDefault(i => i.Category == "disk" && i.Name == "Disk Space");
+        Assert.That(diskItem, Is.Not.Null);
+        Assert.That(diskItem!.Detail, Does.Contain("GB"));
+        Assert.That(diskItem.Detail, Does.Not.Contain(" MB"));
+    }
+
+    [Test]
+    public async Task SameVersion_CurrentStatus_AllAlreadySatisfied_ReturnsSkip_NotBlockedVersionJump()
+    {
+        var (workloadId, revisionId, nodeId, packageId, _) = SeedScenarioBase(_db, packageStatesJson: "{}");
+
+        var state = await _db.NodeWorkloadStates.FirstAsync(s => s.NodeId == nodeId);
+        state.Status = "Current";
+        await _db.SaveChangesAsync();
+
+        var agentResponse = BuildAgentResponse(new List<PackageDetectionResult>
+        {
+            new() { PackageId = packageId, Name = "test-pkg", Status = PreCheckStatus.AlreadySatisfied, ActualVersion = "1.0.0" }
+        });
+
+        var handler = new StubHttpMessageHandler(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(agentResponse, Encoding.UTF8, "application/json") });
+        var controller = CreateController(handler);
+
+        var result = await controller.RunPreCheckSummary(new RunPreCheckSummaryRequest
+        {
+            NodeIds = new List<Guid> { nodeId },
+            WorkloadId = workloadId,
+            RevisionId = revisionId
+        });
+
+        Assert.That(result.Result, Is.TypeOf<OkObjectResult>());
+        var okResult = (OkObjectResult)result.Result!;
+        var response = okResult.Value as PreCheckSummaryResponse;
+        Assert.That(response, Is.Not.Null);
+        Assert.That(response!.Nodes.Count, Is.EqualTo(1));
+        Assert.That(response.Nodes[0].Action, Is.EqualTo("Skip"));
+        Assert.That(response.Nodes[0].Action, Is.Not.EqualTo("BlockedVersionJump"));
+    }
+
     private sealed class StubHttpMessageHandler : HttpMessageHandler
     {
         private readonly HttpResponseMessage _response;

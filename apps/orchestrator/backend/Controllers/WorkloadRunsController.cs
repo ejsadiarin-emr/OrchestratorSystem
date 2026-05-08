@@ -1235,7 +1235,7 @@ public sealed class WorkloadRunsController : ControllerBase
             var currentVersion = state.CurrentRevision.Version;
             var targetVersion = targetRevision.Version;
 
-            if (!VersionComparisonService.IsSequentialRevision(currentVersion, targetVersion, allRevisionVersions))
+            if (currentVersion != targetVersion && !VersionComparisonService.IsSequentialRevision(currentVersion, targetVersion, allRevisionVersions))
             {
                 var node = await _db.Nodes.AsNoTracking().FirstOrDefaultAsync(n => n.NodeId == state.NodeId);
                 errors.Add(new

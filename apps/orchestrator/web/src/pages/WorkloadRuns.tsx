@@ -487,6 +487,10 @@ export default function WorkloadRuns() {
     }
   }
 
+  const formatAction = (action: PreCheckAction): string => {
+    return action.replace(/([A-Z])/g, ' $1').trim()
+  }
+
   const formatTimestamp = (value: string) => new Date(value).toLocaleString()
 
   if (loading) {
@@ -872,7 +876,7 @@ export default function WorkloadRuns() {
                         <div key={node.nodeId} className="flex items-center gap-3 rounded-md px-2 py-2 text-sm">
                           <span className="flex-1 font-medium text-[var(--text-strong)]">{node.hostname}</span>
                           <span title={node.actionDetail || ''} className={`rounded-full px-2 py-0.5 text-xs font-medium ${actionBadgeClasses(node.action)}`}>
-                            {node.action}
+                            {formatAction(node.action)}
                           </span>
                         </div>
                       ))}
@@ -977,7 +981,7 @@ export default function WorkloadRuns() {
                           <span className="font-medium text-[var(--text-strong)]">{n.hostname}</span>
                           {summary && (
                             <span title={summary.actionDetail || ''} className={`rounded-full px-2 py-0.5 text-xs font-medium ${actionBadgeClasses(summary.action)}`}>
-                              {summary.action}
+                              {formatAction(summary.action)}
                             </span>
                           )}
                         </div>

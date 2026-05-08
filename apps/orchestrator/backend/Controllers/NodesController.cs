@@ -459,7 +459,8 @@ public class NodesController : ControllerBase
                     var targetRevision = allPublishedRevisions.FirstOrDefault(r => r.RevisionId == request.RevisionId);
                     if (targetRevision != null)
                     {
-                        isVersionJump = !VersionComparisonService.IsSequentialRevision(currentRevision.Version, targetRevision.Version, allRevisionVersions);
+                        isVersionJump = currentRevision.Version != targetRevision.Version
+                            && !VersionComparisonService.IsSequentialRevision(currentRevision.Version, targetRevision.Version, allRevisionVersions);
                     }
                 }
             }

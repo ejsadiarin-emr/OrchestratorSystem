@@ -1019,7 +1019,9 @@ public sealed class PipelineExecutorDiffTests
                         }
                     },
                     PreWorkloadSteps = new List<string> { "echo pre-workload" },
-                    PostWorkloadSteps = new List<string> { "echo post-workload" }
+                    PostWorkloadSteps = new List<string> { "echo post-workload" },
+                    PreUninstallSteps = new List<string> { "echo pre-uninstall" },
+                    PostUninstallSteps = new List<string> { "echo post-uninstall" }
                 },
                 CurrentPackages = new List<PackageAssignment>
                 {
@@ -1084,6 +1086,8 @@ public sealed class PipelineExecutorDiffTests
             Xunit.Assert.DoesNotContain(stepNames, n => n.StartsWith("PreInit"));
             Xunit.Assert.DoesNotContain(stepNames, n => n.StartsWith("PostInit"));
             Xunit.Assert.DoesNotContain(stepNames, n => n.StartsWith("PostWorkload"));
+            Xunit.Assert.Contains("PreUninstall_0", stepNames);
+            Xunit.Assert.Contains("PostUninstall_0", stepNames);
         }
         finally
         {

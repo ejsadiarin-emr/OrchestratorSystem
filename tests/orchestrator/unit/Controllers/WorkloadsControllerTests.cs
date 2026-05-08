@@ -368,6 +368,8 @@ public class WorkloadsControllerTests
             ""packages"": [""git-2.47.1""],
             ""preWorkloadSteps"": [""echo before all""],
             ""postWorkloadSteps"": [""echo after all""],
+            ""preUninstallSteps"": [""echo before uninstall""],
+            ""postUninstallSteps"": [""echo after uninstall""],
             ""defaultShell"": ""pwsh""
         }]";
         var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(json));
@@ -389,6 +391,8 @@ public class WorkloadsControllerTests
         var revision = workload!.Revisions.First();
         Assert.That(revision.PreWorkloadStepsJson, Does.Contain("echo before all"));
         Assert.That(revision.PostWorkloadStepsJson, Does.Contain("echo after all"));
+        Assert.That(revision.PreUninstallStepsJson, Does.Contain("echo before uninstall"));
+        Assert.That(revision.PostUninstallStepsJson, Does.Contain("echo after uninstall"));
         Assert.That(revision.DefaultShell, Is.EqualTo("pwsh"));
     }
 
@@ -422,6 +426,8 @@ public class WorkloadsControllerTests
             Version = "1.0.0",
             PreWorkloadSteps = new List<string> { "echo pre-workload" },
             PostWorkloadSteps = new List<string> { "echo post-workload" },
+            PreUninstallSteps = new List<string> { "echo pre-uninstall" },
+            PostUninstallSteps = new List<string> { "echo post-uninstall" },
             DefaultShell = "pwsh",
             Packages = new List<WorkloadPackageInput>
             {
@@ -444,6 +450,9 @@ public class WorkloadsControllerTests
         Assert.That(dto!.PreWorkloadSteps, Has.Count.EqualTo(1));
         Assert.That(dto.PreWorkloadSteps[0], Is.EqualTo("echo pre-workload"));
         Assert.That(dto.PostWorkloadSteps, Has.Count.EqualTo(1));
+        Assert.That(dto.PreUninstallSteps, Has.Count.EqualTo(1));
+        Assert.That(dto.PreUninstallSteps[0], Is.EqualTo("echo pre-uninstall"));
+        Assert.That(dto.PostUninstallSteps, Has.Count.EqualTo(1));
         Assert.That(dto.DefaultShell, Is.EqualTo("pwsh"));
         Assert.That(dto.Packages[0].PreInitSteps, Has.Count.EqualTo(1));
         Assert.That(dto.Packages[0].PreInitSteps[0], Is.EqualTo("echo pre-init"));
@@ -454,6 +463,8 @@ public class WorkloadsControllerTests
             .FirstOrDefaultAsync(r => r.RevisionId == dto.RevisionId);
         Assert.That(savedRevision, Is.Not.Null);
         Assert.That(savedRevision!.PreWorkloadStepsJson, Does.Contain("echo pre-workload"));
+        Assert.That(savedRevision.PreUninstallStepsJson, Does.Contain("echo pre-uninstall"));
+        Assert.That(savedRevision.PostUninstallStepsJson, Does.Contain("echo post-uninstall"));
         Assert.That(savedRevision.DefaultShell, Is.EqualTo("pwsh"));
         Assert.That(savedRevision.Packages.First().PreInitStepsJson, Does.Contain("echo pre-init"));
     }

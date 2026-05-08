@@ -242,6 +242,8 @@ public sealed class WorkloadImportServiceTests : IDisposable
             CreatedAtUtc = DateTime.UtcNow,
             PreWorkloadStepsJson = "[\"echo pre-wl\"]",
             PostWorkloadStepsJson = "[\"echo post-wl\"]",
+            PreUninstallStepsJson = "[\"echo pre-uninstall\"]",
+            PostUninstallStepsJson = "[\"echo post-uninstall\"]",
             DefaultShell = "pwsh"
         });
 
@@ -272,6 +274,8 @@ public sealed class WorkloadImportServiceTests : IDisposable
 
         Assert.That(revision.PreWorkloadStepsJson, Is.EqualTo("[\"echo pre-wl\"]"));
         Assert.That(revision.PostWorkloadStepsJson, Is.EqualTo("[\"echo post-wl\"]"));
+        Assert.That(revision.PreUninstallStepsJson, Is.EqualTo("[\"echo pre-uninstall\"]"));
+        Assert.That(revision.PostUninstallStepsJson, Is.EqualTo("[\"echo post-uninstall\"]"));
         Assert.That(revision.DefaultShell, Is.EqualTo("pwsh"));
         Assert.That(revision.Packages.First().PreInitStepsJson, Is.EqualTo("[\"echo pre-init\"]"));
         Assert.That(revision.Packages.First().PostInitStepsJson, Is.EqualTo("[\"echo post-init\"]"));

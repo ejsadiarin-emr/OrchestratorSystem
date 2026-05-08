@@ -57,6 +57,8 @@ public sealed class InitStepPipelineTests
         List<PackageAssignment>? currentPackages = null,
         List<string>? preWorkloadSteps = null,
         List<string>? postWorkloadSteps = null,
+        List<string>? preUninstallSteps = null,
+        List<string>? postUninstallSteps = null,
         string defaultShell = "cmd")
     {
         var runId = Guid.NewGuid();
@@ -70,6 +72,8 @@ public sealed class InitStepPipelineTests
                 Packages = targetPackages ?? new List<PackageAssignment>(),
                 PreWorkloadSteps = preWorkloadSteps ?? new List<string>(),
                 PostWorkloadSteps = postWorkloadSteps ?? new List<string>(),
+                PreUninstallSteps = preUninstallSteps ?? new List<string>(),
+                PostUninstallSteps = postUninstallSteps ?? new List<string>(),
                 DefaultShell = defaultShell,
                 CurrentPackages = currentPackages ?? new List<PackageAssignment>(),
                 ForceInstall = forceInstall
@@ -357,7 +361,9 @@ public sealed class InitStepPipelineTests
                     postInitSteps: new List<string> { "exit 0" })
             },
             preWorkloadSteps: new List<string> { "exit 0" },
-            postWorkloadSteps: new List<string> { "exit 0" });
+            postWorkloadSteps: new List<string> { "exit 0" },
+            preUninstallSteps: new List<string> { "exit 0" },
+            postUninstallSteps: new List<string> { "exit 0" });
 
         await executor.ExecuteAsync(context, (msg, ct) => Task.CompletedTask);
 
@@ -366,6 +372,38 @@ public sealed class InitStepPipelineTests
         Assert.DoesNotContain(names, n => n.StartsWith("PreInit"));
         Assert.DoesNotContain(names, n => n.StartsWith("PostInit"));
         Assert.DoesNotContain(names, n => n.StartsWith("PostWorkload"));
+        Assert.Contains("PreUninstall_0", names);
+        Assert.Contains("PostUninstall_0", names);
+    }
+
+    [Fact]
+    public async Task Uninstall_mode_runs_pre_and_post_uninstall_steps()
+    {
+        var (executor, _) = CreateExecutor();
+
+        var context = CreateContext(
+            mode: "uninstall",
+            forceInstall: true,
+            currentPackages: new List<PackageAssignment>(),
+            targetPackages: new List<PackageAssignment>
+            {
+                CreatePackage(0, "pkg-a", "1.0.0")
+            },
+            preUninstallSteps: new List<string> { "exit 0" },
+            postUninstallSteps: new List<string> { "exit 0" });
+
+        await executor.ExecuteAsync(context, (msg, ct) => Task.CompletedTask);
+
+        var names = StepHistoryNames(context);
+        var preUninstallIdx = names.IndexOf("PreUninstall_0");
+        var uninstallIdx = names.IndexOf("UninstallPackage");
+        var postUninstallIdx = names.IndexOf("PostUninstall_0");
+
+        Assert.True(preUninstallIdx >= 0, "PreUninstall_0 should be in step history");
+        Assert.True(uninstallIdx >= 0, "UninstallPackage should be in step history");
+        Assert.True(postUninstallIdx >= 0, "PostUninstall_0 should be in step history");
+        Assert.True(preUninstallIdx < uninstallIdx, "PreUninstall should run before UninstallPackage");
+        Assert.True(uninstallIdx < postUninstallIdx, "PostUninstall should run after UninstallPackage");
     }
 
     [Fact]

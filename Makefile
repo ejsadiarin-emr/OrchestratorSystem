@@ -11,8 +11,9 @@ SHELL := /usr/bin/env bash
 SHELL_KIND := bash
 endif
 
-ORCH_RUNTIME ?= $(if $(filter Windows_NT,$(OS)),win-x64,linux-x64)
-AGENT_RUNTIME ?= win-x64
+DEFAULT_RUNTIME ?= $(if $(filter Windows_NT,$(OS)),win-x64,linux-x64)
+ORCH_RUNTIME ?= $(DEFAULT_RUNTIME)
+AGENT_RUNTIME ?= $(DEFAULT_RUNTIME)
 
 ifeq ($(SHELL_KIND),powershell)
 STOP_PROCESSES_CMD = taskkill /F /IM DeploymentPoC.Orchestrator.exe *>$$null; taskkill /F /IM DeploymentPoC.Agent.exe *>$$null; Start-Sleep -Seconds 2
@@ -22,7 +23,7 @@ COPY_WORKLOADS_CMD = if (!(Test-Path ./dist/workloads)) { New-Item -ItemType Dir
 CLEAN_DIST_CMD = if (Test-Path ./dist) { Get-ChildItem -Path ./dist -Exclude .gitignore | Remove-Item -Recurse -Force }
 DOWNLOAD_ARTIFACTS_CMD = ./scripts/download-amazing-workload-artifacts.ps1
 else
-STOP_PROCESSES_CMD = pkill -f DeploymentPoC.Orchestrator || true; pkill -f DeploymentPoC.Agent || true; sleep 2
+STOP_PROCESSES_CMD = pkill -f '[D]eploymentPoC.Orchestrator' || true; pkill -f '[D]eploymentPoC.Agent' || true; sleep 2
 BUILD_FRONTEND_CMD = cd apps/orchestrator/web && pnpm install && pnpm run build
 RUN_FRONTEND_CMD = cd apps/orchestrator/web && pnpm run dev
 COPY_WORKLOADS_CMD = mkdir -p dist/workloads && cp test-workloads/*.json dist/workloads/

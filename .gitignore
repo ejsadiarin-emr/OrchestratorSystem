@@ -93,4 +93,6 @@ wiki
 screenshot*
 test-artifacts/
 *.exe
+**/*.exe
 *.zip
+**/*.zip

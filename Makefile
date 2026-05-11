@@ -16,19 +16,19 @@ ORCH_RUNTIME ?= $(DEFAULT_RUNTIME)
 AGENT_RUNTIME ?= $(DEFAULT_RUNTIME)
 
 ifeq ($(SHELL_KIND),powershell)
-STOP_PROCESSES_CMD = taskkill /F /IM DeploymentPoC.Orchestrator.exe *>$$null; taskkill /F /IM DeploymentPoC.Agent.exe *>$$null; Start-Sleep -Seconds 2
-BUILD_FRONTEND_CMD = Set-Location apps/orchestrator/web; pnpm install; pnpm run build
-RUN_FRONTEND_CMD = Set-Location apps/orchestrator/web; pnpm run dev
-COPY_WORKLOADS_CMD = if (!(Test-Path ./dist/workloads)) { New-Item -ItemType Directory -Path ./dist/workloads | Out-Null }; Copy-Item -Path test-workloads/*.json -Destination ./dist/workloads/ -Force
-CLEAN_DIST_CMD = if (Test-Path ./dist) { Get-ChildItem -Path ./dist -Exclude .gitignore | Remove-Item -Recurse -Force }
-DOWNLOAD_ARTIFACTS_CMD = ./scripts/download-amazing-workload-artifacts.ps1
+	STOP_PROCESSES_CMD = taskkill /F /IM DeploymentPoC.Orchestrator.exe *>$$null; taskkill /F /IM DeploymentPoC.Agent.exe *>$$null; Start-Sleep -Seconds 2
+	BUILD_FRONTEND_CMD = Set-Location apps/orchestrator/web; pnpm install; pnpm run build
+	RUN_FRONTEND_CMD = Set-Location apps/orchestrator/web; pnpm run dev
+	COPY_WORKLOADS_CMD = if (!(Test-Path ./dist/workloads)) { New-Item -ItemType Directory -Path ./dist/workloads | Out-Null }; Copy-Item -Path test-workloads/*.json -Destination ./dist/workloads/ -Force
+	CLEAN_DIST_CMD = if (Test-Path ./dist) { Get-ChildItem -Path ./dist -Exclude .gitignore | Remove-Item -Recurse -Force }
+	DOWNLOAD_ARTIFACTS_CMD = ./scripts/download-amazing-workload-artifacts.ps1
 else
-STOP_PROCESSES_CMD = pkill -f '[D]eploymentPoC.Orchestrator' || true; pkill -f '[D]eploymentPoC.Agent' || true; sleep 2
-BUILD_FRONTEND_CMD = cd apps/orchestrator/web && pnpm install && pnpm run build
-RUN_FRONTEND_CMD = cd apps/orchestrator/web && pnpm run dev
-COPY_WORKLOADS_CMD = mkdir -p dist/workloads && cp test-workloads/*.json dist/workloads/
-CLEAN_DIST_CMD = if [ -d dist ]; then find dist -mindepth 1 ! -name .gitignore -exec rm -rf {} +; fi
-DOWNLOAD_ARTIFACTS_CMD = ./scripts/download-amazing-workload-artifacts.sh
+	STOP_PROCESSES_CMD = pkill -f '[D]eploymentPoC.Orchestrator' || true; pkill -f '[D]eploymentPoC.Agent' || true; sleep 2
+	BUILD_FRONTEND_CMD = cd apps/orchestrator/web && pnpm install && pnpm run build
+	RUN_FRONTEND_CMD = cd apps/orchestrator/web && pnpm run dev
+	COPY_WORKLOADS_CMD = mkdir -p dist/workloads && cp test-workloads/*.json dist/workloads/
+	CLEAN_DIST_CMD = if [ -d dist ]; then find dist -mindepth 1 ! -name .gitignore -exec rm -rf {} +; fi
+	DOWNLOAD_ARTIFACTS_CMD = ./scripts/download-amazing-workload-artifacts.sh
 endif
 
 .PHONY: publish build publish-orchestrator publish-agent build-frontend copy-workloads download-artifacts run-orchestrator run-agent run-frontend clean stop-processes

@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DeploymentPoC.Orchestrator.Migrations
 {
     [DbContext(typeof(InstallerDbContext))]
-    [Migration("20260417081531_WorkloadDomainSliceA")]
-    partial class WorkloadDomainSliceA
+    [Migration("20260512061445_BaselineCreateInstallerSchema")]
+    partial class BaselineCreateInstallerSchema
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -112,6 +112,53 @@ namespace DeploymentPoC.Orchestrator.Migrations
                     b.HasIndex("JobId", "NodeId", "PackageId", "CapturedAtUtc");
 
                     b.ToTable("ConfigSnapshots");
+                });
+
+            modelBuilder.Entity("DeploymentPoC.Orchestrator.Data.Entities.EnrollmentTokenEntity", b =>
+                {
+                    b.Property<Guid>("TokenId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ConsumedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("ConsumedByNodeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("IssuedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OrchestratorUrl")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RequestedBy")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("SingleUse")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Used")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("TokenId");
+
+                    b.HasIndex("Token")
+                        .IsUnique();
+
+                    b.ToTable("EnrollmentTokens");
                 });
 
             modelBuilder.Entity("DeploymentPoC.Orchestrator.Data.Entities.JobEntity", b =>
@@ -260,6 +307,14 @@ namespace DeploymentPoC.Orchestrator.Migrations
                         .HasMaxLength(512)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("FirstConnectedUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Hostname")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -271,6 +326,11 @@ namespace DeploymentPoC.Orchestrator.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("LastSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OsVersion")
+                        .IsRequired()
+                        .HasMaxLength(255)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Status")
@@ -298,6 +358,9 @@ namespace DeploymentPoC.Orchestrator.Migrations
                     b.Property<Guid?>("CurrentRevisionId")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("LastProbedAtUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("NodeId")
                         .HasColumnType("TEXT");
 
@@ -305,6 +368,13 @@ namespace DeploymentPoC.Orchestrator.Migrations
                         .IsRequired()
                         .HasMaxLength(8192)
                         .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("Unknown");
 
                     b.Property<DateTime>("UpdatedAtUtc")
                         .HasColumnType("TEXT");
@@ -321,7 +391,10 @@ namespace DeploymentPoC.Orchestrator.Migrations
                     b.HasIndex("NodeId", "WorkloadId")
                         .IsUnique();
 
-                    b.ToTable("NodeWorkloadStates");
+                    b.ToTable("NodeWorkloadStates", t =>
+                        {
+                            t.HasCheckConstraint("CK_NodeWorkloadState_Status", "\"Status\" IN ('Current','Drifted','Unknown')");
+                        });
                 });
 
             modelBuilder.Entity("DeploymentPoC.Orchestrator.Data.Entities.PackageEntity", b =>
@@ -331,6 +404,16 @@ namespace DeploymentPoC.Orchestrator.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DetectionConfigJson")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ExpectedExitCodesJson")
+                        .IsRequired()
+                        .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("InstallArgs")
@@ -351,6 +434,24 @@ namespace DeploymentPoC.Orchestrator.Migrations
                     b.Property<string>("SourcePath")
                         .IsRequired()
                         .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TimeoutSeconds")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(300);
+
+                    b.Property<string>("UninstallArgs")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UninstallCommand")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UpgradeBehavior")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Version")
@@ -409,6 +510,16 @@ namespace DeploymentPoC.Orchestrator.Migrations
                     b.Property<int>("PackageIndex")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("PostInitStepsJson")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PreInitStepsJson")
+                        .IsRequired()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("RevisionId")
                         .HasColumnType("TEXT");
 
@@ -429,8 +540,43 @@ namespace DeploymentPoC.Orchestrator.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("DefaultShell")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("powershell");
+
                     b.Property<bool>("IsPublished")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("PostUninstallStepsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("PostWorkloadStepsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("PreUninstallStepsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("[]");
+
+                    b.Property<string>("PreWorkloadStepsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(4096)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("[]");
 
                     b.Property<string>("Version")
                         .IsRequired()
@@ -464,6 +610,9 @@ namespace DeploymentPoC.Orchestrator.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("ForceInstall")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("IdempotencyKey")
                         .HasMaxLength(128)
                         .HasColumnType("TEXT");
@@ -477,10 +626,22 @@ namespace DeploymentPoC.Orchestrator.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("TEXT");
 
-                    b.Property<Guid>("NodeId")
+                    b.Property<string>("NodeDisplayName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("NodeId")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("RevisionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RevisionSnapshotJson")
+                        .HasMaxLength(8192)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RiskLevel")
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("RunId")
@@ -515,10 +676,61 @@ namespace DeploymentPoC.Orchestrator.Migrations
 
                     b.ToTable("WorkloadRuns", t =>
                         {
-                            t.HasCheckConstraint("CK_WorkloadRuns_Mode", "\"Mode\" IN ('install','update','rollback','cancel')");
+                            t.HasCheckConstraint("CK_WorkloadRuns_Mode", "\"Mode\" IN ('install','update','uninstall','cancel')");
 
                             t.HasCheckConstraint("CK_WorkloadRuns_State", "\"State\" IN ('Queued','Running','Completed','Failed','Cancelled')");
                         });
+                });
+
+            modelBuilder.Entity("DeploymentPoC.Orchestrator.Data.Entities.WorkloadRunTimelineEntity", b =>
+                {
+                    b.Property<Guid>("TimelineId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("AtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MessageType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PackageId")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("PackageIndex")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("RunId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Status")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StepName")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("TimelineId");
+
+                    b.HasIndex("RunId");
+
+                    b.HasIndex("RunId", "NodeId");
+
+                    b.ToTable("WorkloadRunTimelines");
                 });
 
             modelBuilder.Entity("DeploymentPoC.Orchestrator.Data.Entities.AssignmentLeaseEntity", b =>
@@ -625,8 +837,7 @@ namespace DeploymentPoC.Orchestrator.Migrations
                     b.HasOne("DeploymentPoC.Orchestrator.Data.Entities.NodeEntity", "Node")
                         .WithMany("WorkloadRuns")
                         .HasForeignKey("NodeId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("DeploymentPoC.Orchestrator.Data.Entities.WorkloadRevisionEntity", "Revision")
                         .WithMany()

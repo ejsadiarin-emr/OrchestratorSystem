@@ -171,11 +171,11 @@ public sealed class InstallerDbContext : DbContext
         {
             entity.HasKey(x => x.RevisionId);
             entity.Property(x => x.Version).HasMaxLength(64);
-            entity.Property(x => x.PreWorkloadStepsJson).HasMaxLength(4096);
-            entity.Property(x => x.PostWorkloadStepsJson).HasMaxLength(4096);
+            entity.Property(x => x.PreWorkloadStepsJson).HasMaxLength(4096).IsRequired().HasDefaultValue("[]");
+            entity.Property(x => x.PostWorkloadStepsJson).HasMaxLength(4096).IsRequired().HasDefaultValue("[]");
             entity.Property(x => x.PreUninstallStepsJson).HasMaxLength(4096).IsRequired().HasDefaultValue("[]");
             entity.Property(x => x.PostUninstallStepsJson).HasMaxLength(4096).IsRequired().HasDefaultValue("[]");
-            entity.Property(x => x.DefaultShell).HasMaxLength(64);
+            entity.Property(x => x.DefaultShell).HasMaxLength(64).IsRequired().HasDefaultValue("powershell");
             entity.HasOne(x => x.Workload)
                 .WithMany(x => x.Revisions)
                 .HasForeignKey(x => x.WorkloadId)

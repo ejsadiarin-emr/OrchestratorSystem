@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace DeploymentPoC.Orchestrator.Data.Migrations
+namespace DeploymentPoC.Orchestrator.Migrations
 {
     [DbContext(typeof(InstallerDbContext))]
     partial class InstallerDbContextModelSnapshot : ModelSnapshot
@@ -539,8 +539,10 @@ namespace DeploymentPoC.Orchestrator.Data.Migrations
 
                     b.Property<string>("DefaultShell")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(64)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("powershell");
 
                     b.Property<bool>("IsPublished")
                         .HasColumnType("INTEGER");
@@ -554,8 +556,10 @@ namespace DeploymentPoC.Orchestrator.Data.Migrations
 
                     b.Property<string>("PostWorkloadStepsJson")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(4096)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("[]");
 
                     b.Property<string>("PreUninstallStepsJson")
                         .IsRequired()
@@ -566,8 +570,10 @@ namespace DeploymentPoC.Orchestrator.Data.Migrations
 
                     b.Property<string>("PreWorkloadStepsJson")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(4096)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("[]");
 
                     b.Property<string>("Version")
                         .IsRequired()

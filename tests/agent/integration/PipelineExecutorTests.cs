@@ -66,9 +66,16 @@ public sealed class PipelineExecutorTests
             });
 
             Assert.That(result.Success, Is.True);
+            Assert.That(result.Report, Is.Not.Null.And.Not.Empty);
+            Assert.That(result.Report, Does.Contain("=== Deployment Report ==="));
+            Assert.That(result.Report, Does.Contain("Result:       SUCCESS"));
             Assert.That(result.StepsExecuted, Is.EqualTo(4)); // PreCheck + Acquire + Install + Verify
             Assert.That(messages.Count, Is.EqualTo(5)); // 4 step status + 1 complete
             Assert.That(messages.Last().MessageType, Is.EqualTo(MessageTypes.Complete));
+
+            var finalPayload = (FinalizationPayload)messages.Last().Payload;
+            Assert.That(finalPayload.Report, Is.Not.Null.And.Not.Empty);
+            Assert.That(finalPayload.Report, Does.Contain("=== Deployment Report ==="));
         }
         finally
         {
@@ -128,9 +135,15 @@ public sealed class PipelineExecutorTests
         });
 
         Assert.That(result.Success, Is.False);
+        Assert.That(result.Report, Is.Not.Null.And.Not.Empty);
+        Assert.That(result.Report, Does.Contain("=== Deployment Report ==="));
+        Assert.That(result.Report, Does.Contain("Result:       FAILED"));
         Assert.That(result.StepsExecuted, Is.EqualTo(2)); // PreCheck + Acquire
         Assert.That(messages.Count, Is.EqualTo(3)); // 2 step status + 1 fail
         Assert.That(messages.Last().MessageType, Is.EqualTo(MessageTypes.Fail));
+
+        var finalPayload = (FinalizationPayload)messages.Last().Payload;
+        Assert.That(finalPayload.Report, Is.Not.Null.And.Not.Empty);
     }
 
     [Test]
@@ -185,6 +198,9 @@ public sealed class PipelineExecutorTests
         });
 
         Assert.That(result.Success, Is.False);
+        Assert.That(result.Report, Is.Not.Null.And.Not.Empty);
+        Assert.That(result.Report, Does.Contain("=== Deployment Report ==="));
+        Assert.That(result.Report, Does.Contain("Result:       FAILED"));
         Assert.That(result.StepsExecuted, Is.EqualTo(3)); // PreCheck + Acquire + Install
         Assert.That(messages.Count, Is.EqualTo(4)); // 3 step status + 1 fail
         Assert.That(messages.Last().MessageType, Is.EqualTo(MessageTypes.Fail));
@@ -282,6 +298,67 @@ public sealed class PipelineExecutorTests
             if (File.Exists(tempFile))
                 File.Delete(tempFile);
         }
+    }
+
+    [Test]
+    public async Task PipelineExecutor_PostInstallVerifyFails_SetsReasonCode2003()
+    {
+        var payload = Encoding.UTF8.GetBytes("Hello World!");
+        var handler = new StubArtifactHandler(payload, supportsRange: false);
+        using var http = new HttpClient(handler);
+        var executor = new PipelineExecutor(new StubHttpClientFactory(http), new Microsoft.Extensions.Logging.Abstractions.NullLogger<PipelineExecutor>());
+
+        var runId = Guid.NewGuid();
+        var context = new PipelineContext
+        {
+            Payload = new AssignRunPayload
+            {
+                RunId = runId,
+                WorkloadName = "test-workload",
+                Mode = "install",
+                Packages = new List<PackageAssignment>
+                {
+                    new()
+                    {
+                        PackageIndex = 0,
+                        PackageId = "test-pkg",
+                        Name = "test-pkg",
+                        Version = "1.0.0",
+                        InstallAdapter = new InstallAdapterConfig
+                        {
+                            Type = "exe",
+                            Command = "echo",
+                            Arguments = "hello",
+                            TimeoutSeconds = 5
+                        },
+                        Detection = new DetectionConfig
+                        {
+                            Type = "file",
+                            Path = "/nonexistent/after/install",
+                            ExpectedVersion = "1.0.0"
+                        }
+                    }
+                }
+            },
+            OrchestratorBaseUrl = "https://unit.test",
+            AgentId = "agent-1",
+            RunId = runId.ToString(),
+            Sequence = 1
+        };
+
+        var messages = new List<MessageEnvelope>();
+        var result = await executor.ExecuteAsync(context, (msg, ct) =>
+        {
+            messages.Add(msg);
+            return Task.CompletedTask;
+        });
+
+        Assert.That(result.Success, Is.False);
+        Assert.That(result.ReasonCode, Is.EqualTo(2003)); // PostInstallVerifyFailed
+        Assert.That(result.Report, Is.Not.Null.And.Not.Empty);
+
+        var finalPayload = (FinalizationPayload)messages.Last().Payload;
+        Assert.That(finalPayload.ReasonCode, Is.EqualTo(2003));
     }
 }
 

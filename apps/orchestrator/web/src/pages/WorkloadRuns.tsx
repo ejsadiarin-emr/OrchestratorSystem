@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   cancelWorkloadRun,
   createWorkloadRun,
+  downloadWorkloadRunReport,
   getInstalledRevisions,
   getWorkload,
   getWorkloadRunSteps,
@@ -453,6 +454,23 @@ export default function WorkloadRuns() {
       setSelectedRun({ ...run, timeline: steps })
     } catch {
       setError('Failed to load run diagnostics.')
+    }
+  }
+
+  const downloadReport = async (runId: string) => {
+    try {
+      const text = await downloadWorkloadRunReport(runId)
+      const blob = new Blob([text], { type: 'text/plain' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `deployment-report-${runId}.txt`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : 'Failed to download report.')
     }
   }
 
@@ -1258,7 +1276,15 @@ export default function WorkloadRuns() {
               </div>
             </div>
 
-            <ModalFooter className="px-4 pb-4 pt-2 sm:flex-row sm:justify-end">
+            <ModalFooter className="px-4 pb-4 pt-2 sm:flex-row sm:justify-end sm:gap-2">
+              {(selectedRun.status === 'completed' || selectedRun.status === 'failed') && (
+                <button
+                  onClick={() => downloadReport(selectedRun.id)}
+                  className="rounded-lg bg-[var(--surface-muted)] px-4 py-2 text-sm font-medium text-[var(--text-soft)] hover:bg-[var(--surface-border)]"
+                >
+                  Download Report
+                </button>
+              )}
               <button
                 onClick={() => setSelectedRun(null)}
                 className="rounded-lg bg-[var(--surface-muted)] px-4 py-2 text-sm font-medium text-[var(--text-soft)] hover:bg-[var(--surface-border)]"

@@ -1,4 +1,5 @@
 using DeploymentPoC.Agent.Steps;
+using DeploymentPoC.Contracts.Jobs;
 using DeploymentPoC.Contracts.Runtime;
 using DeploymentPoC.Contracts.Runtime.RunPayloads;
 using Microsoft.Extensions.Configuration;
@@ -27,17 +28,20 @@ public class PipelineExecutor
         var http = _httpClientFactory.CreateClient();
         var acquire = new AcquireArtifact(http, logger: _logger);
 
+        context.PipelineStartUtc = DateTime.UtcNow;
+
         var targetPackages = context.Payload.Packages
             .OrderBy(p => p.PackageIndex)
             .ToList();
 
         var baseDiff = DiffEngine.ComputeDiff(context.CurrentPackages, targetPackages, null, context.Payload.Mode);
-        Dictionary<string, PreCheckResult>? preCheckResults = null;
+        var preCheckResults = new Dictionary<string, PreCheckResult>();
+        context.PreCheckResults = preCheckResults;
+        context.PostVerifyResults = new Dictionary<string, PostVerifyResult>();
 
         // Phase 0: Pre-Check
         if (!context.ForceInstall)
         {
-            preCheckResults = new Dictionary<string, PreCheckResult>();
 
             var packagesToProbe = targetPackages
                 .Concat(baseDiff.Removed)
@@ -86,7 +90,7 @@ public class PipelineExecutor
             }
         }
 
-        var diff = DiffEngine.ComputeDiff(context.CurrentPackages, targetPackages, preCheckResults, context.Payload.Mode);
+        var diff = DiffEngine.ComputeDiff(context.CurrentPackages, targetPackages, context.ForceInstall ? null : preCheckResults, context.Payload.Mode);
         var added = diff.Added;
         var removed = diff.Removed;
         var changed = diff.Changed;
@@ -281,6 +285,7 @@ public class PipelineExecutor
                 const int maxRetries = 3;
                 const int retryDelaySeconds = 5;
                 bool isStillInstalled = false;
+                PreCheckResult lastDetectResult = default!;
 
                 for (int attempt = 1; attempt <= maxRetries; attempt++)
                 {
@@ -291,8 +296,8 @@ public class PipelineExecutor
                         package.Detection.Type,
                         attempt);
 
-                    var detectResult = await PackageDetector.DetectAsync(package.Detection, stepCt);
-                    isStillInstalled = detectResult.Status != PreCheckStatus.NotPresent;
+                    lastDetectResult = await PackageDetector.DetectAsync(package.Detection, stepCt);
+                    isStillInstalled = lastDetectResult.Status != PreCheckStatus.NotPresent;
 
                     if (!isStillInstalled)
                         break;
@@ -311,6 +316,13 @@ public class PipelineExecutor
 
                 await SendStepStatusAsync(sendMessageAsync, context, "PostUninstallVerify", package, !isStillInstalled, isStillInstalled ? "still_installed" : null, stepCt);
                 context.RecordStep("PostUninstallVerify", package.PackageIndex, package.PackageId, !isStillInstalled, isStillInstalled ? "still_installed" : null);
+
+                context.PostVerifyResults[package.Name] = new PostVerifyResult
+                {
+                    Success = !isStillInstalled,
+                    ActualVersion = isStillInstalled ? lastDetectResult.ActualVersion : null,
+                    Error = isStillInstalled ? "still_installed" : null
+                };
 
                 if (isStillInstalled)
                 {
@@ -594,6 +606,24 @@ public class PipelineExecutor
             await SendStepStatusAsync(sendMessageAsync, context, "PostInstallVerify", package, verifyResult.Success, verifyResult.Error, stepCt);
             context.RecordStep("PostInstallVerify", package.PackageIndex, package.PackageId, verifyResult.Success, verifyResult.Error);
 
+            if (verifyResult.Success)
+            {
+                var detectForReport = await PackageDetector.DetectAsync(package.Detection, stepCt);
+                context.PostVerifyResults[package.Name] = new PostVerifyResult
+                {
+                    Success = true,
+                    ActualVersion = detectForReport.ActualVersion
+                };
+            }
+            else
+            {
+                context.PostVerifyResults[package.Name] = new PostVerifyResult
+                {
+                    Success = false,
+                    Error = verifyResult.Error
+                };
+            }
+
             if (!verifyResult.Success)
             {
                 _logger.LogError(
@@ -736,6 +766,14 @@ public class PipelineExecutor
         var allSucceeded = context.AllStepsSucceeded && context.StepHistory.Count > 0;
         var error = context.FirstError;
 
+        var postInstallVerifyFailed = context.StepHistory.Any(s =>
+            s.StepName == "PostInstallVerify" && !s.Success);
+        var reasonCode = postInstallVerifyFailed
+            ? (int)ReasonCodes.PostInstallVerifyFailed
+            : (int?)null;
+
+        var report = ReportGenerator.Generate(context, context.PreCheckResults, context.PostVerifyResults);
+
         var envelope = new MessageEnvelope
         {
             MessageType = allSucceeded ? MessageTypes.Complete : MessageTypes.Fail,
@@ -746,7 +784,9 @@ public class PipelineExecutor
             {
                 Result = allSucceeded ? "success" : "failure",
                 Error = error,
-                StepCount = context.StepHistory.Count
+                StepCount = context.StepHistory.Count,
+                Report = report,
+                ReasonCode = reasonCode
             }
         };
 
@@ -763,7 +803,9 @@ public class PipelineExecutor
         {
             Success = allSucceeded,
             Error = error,
-            StepsExecuted = context.StepHistory.Count
+            StepsExecuted = context.StepHistory.Count,
+            Report = report,
+            ReasonCode = reasonCode
         };
     }
 }
@@ -773,6 +815,8 @@ public sealed class PipelineResult
     public bool Success { get; set; }
     public string? Error { get; set; }
     public int StepsExecuted { get; set; }
+    public string? Report { get; set; }
+    public int? ReasonCode { get; set; }
 }
 
 

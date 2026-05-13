@@ -268,7 +268,7 @@ public sealed class AgentRuntimeService : BackgroundService
                         // Report final status (same as before)
                         await http.PatchAsJsonAsync(
                             $"/api/workload-runs/{run.RunId}?agent_id={nodeId}",
-                            new { status = result.Success ? "Completed" : "Failed", error = result.Error },
+                            new { status = result.Success ? "Completed" : "Failed", error = result.Error, report = result.Report },
                             CancellationToken.None);
                     }
                     catch (Exception ex)
@@ -278,7 +278,7 @@ public sealed class AgentRuntimeService : BackgroundService
                         {
                             await http.PatchAsJsonAsync(
                                 $"/api/workload-runs/{run.RunId}?agent_id={nodeId}",
-                                new { status = "Failed", error = ex.Message }, CancellationToken.None);
+                                new { status = "Failed", error = ex.Message, report = (string?)null }, CancellationToken.None);
                         }
                         catch { /* best effort */ }
                     }

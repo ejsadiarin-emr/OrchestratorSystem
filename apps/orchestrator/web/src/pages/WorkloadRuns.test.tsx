@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkloadRuns from './WorkloadRuns'
-import { createWorkloadRun } from '../services/api'
+import { createWorkloadRun, downloadWorkloadRunReport } from '../services/api'
 
 vi.mock('../services/realtime', () => ({
   subscribeToRunProgress: vi.fn().mockReturnValue(() => {}),
@@ -21,6 +21,18 @@ vi.mock('../services/api', async (importOriginal) => {
         targetNodeIds: ['node-001'],
         targetNodeHostnames: ['wj-plant-01'],
         status: 'running',
+        createdAt: new Date().toISOString(),
+        timeline: [],
+      },
+      {
+        id: 'run-002',
+        workloadId: 'workload-001',
+        workloadName: 'Factory Base Install',
+        workloadRevision: '1.1.0',
+        mode: 'install',
+        targetNodeIds: ['node-001'],
+        targetNodeHostnames: ['wj-plant-01'],
+        status: 'completed',
         createdAt: new Date().toISOString(),
         timeline: [],
       },
@@ -136,6 +148,7 @@ vi.mock('../services/api', async (importOriginal) => {
       { nodeId: 'node-001', hostname: 'wj-plant-01', overallStatus: 'passed', workloadStatus: 'Current', action: 'Skip', packages: [] },
       { nodeId: 'node-002', hostname: 'wj-plant-02', overallStatus: 'passed', workloadStatus: 'Current', action: 'Skip', packages: [] },
     ]),
+    downloadWorkloadRunReport: vi.fn().mockResolvedValue('test report text'),
     listNodeWorkloadStates: vi.fn().mockResolvedValue([
       { nodeId: 'node-001', workloadId: 'workload-001', workloadRevision: 'wrv-002', currentRevisionId: 'wrv-002', runId: '', status: 'completed', updatedAt: new Date().toISOString(), packageStatesJson: null },
       { nodeId: 'node-002', workloadId: 'workload-001', workloadRevision: 'wrv-002', currentRevisionId: 'wrv-002', runId: '', status: 'completed', updatedAt: new Date().toISOString(), packageStatesJson: null },
@@ -369,5 +382,36 @@ describe('Workload Runs page', () => {
     fireEvent.click(confirmCheckbox)
     expect(confirmCheckbox).toBeChecked()
     expect(confirmButton).not.toBeDisabled()
+  })
+
+  it('shows download report button for completed runs', async () => {
+    const row = screen.getByText('run-002').closest('tr')
+    expect(row).not.toBeNull()
+    fireEvent.click(row as HTMLTableRowElement)
+    const dialog = await screen.findByRole('dialog')
+
+    expect(within(dialog).getByText('Download Report')).toBeInTheDocument()
+  })
+
+  it('hides download report button for queued/running runs', async () => {
+    const row = screen.getByText('run-003').closest('tr')
+    expect(row).not.toBeNull()
+    fireEvent.click(row as HTMLTableRowElement)
+    const dialog = await screen.findByRole('dialog')
+
+    expect(within(dialog).queryByText('Download Report')).not.toBeInTheDocument()
+  })
+
+  it('download report button triggers download', async () => {
+    vi.mocked(downloadWorkloadRunReport).mockResolvedValueOnce('test report content')
+
+    const row = screen.getByText('run-002').closest('tr')
+    expect(row).not.toBeNull()
+    fireEvent.click(row as HTMLTableRowElement)
+    const dialog = await screen.findByRole('dialog')
+
+    fireEvent.click(within(dialog).getByText('Download Report'))
+
+    expect(downloadWorkloadRunReport).toHaveBeenCalledWith('run-002')
   })
 })

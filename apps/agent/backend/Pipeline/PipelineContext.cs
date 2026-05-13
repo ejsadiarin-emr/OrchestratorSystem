@@ -1,3 +1,4 @@
+using DeploymentPoC.Agent.Steps;
 using DeploymentPoC.Contracts.Runtime.RunPayloads;
 
 namespace DeploymentPoC.Agent.Pipeline;
@@ -15,6 +16,12 @@ public sealed class PipelineContext
     public List<PackageAssignment> CurrentPackages { get; set; } = new();
 
     public List<StepRecord> StepHistory { get; } = new();
+
+    public Dictionary<string, PreCheckResult> PreCheckResults { get; set; } = new();
+
+    public Dictionary<string, PostVerifyResult> PostVerifyResults { get; set; } = new();
+
+    public DateTime PipelineStartUtc { get; set; } = DateTime.UtcNow;
 
     public void RecordStep(string stepName, int packageIndex, string packageId, bool success, string? error = null)
     {

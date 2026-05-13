@@ -1373,6 +1373,14 @@ export async function getWorkloadRunSteps(runId: string): Promise<WorkloadRunTim
   }))
 }
 
+export async function downloadWorkloadRunReport(runId: string): Promise<string> {
+  const response = await fetch(`/api/workload-runs/${runId}/report`)
+  if (!response.ok) {
+    throw new Error(`Report not available: ${response.status}`)
+  }
+  return response.text()
+}
+
 export async function cancelWorkloadRun(runId: string): Promise<WorkloadRun> {
   const response = await fetch(`/api/workload-runs/${runId}/cancel`, {
     method: 'POST',

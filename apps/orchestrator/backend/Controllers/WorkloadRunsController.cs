@@ -697,6 +697,11 @@ public sealed class WorkloadRunsController : ControllerBase
             run.CompletedAtUtc = now;
         }
 
+        if (!string.IsNullOrWhiteSpace(request.Report))
+        {
+            run.ReportText = request.Report;
+        }
+
         await _db.SaveChangesAsync();
 
         if (request.Status == "Completed" && agentId.HasValue)
@@ -715,6 +720,23 @@ public sealed class WorkloadRunsController : ControllerBase
         }
 
         return NoContent();
+    }
+
+    [HttpGet("{runId:guid}/report")]
+    public async Task<IActionResult> GetReport(Guid runId)
+    {
+        var run = await _db.WorkloadRuns.FirstOrDefaultAsync(r => r.RunId == runId);
+        if (run == null)
+        {
+            return NotFound();
+        }
+
+        if (string.IsNullOrWhiteSpace(run.ReportText))
+        {
+            return NotFound();
+        }
+
+        return Content(run.ReportText, "text/plain");
     }
 
     [HttpPost("{runId:guid}/timeline")]

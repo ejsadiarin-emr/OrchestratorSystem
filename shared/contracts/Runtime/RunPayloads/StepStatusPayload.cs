@@ -14,4 +14,6 @@ public sealed class FinalizationPayload
     public string Result { get; set; } = string.Empty;
     public string? Error { get; set; }
     public int StepCount { get; set; }
+    public string? Report { get; set; }
+    public int? ReasonCode { get; set; }
 }

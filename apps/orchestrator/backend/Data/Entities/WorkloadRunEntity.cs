@@ -22,4 +22,5 @@ public sealed class WorkloadRunEntity
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAtUtc { get; set; }
     public bool ForceInstall { get; set; }
+    public string? ReportText { get; set; }
 }

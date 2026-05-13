@@ -72,6 +72,7 @@ public sealed class RunStatusUpdateRequest
 {
     public string Status { get; set; } = string.Empty;
     public string? Error { get; set; }
+    public string? Report { get; set; }
 }
 
 public sealed class TimelineEventRequest

@@ -218,6 +218,7 @@ public sealed class InstallerDbContext : DbContext
                 .HasForeignKey(x => x.NodeId)
                 .OnDelete(DeleteBehavior.SetNull);
             entity.Property(x => x.RevisionSnapshotJson).HasMaxLength(8192);
+            entity.Property(x => x.ReportText).HasColumnType("TEXT");
             entity.HasIndex(x => x.IdempotencyKey).IsUnique();
             entity.HasIndex(x => new { x.NodeId, x.WorkloadId })
                 .HasDatabaseName("IX_WorkloadRuns_NodeId_WorkloadId_Active")

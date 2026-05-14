@@ -96,3 +96,5 @@ test-artifacts/
 **/*.exe
 *.zip
 **/*.zip
+.artifact-cache
+**/*.db

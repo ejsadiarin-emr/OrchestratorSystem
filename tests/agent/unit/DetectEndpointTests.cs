@@ -1,11 +1,10 @@
-using System.Net;
 using System.Text;
 using System.Text.Json;
 using DeploymentPoC.Agent.Steps;
 using DeploymentPoC.Contracts.Runtime.Probes;
 using DeploymentPoC.Contracts.Runtime.RunPayloads;
 using Microsoft.AspNetCore.Http;
-using Xunit;
+using NUnit.Framework;
 using ProbesPreCheckStatus = DeploymentPoC.Contracts.Runtime.Probes.PreCheckStatus;
 
 namespace DeploymentPoC.Agent.Tests;
@@ -35,7 +34,7 @@ public sealed class DetectEndpointTests
         return JsonSerializer.Deserialize<DetectResponse>(json, JsonOptions)!;
     }
 
-    [Fact]
+    [Test]
     public async Task ValidRequest_WithMultiplePackages_ReturnsPerPackageResults()
     {
         var request = new DetectRequest
@@ -50,20 +49,20 @@ public sealed class DetectEndpointTests
         var context = CreateContext(request);
         await DetectEndpointHandler.HandleAsync(context);
 
-        Assert.Equal(200, context.Response.StatusCode);
+        Assert.That(context.Response.StatusCode, Is.EqualTo(200));
 
         var response = await ReadResponseAsync(context);
-        Assert.NotNull(response);
-        Assert.Equal(2, response.Results.Count);
+        Assert.That(response, Is.Not.Null);
+        Assert.That(response.Results.Count, Is.EqualTo(2));
 
-        Assert.Equal("pkg-a", response.Results[0].Name);
-        Assert.Equal("pkg-b", response.Results[1].Name);
+        Assert.That(response.Results[0].Name, Is.EqualTo("pkg-a"));
+        Assert.That(response.Results[1].Name, Is.EqualTo("pkg-b"));
 
-        Assert.NotNull(response.DiskInfo);
-        Assert.NotNull(response.DiskInfo.Drive);
+        Assert.That(response.DiskInfo, Is.Not.Null);
+        Assert.That(response.DiskInfo.Drive, Is.Not.Null);
     }
 
-    [Fact]
+    [Test]
     public async Task EmptyPackagesArray_Returns200WithEmptyResults()
     {
         var request = new DetectRequest { Packages = new List<PackageDetectionRequest>() };
@@ -71,15 +70,15 @@ public sealed class DetectEndpointTests
 
         await DetectEndpointHandler.HandleAsync(context);
 
-        Assert.Equal(200, context.Response.StatusCode);
+        Assert.That(context.Response.StatusCode, Is.EqualTo(200));
 
         var response = await ReadResponseAsync(context);
-        Assert.NotNull(response);
-        Assert.Empty(response.Results);
-        Assert.NotNull(response.DiskInfo);
+        Assert.That(response, Is.Not.Null);
+        Assert.That(response.Results, Is.Empty);
+        Assert.That(response.DiskInfo, Is.Not.Null);
     }
 
-    [Fact]
+    [Test]
     public async Task PackageWithFileDetectionType_ReturnsCorrectStatusAndVersion()
     {
         var cmdPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
@@ -104,14 +103,14 @@ public sealed class DetectEndpointTests
         var context = CreateContext(request);
         await DetectEndpointHandler.HandleAsync(context);
 
-        Assert.Equal(200, context.Response.StatusCode);
+        Assert.That(context.Response.StatusCode, Is.EqualTo(200));
 
         var response = await ReadResponseAsync(context);
-        Assert.Single(response.Results);
-        Assert.Equal(ProbesPreCheckStatus.AlreadySatisfied, response.Results[0].Status);
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Status, Is.EqualTo(ProbesPreCheckStatus.AlreadySatisfied));
     }
 
-    [Fact]
+    [Test]
     public async Task PackageWithVersionManifestDetectionType_ReturnsCorrectStatus()
     {
         var cmdPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
@@ -137,14 +136,14 @@ public sealed class DetectEndpointTests
         var context = CreateContext(request);
         await DetectEndpointHandler.HandleAsync(context);
 
-        Assert.Equal(200, context.Response.StatusCode);
+        Assert.That(context.Response.StatusCode, Is.EqualTo(200));
 
         var response = await ReadResponseAsync(context);
-        Assert.Single(response.Results);
-        Assert.Equal(ProbesPreCheckStatus.AlreadySatisfied, response.Results[0].Status);
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Status, Is.EqualTo(ProbesPreCheckStatus.AlreadySatisfied));
     }
 
-    [Fact]
+    [Test]
     public async Task PackageWithVersionManifest_WithMatchingVersion_ReturnsAlreadySatisfied()
     {
         var cmdPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
@@ -171,14 +170,14 @@ public sealed class DetectEndpointTests
         var context = CreateContext(request);
         await DetectEndpointHandler.HandleAsync(context);
 
-        Assert.Equal(200, context.Response.StatusCode);
+        Assert.That(context.Response.StatusCode, Is.EqualTo(200));
 
         var response = await ReadResponseAsync(context);
-        Assert.Single(response.Results);
-        Assert.Equal(ProbesPreCheckStatus.AlreadySatisfied, response.Results[0].Status);
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Status, Is.EqualTo(ProbesPreCheckStatus.AlreadySatisfied));
     }
 
-    [Fact]
+    [Test]
     public async Task PackageWithRegistryDetectionType_ReturnsNotPresent()
     {
         var request = new DetectRequest
@@ -202,14 +201,14 @@ public sealed class DetectEndpointTests
         var context = CreateContext(request);
         await DetectEndpointHandler.HandleAsync(context);
 
-        Assert.Equal(200, context.Response.StatusCode);
+        Assert.That(context.Response.StatusCode, Is.EqualTo(200));
 
         var response = await ReadResponseAsync(context);
-        Assert.Single(response.Results);
-        Assert.Equal(ProbesPreCheckStatus.NotPresent, response.Results[0].Status);
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Status, Is.EqualTo(ProbesPreCheckStatus.NotPresent));
     }
 
-    [Fact]
+    [Test]
     public async Task NullBody_Returns400()
     {
         var context = new DefaultHttpContext();
@@ -219,10 +218,10 @@ public sealed class DetectEndpointTests
 
         await DetectEndpointHandler.HandleAsync(context);
 
-        Assert.Equal(400, context.Response.StatusCode);
+        Assert.That(context.Response.StatusCode, Is.EqualTo(400));
     }
 
-    [Fact]
+    [Test]
     public async Task NonExistentFile_WithVersionManifest_ReturnsNotPresent()
     {
         var request = new DetectRequest
@@ -246,14 +245,14 @@ public sealed class DetectEndpointTests
         var context = CreateContext(request);
         await DetectEndpointHandler.HandleAsync(context);
 
-        Assert.Equal(200, context.Response.StatusCode);
+        Assert.That(context.Response.StatusCode, Is.EqualTo(200));
 
         var response = await ReadResponseAsync(context);
-        Assert.Single(response.Results);
-        Assert.Equal(ProbesPreCheckStatus.NotPresent, response.Results[0].Status);
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Status, Is.EqualTo(ProbesPreCheckStatus.NotPresent));
     }
 
-    [Fact]
+    [Test]
     public async Task UnsupportedDetectionType_ReturnsNotPresent()
     {
         var request = new DetectRequest
@@ -277,11 +276,11 @@ public sealed class DetectEndpointTests
         var context = CreateContext(request);
         await DetectEndpointHandler.HandleAsync(context);
 
-        Assert.Equal(200, context.Response.StatusCode);
+        Assert.That(context.Response.StatusCode, Is.EqualTo(200));
 
         var response = await ReadResponseAsync(context);
-        Assert.Single(response.Results);
-        Assert.Equal(ProbesPreCheckStatus.NotPresent, response.Results[0].Status);
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Status, Is.EqualTo(ProbesPreCheckStatus.NotPresent));
     }
 
     private sealed class DetectResponse

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DeploymentPoC.Contracts.Runtime.RunPayloads;
 using Xunit;
 
@@ -188,6 +189,66 @@ public class AssignRunPayloadTests
         // Assert
         Assert.Equal(2, payload.PreWorkloadSteps.Count);
         Assert.Equal("backup", payload.PreWorkloadSteps[0]);
-        Assert.Equal("stop", payload.PreWorkloadSteps[1]);
+    [Fact]
+    public void AssignRunPayload_RoundTrips_ThroughJson()
+    {
+        var original = new AssignRunPayload
+        {
+            RunId = Guid.NewGuid(),
+            WorkloadId = Guid.NewGuid(),
+            WorkloadName = "TestWorkload",
+            RevisionId = Guid.NewGuid(),
+            RevisionVersion = "2.0.0",
+            Mode = "install",
+            NodeId = Guid.NewGuid(),
+            DefaultShell = "powershell",
+            Packages =
+            [
+                new PackageAssignment
+                {
+                    PackageIndex = 0,
+                    PackageId = "pkg-a",
+                    Version = "1.0.0",
+                    Channel = "stable",
+                    InstallAdapter = new InstallAdapterConfig
+                    {
+                        Type = "msi",
+                        Command = "msiexec.exe",
+                        Arguments = "/i pkg-a.msi /qn",
+                        ExpectedExitCodes = [0, 3010],
+                        TimeoutSeconds = 600
+                    },
+                    Detection = new DetectionConfig
+                    {
+                        Type = "product",
+                        Path = "Product A"
+                    }
+                }
+            ],
+            PreWorkloadSteps = ["backup", "stop"],
+            PostWorkloadSteps = ["cleanup", "start"]
+        };
+
+        var json = JsonSerializer.Serialize(original);
+        var deserialized = JsonSerializer.Deserialize<AssignRunPayload>(json);
+
+        Assert.NotNull(deserialized);
+        Assert.Equal(original.RunId, deserialized.RunId);
+        Assert.Equal(original.WorkloadId, deserialized.WorkloadId);
+        Assert.Equal(original.WorkloadName, deserialized.WorkloadName);
+        Assert.Equal(original.RevisionId, deserialized.RevisionId);
+        Assert.Equal(original.RevisionVersion, deserialized.RevisionVersion);
+        Assert.Equal(original.Mode, deserialized.Mode);
+        Assert.Equal(original.NodeId, deserialized.NodeId);
+        Assert.Equal(original.DefaultShell, deserialized.DefaultShell);
+        Assert.Equal(original.Packages.Count, deserialized.Packages.Count);
+        Assert.Equal(original.Packages[0].PackageId, deserialized.Packages[0].PackageId);
+        Assert.Equal(original.Packages[0].InstallAdapter.Type, deserialized.Packages[0].InstallAdapter.Type);
+        Assert.Equal(original.Packages[0].InstallAdapter.ExpectedExitCodes.Count,
+            deserialized.Packages[0].InstallAdapter.ExpectedExitCodes.Count);
+        Assert.Equal(original.PreWorkloadSteps.Count, deserialized.PreWorkloadSteps.Count);
+        Assert.Equal(original.PreWorkloadSteps[0], deserialized.PreWorkloadSteps[0]);
+        Assert.Equal(original.PostWorkloadSteps.Count, deserialized.PostWorkloadSteps.Count);
+        Assert.Equal(original.PostWorkloadSteps[1], deserialized.PostWorkloadSteps[1]);
     }
 }

@@ -6,28 +6,28 @@ namespace DeploymentPoC.Agent.IntegrationTests;
 public sealed class HostConfigurationTests
 {
     [Test]
-    public void ConfigureHostBuilder_SelectsWindowsService_WhenOnWindows()
+    public void GetServiceTypeForPlatform_WindowsPlatform_ReturnsWindowsService()
     {
         var config = new HostPlatformConfiguration();
         Assert.That(config.GetServiceTypeForPlatform("windows"), Is.EqualTo(HostServiceType.WindowsService));
     }
 
     [Test]
-    public void ConfigureHostBuilder_SelectsSystemd_WhenOnLinux()
+    public void GetServiceTypeForPlatform_LinuxPlatform_ReturnsSystemd()
     {
         var config = new HostPlatformConfiguration();
         Assert.That(config.GetServiceTypeForPlatform("linux"), Is.EqualTo(HostServiceType.Systemd));
     }
 
     [Test]
-    public void ConfigureHostBuilder_SelectsNone_WhenOnUnknownPlatform()
+    public void GetServiceTypeForPlatform_UnknownPlatform_ReturnsNone()
     {
         var config = new HostPlatformConfiguration();
         Assert.That(config.GetServiceTypeForPlatform("unknown"), Is.EqualTo(HostServiceType.None));
     }
 
     [Test]
-    public void ConfigureHostBuilder_DefaultsToCurrentPlatform()
+    public void GetCurrentServiceType_OnCurrentPlatform_ReturnsCorrectType()
     {
         var config = new HostPlatformConfiguration();
         var result = config.GetCurrentServiceType();

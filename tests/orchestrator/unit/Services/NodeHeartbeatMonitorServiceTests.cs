@@ -12,15 +12,16 @@ namespace DeploymentPoC.Orchestrator.Tests.Services;
 [TestFixture]
 public class NodeHeartbeatMonitorServiceTests
 {
+    private SqliteConnection _connection = null!;
     private ServiceProvider _serviceProvider = null!;
 
     [SetUp]
     public void SetUp()
     {
-        var connection = new SqliteConnection("Data Source=:memory:");
-        connection.Open();
+        _connection = new SqliteConnection("Data Source=:memory:");
+        _connection.Open();
         var services = new ServiceCollection();
-        services.AddDbContext<InstallerDbContext>(options => options.UseSqlite(connection));
+        services.AddDbContext<InstallerDbContext>(options => options.UseSqlite(_connection));
         services.AddLogging();
         _serviceProvider = services.BuildServiceProvider();
 
@@ -33,6 +34,7 @@ public class NodeHeartbeatMonitorServiceTests
     public void TearDown()
     {
         _serviceProvider.Dispose();
+        _connection.Dispose();
     }
 
     private NodeHeartbeatMonitorService CreateService()
@@ -41,60 +43,114 @@ public class NodeHeartbeatMonitorServiceTests
         return new NodeHeartbeatMonitorService(_serviceProvider, loggerMock.Object);
     }
 
-    [Test]
-    public async Task ScanAsync_DetectsStaleNodes()
+    private InstallerDbContext CreateDbContext()
     {
-        using var scope = _serviceProvider.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<InstallerDbContext>();
-
-        var staleNode = new NodeEntity
-        {
-            NodeId = Guid.NewGuid(),
-            Hostname = "stale",
-            LastSeenUtc = DateTime.UtcNow.AddMinutes(-5)
-        };
-        db.Nodes.Add(staleNode);
-        await db.SaveChangesAsync();
-
-        var service = CreateService();
-        Assert.DoesNotThrowAsync(async () => await service.ScanAsync(CancellationToken.None));
+        var scope = _serviceProvider.CreateScope();
+        return scope.ServiceProvider.GetRequiredService<InstallerDbContext>();
     }
 
     [Test]
-    public async Task ScanAsync_DoesNotAffectFreshOnlineNodes()
+    public async Task ScanAsync_DetectsStaleNodes_TransitionsToOffline()
     {
-        using var scope = _serviceProvider.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<InstallerDbContext>();
+        var staleId = Guid.NewGuid();
+        var staleLastSeen = DateTime.UtcNow.AddMinutes(-5);
 
-        var freshNode = new NodeEntity
+        using (var db = CreateDbContext())
         {
-            NodeId = Guid.NewGuid(),
-            Hostname = "fresh",
-            LastSeenUtc = DateTime.UtcNow.AddSeconds(-30)
-        };
-        db.Nodes.Add(freshNode);
-        await db.SaveChangesAsync();
+            db.Nodes.Add(TestSeedBuilder.CreateNode(nodeId: staleId, hostname: "stale", status: "Online", lastSeenUtc: staleLastSeen));
+            await db.SaveChangesAsync();
+        }
 
         var service = CreateService();
         Assert.DoesNotThrowAsync(async () => await service.ScanAsync(CancellationToken.None));
+
+        using (var db = CreateDbContext())
+        {
+            var node = await db.Nodes.FindAsync(staleId);
+            Assert.That(node, Is.Not.Null);
+            Assert.That(node!.Status, Is.EqualTo("Offline"));
+        }
     }
 
     [Test]
-    public async Task ScanAsync_DoesNotAffectAlreadyOfflineNodes()
+    public async Task ScanAsync_LeavesFreshOnlineNodes_Online()
     {
-        using var scope = _serviceProvider.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<InstallerDbContext>();
+        var freshId = Guid.NewGuid();
+        var freshLastSeen = DateTime.UtcNow.AddSeconds(-30);
 
-        var offlineNode = new NodeEntity
+        using (var db = CreateDbContext())
         {
-            NodeId = Guid.NewGuid(),
-            Hostname = "offline",
-            LastSeenUtc = DateTime.UtcNow.AddMinutes(-5)
-        };
-        db.Nodes.Add(offlineNode);
-        await db.SaveChangesAsync();
+            db.Nodes.Add(TestSeedBuilder.CreateNode(nodeId: freshId, hostname: "fresh", status: "Online", lastSeenUtc: freshLastSeen));
+            await db.SaveChangesAsync();
+        }
 
         var service = CreateService();
         Assert.DoesNotThrowAsync(async () => await service.ScanAsync(CancellationToken.None));
+
+        using (var db = CreateDbContext())
+        {
+            var node = await db.Nodes.FindAsync(freshId);
+            Assert.That(node, Is.Not.Null);
+            Assert.That(node!.Status, Is.EqualTo("Online"));
+        }
+    }
+
+    [Test]
+    public async Task ScanAsync_DoesNotReprocessAlreadyOfflineNodes()
+    {
+        var offlineId = Guid.NewGuid();
+        var offlineLastSeen = DateTime.UtcNow.AddMinutes(-5);
+
+        using (var db = CreateDbContext())
+        {
+            db.Nodes.Add(TestSeedBuilder.CreateNode(nodeId: offlineId, hostname: "offline", status: "Offline", lastSeenUtc: offlineLastSeen));
+            await db.SaveChangesAsync();
+        }
+
+        var service = CreateService();
+        Assert.DoesNotThrowAsync(async () => await service.ScanAsync(CancellationToken.None));
+
+        using (var db = CreateDbContext())
+        {
+            var node = await db.Nodes.FindAsync(offlineId);
+            Assert.That(node, Is.Not.Null);
+            Assert.That(node!.Status, Is.EqualTo("Offline"));
+            Assert.That(node.LastSeenUtc, Is.EqualTo(offlineLastSeen));
+        }
+    }
+
+    [Test]
+    public async Task ScanAsync_BulkTransition_MultipleStaleNodes()
+    {
+        var staleId1 = Guid.NewGuid();
+        var staleId2 = Guid.NewGuid();
+        var freshId = Guid.NewGuid();
+        var staleTime = DateTime.UtcNow.AddMinutes(-5);
+
+        using (var db = CreateDbContext())
+        {
+            db.Nodes.Add(TestSeedBuilder.CreateNode(nodeId: staleId1, hostname: "stale-1", status: "Online", lastSeenUtc: staleTime));
+            db.Nodes.Add(TestSeedBuilder.CreateNode(nodeId: staleId2, hostname: "stale-2", status: "Online", lastSeenUtc: staleTime));
+            db.Nodes.Add(TestSeedBuilder.CreateNode(nodeId: freshId, hostname: "fresh", status: "Online", lastSeenUtc: DateTime.UtcNow.AddSeconds(-30)));
+            await db.SaveChangesAsync();
+        }
+
+        var service = CreateService();
+        Assert.DoesNotThrowAsync(async () => await service.ScanAsync(CancellationToken.None));
+
+        using (var db = CreateDbContext())
+        {
+            var stale1 = await db.Nodes.FindAsync(staleId1);
+            Assert.That(stale1, Is.Not.Null);
+            Assert.That(stale1!.Status, Is.EqualTo("Offline"));
+
+            var stale2 = await db.Nodes.FindAsync(staleId2);
+            Assert.That(stale2, Is.Not.Null);
+            Assert.That(stale2!.Status, Is.EqualTo("Offline"));
+
+            var fresh = await db.Nodes.FindAsync(freshId);
+            Assert.That(fresh, Is.Not.Null);
+            Assert.That(fresh!.Status, Is.EqualTo("Online"));
+        }
     }
 }

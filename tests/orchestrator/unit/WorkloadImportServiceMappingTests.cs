@@ -2,6 +2,7 @@ using DeploymentPoC.Contracts.Runtime.RunPayloads;
 using DeploymentPoC.Orchestrator.Data;
 using DeploymentPoC.Orchestrator.Data.Entities;
 using DeploymentPoC.Orchestrator.Services;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using NUnit.Framework;
 
@@ -9,16 +10,20 @@ namespace DeploymentPoC.Orchestrator.Tests;
 
 public class PackageAssignmentSlugTests
 {
+    private SqliteConnection _connection = null!;
     private InstallerDbContext _db = null!;
     private WorkloadImportService _service = null!;
 
     [SetUp]
     public void SetUp()
     {
+        _connection = new SqliteConnection("Data Source=:memory:");
+        _connection.Open();
         var options = new DbContextOptionsBuilder<InstallerDbContext>()
-            .UseInMemoryDatabase($"WorkloadImportTest_{Guid.NewGuid()}")
+            .UseSqlite(_connection)
             .Options;
         _db = new InstallerDbContext(options);
+        _db.Database.EnsureCreated();
         _service = new WorkloadImportService(_db);
     }
 
@@ -26,6 +31,7 @@ public class PackageAssignmentSlugTests
     public void TearDown()
     {
         _db.Dispose();
+        _connection.Dispose();
     }
 
     [Test]

@@ -1,7 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { axe } from 'vitest-axe'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Nodes from './Nodes'
 import { listNodes, listEnrollmentTokens, updateNodeDisplayName, deleteNode } from '../services/api'
+import { TestRouterWrapper } from '../test-utils/TestRouterWrapper'
 
 vi.mock('../services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../services/api')>()
@@ -54,20 +57,21 @@ describe('Nodes page', () => {
   })
 
   it('renders registered nodes and enrollment tokens sections', async () => {
-    render(<Nodes />)
+    render(<Nodes />, { wrapper: TestRouterWrapper })
     await screen.findByText('Registered Nodes')
     expect(screen.getByText('Enrollment Tokens')).toBeInTheDocument()
     expect(screen.getByText('Plant Line A')).toBeInTheDocument()
   })
 
   it('opens token creation modal and shows result', async () => {
-    render(<Nodes />)
+    const user = userEvent.setup()
+    render(<Nodes />, { wrapper: TestRouterWrapper })
     await screen.findByText('Registered Nodes')
 
-    fireEvent.click(screen.getByText('Generate Token'))
+    await user.click(screen.getByText('Generate Token'))
     await screen.findByText('Generate Enrollment Token')
 
-    fireEvent.click(screen.getByText('Generate'))
+    await user.click(screen.getByText('Generate'))
 
     await waitFor(() => {
       expect(screen.getByText('Enrollment Token Created')).toBeInTheDocument()
@@ -77,15 +81,17 @@ describe('Nodes page', () => {
   })
 
   it('allows inline rename of a node', async () => {
-    render(<Nodes />)
+    const user = userEvent.setup()
+    render(<Nodes />, { wrapper: TestRouterWrapper })
     await screen.findByText('Plant Line A')
 
     const renameButton = screen.getByTitle('Rename')
-    fireEvent.click(renameButton)
+    await user.click(renameButton)
 
     const input = screen.getByDisplayValue('Plant Line A')
-    fireEvent.change(input, { target: { value: 'Renamed Node' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
+    await user.clear(input)
+    await user.type(input, 'Renamed Node')
+    await user.keyboard('{Enter}')
 
     await waitFor(() => {
       expect(updateNodeDisplayName).toHaveBeenCalledWith('node-001', 'Renamed Node')
@@ -93,16 +99,17 @@ describe('Nodes page', () => {
   })
 
   it('allows deleting a node with confirmation', async () => {
-    render(<Nodes />)
+    const user = userEvent.setup()
+    render(<Nodes />, { wrapper: TestRouterWrapper })
     await screen.findByText('Plant Line A')
 
     const deleteButton = screen.getByTitle('Delete')
-    fireEvent.click(deleteButton)
+    await user.click(deleteButton)
 
     await screen.findByText('Delete Node')
     expect(screen.getByText(/Are you sure/)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByText('Delete'))
+    await user.click(screen.getByText('Delete'))
 
     await waitFor(() => {
       expect(deleteNode).toHaveBeenCalledWith('node-001')
@@ -115,7 +122,7 @@ describe('Nodes page polling', () => {
     const setIntervalSpy = vi.spyOn(window, 'setInterval')
     const clearIntervalSpy = vi.spyOn(window, 'clearInterval')
 
-    const { unmount } = render(<Nodes />)
+    const { unmount } = render(<Nodes />, { wrapper: TestRouterWrapper })
     await screen.findByText('Registered Nodes')
 
     const intervalCalls = setIntervalSpy.mock.calls.filter(call => call[1] === 5_000)
@@ -133,7 +140,7 @@ describe('Nodes page polling', () => {
   it('polls node list and tokens every 5 seconds', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
 
-    render(<Nodes />)
+    render(<Nodes />, { wrapper: TestRouterWrapper })
     await screen.findByText('Registered Nodes')
 
     const initialCalls = vi.mocked(listNodes).mock.calls.length
@@ -155,7 +162,7 @@ describe('Nodes page polling', () => {
   it('stops polling on unmount', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
 
-    const { unmount } = render(<Nodes />)
+    const { unmount } = render(<Nodes />, { wrapper: TestRouterWrapper })
     await screen.findByText('Registered Nodes')
 
     const callsAfterMount = vi.mocked(listNodes).mock.calls.length
@@ -225,19 +232,34 @@ describe('Nodes page status badges', () => {
       },
     ])
 
-    render(<Nodes />)
+    render(<Nodes />, { wrapper: TestRouterWrapper })
     await screen.findByText('Registered Nodes')
 
-    const onlineBadge = screen.getByText('online')
-    expect(onlineBadge.className).toMatch(/bg-emerald-/)
+    expect(screen.getByTestId('node-status-online')).toBeInTheDocument()
+    expect(screen.getByTestId('node-status-offline')).toBeInTheDocument()
+    expect(screen.getByTestId('node-status-installing')).toBeInTheDocument()
+    expect(screen.getByTestId('node-status-enrolling')).toBeInTheDocument()
+  })
 
-    const offlineBadge = screen.getByText('offline')
-    expect(offlineBadge.className).toMatch(/bg-slate-/)
+  it('has no accessibility violations', async () => {
+    vi.mocked(listNodes).mockResolvedValueOnce([
+      {
+        id: 'node-online',
+        hostname: 'online-host',
+        displayName: 'Online Host',
+        ipAddress: '10.0.0.1',
+        status: 'online',
+        description: '',
+        osVersion: '',
+        agentVersion: '',
+        firstConnectedAt: new Date().toISOString(),
+        lastSeenAt: new Date().toISOString(),
+      },
+    ])
 
-    const installingBadge = screen.getByText('installing')
-    expect(installingBadge.className).toMatch(/bg-amber-/)
-
-    const enrollingBadge = screen.getByText('enrolling')
-    expect(enrollingBadge.className).toMatch(/bg-blue-/)
+    const { container } = render(<Nodes />, { wrapper: TestRouterWrapper })
+    await screen.findByText('Registered Nodes')
+    const results = await axe(container)
+    expect(results.violations).toEqual([])
   })
 })

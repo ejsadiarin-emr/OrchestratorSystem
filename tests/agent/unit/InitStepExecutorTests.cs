@@ -2,13 +2,13 @@ using DeploymentPoC.Agent.Pipeline;
 using DeploymentPoC.Agent.Steps;
 using DeploymentPoC.Contracts.Runtime.RunPayloads;
 using Moq;
-using Xunit;
+using NUnit.Framework;
 
 namespace DeploymentPoC.Agent.Tests;
 
 public sealed class InitStepExecutorTests
 {
-    [Fact]
+    [Test]
     public async Task ExecuteAsync_SuccessfulCommand_ReturnsSuccess()
     {
         var executor = new InitStepExecutor();
@@ -28,17 +28,17 @@ public sealed class InitStepExecutorTests
             },
             ct: CancellationToken.None);
 
-        Assert.True(result.Success);
-        Assert.Equal(0, result.ExitCode);
-        Assert.Null(result.ErrorOutput);
-        Assert.Equal(2, statusCalls.Count);
-        Assert.Equal("Running", statusCalls[0].Status);
-        Assert.Equal("Completed", statusCalls[1].Status);
-        Assert.Equal("PreInit_0_0", statusCalls[0].StepName);
-        Assert.Equal(0, statusCalls[0].PackageIndex);
+        Assert.That(result.Success, Is.True);
+        Assert.That(result.ExitCode, Is.EqualTo(0));
+        Assert.That(result.ErrorOutput, Is.Null);
+        Assert.That(statusCalls.Count, Is.EqualTo(2));
+        Assert.That(statusCalls[0].Status, Is.EqualTo("Running"));
+        Assert.That(statusCalls[1].Status, Is.EqualTo("Completed"));
+        Assert.That(statusCalls[0].StepName, Is.EqualTo("PreInit_0_0"));
+        Assert.That(statusCalls[0].PackageIndex, Is.EqualTo(0));
     }
 
-    [Fact]
+    [Test]
     public async Task ExecuteAsync_FailedCommand_ReturnsFailure()
     {
         var executor = new InitStepExecutor();
@@ -58,14 +58,14 @@ public sealed class InitStepExecutorTests
             },
             ct: CancellationToken.None);
 
-        Assert.False(result.Success);
-        Assert.Equal(1, result.ExitCode);
-        Assert.Equal(2, statusCalls.Count);
-        Assert.Equal("Running", statusCalls[0].Status);
-        Assert.Equal("Failed", statusCalls[1].Status);
+        Assert.That(result.Success, Is.False);
+        Assert.That(result.ExitCode, Is.EqualTo(1));
+        Assert.That(statusCalls.Count, Is.EqualTo(2));
+        Assert.That(statusCalls[0].Status, Is.EqualTo("Running"));
+        Assert.That(statusCalls[1].Status, Is.EqualTo("Failed"));
     }
 
-    [Fact]
+    [Test]
     public async Task ExecuteAsync_Timeout_KillsProcessAndReturnsFailure()
     {
         var executor = new InitStepExecutor();
@@ -85,16 +85,16 @@ public sealed class InitStepExecutorTests
             },
             ct: CancellationToken.None);
 
-        Assert.False(result.Success);
-        Assert.Equal(-1, result.ExitCode);
-        Assert.Equal("timeout", result.ErrorOutput);
-        Assert.Equal(2, statusCalls.Count);
-        Assert.Equal("Running", statusCalls[0].Status);
-        Assert.Equal("Failed", statusCalls[1].Status);
-        Assert.Equal("timeout", statusCalls[1].Error);
+        Assert.That(result.Success, Is.False);
+        Assert.That(result.ExitCode, Is.EqualTo(-1));
+        Assert.That(result.ErrorOutput, Is.EqualTo("timeout"));
+        Assert.That(statusCalls.Count, Is.EqualTo(2));
+        Assert.That(statusCalls[0].Status, Is.EqualTo("Running"));
+        Assert.That(statusCalls[1].Status, Is.EqualTo("Failed"));
+        Assert.That(statusCalls[1].Error, Is.EqualTo("timeout"));
     }
 
-    [Fact]
+    [Test]
     public async Task ExecuteAsync_EnvVars_InjectedIntoProcess()
     {
         var executor = new InitStepExecutor();
@@ -117,11 +117,11 @@ public sealed class InitStepExecutorTests
             },
             ct: CancellationToken.None);
 
-        Assert.True(result.Success);
-        Assert.Equal(0, result.ExitCode);
+        Assert.That(result.Success, Is.True);
+        Assert.That(result.ExitCode, Is.EqualTo(0));
     }
 
-    [Fact]
+    [Test]
     public async Task ExecuteAsync_SendStatusCalledInCorrectSequence()
     {
         var executor = new InitStepExecutor();
@@ -141,21 +141,21 @@ public sealed class InitStepExecutorTests
             },
             ct: CancellationToken.None);
 
-        Assert.True(result.Success);
-        Assert.Equal(2, statusCalls.Count);
+        Assert.That(result.Success, Is.True);
+        Assert.That(statusCalls.Count, Is.EqualTo(2));
 
         var first = statusCalls[0];
-        Assert.Equal("Running", first.Status);
-        Assert.Equal("PostWorkload_0", first.StepName);
-        Assert.Equal(2, first.PackageIndex);
+        Assert.That(first.Status, Is.EqualTo("Running"));
+        Assert.That(first.StepName, Is.EqualTo("PostWorkload_0"));
+        Assert.That(first.PackageIndex, Is.EqualTo(2));
 
         var second = statusCalls[1];
-        Assert.Equal("Completed", second.Status);
-        Assert.Equal("PostWorkload_0", second.StepName);
-        Assert.Equal(2, second.PackageIndex);
+        Assert.That(second.Status, Is.EqualTo("Completed"));
+        Assert.That(second.StepName, Is.EqualTo("PostWorkload_0"));
+        Assert.That(second.PackageIndex, Is.EqualTo(2));
     }
 
-    [Fact]
+    [Test]
     public async Task ExecuteAsync_PowerShellCommand_Success()
     {
         var executor = new InitStepExecutor();
@@ -175,11 +175,11 @@ public sealed class InitStepExecutorTests
             },
             ct: CancellationToken.None);
 
-        Assert.True(result.Success);
-        Assert.Equal(0, result.ExitCode);
+        Assert.That(result.Success, Is.True);
+        Assert.That(result.ExitCode, Is.EqualTo(0));
     }
 
-    [Fact]
+    [Test]
     public async Task ExecuteAsync_CancellationToken_KillsProcess()
     {
         var executor = new InitStepExecutor();
@@ -202,7 +202,7 @@ public sealed class InitStepExecutorTests
             },
             ct: cts.Token);
 
-        Assert.False(result.Success);
-        Assert.Equal("cancelled", result.ErrorOutput);
+        Assert.That(result.Success, Is.False);
+        Assert.That(result.ErrorOutput, Is.EqualTo("cancelled"));
     }
 }

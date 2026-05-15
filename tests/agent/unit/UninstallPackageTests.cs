@@ -1,6 +1,6 @@
 using DeploymentPoC.Agent.Steps;
 using DeploymentPoC.Contracts.Runtime.RunPayloads;
-using Xunit;
+using NUnit.Framework;
 
 namespace DeploymentPoC.Agent.Tests;
 
@@ -9,7 +9,7 @@ public sealed class UninstallPackageTests
     private static string Shell => OperatingSystem.IsWindows() ? "cmd.exe" : "sh";
     private static string ShellArgsPrefix => OperatingSystem.IsWindows() ? "/c" : "-c";
 
-    [Fact]
+    [Test]
     public async Task UninstallPackage_SuccessfulUninstall_WithValidExitCode()
     {
         var config = new InstallAdapterConfig
@@ -22,11 +22,11 @@ public sealed class UninstallPackageTests
 
         var result = await UninstallPackage.ExecuteAsync(config, CancellationToken.None);
 
-        Assert.True(result.Success);
-        Assert.Null(result.Error);
+        Assert.That(result.Success, Is.True);
+        Assert.That(result.Error, Is.Null);
     }
 
-    [Fact]
+    [Test]
     public async Task UninstallPackage_FailedUninstall_WithInvalidExitCode()
     {
         var config = new InstallAdapterConfig
@@ -39,11 +39,11 @@ public sealed class UninstallPackageTests
 
         var result = await UninstallPackage.ExecuteAsync(config, CancellationToken.None);
 
-        Assert.False(result.Success);
-        Assert.Equal("exit_code_1", result.Error);
+        Assert.That(result.Success, Is.False);
+        Assert.That(result.Error, Is.EqualTo("exit_code_1"));
     }
 
-    [Fact]
+    [Test]
     public async Task UninstallPackage_TimesOut_WhenCommandExceedsTimeout()
     {
         var config = new InstallAdapterConfig
@@ -58,11 +58,11 @@ public sealed class UninstallPackageTests
 
         var result = await UninstallPackage.ExecuteAsync(config, CancellationToken.None);
 
-        Assert.False(result.Success);
-        Assert.Equal("uninstall_timeout", result.Error);
+        Assert.That(result.Success, Is.False);
+        Assert.That(result.Error, Is.EqualTo("uninstall_timeout"));
     }
 
-    [Fact]
+    [Test]
     public async Task UninstallPackage_ReplacesArtifactPath_WhenPlaceholderPresent()
     {
         var tempFile = Path.Combine(Path.GetTempPath(), $"uninstall-test-{Guid.NewGuid():N}.txt");
@@ -82,8 +82,8 @@ public sealed class UninstallPackageTests
 
             var result = await UninstallPackage.ExecuteAsync(config, tempFile, CancellationToken.None);
 
-            Assert.True(result.Success);
-            Assert.Null(result.Error);
+            Assert.That(result.Success, Is.True);
+            Assert.That(result.Error, Is.Null);
         }
         finally
         {
@@ -92,7 +92,7 @@ public sealed class UninstallPackageTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task UninstallPackage_NoArtifactPathNeeded_WhenPlaceholderMissing()
     {
         var config = new InstallAdapterConfig
@@ -105,11 +105,11 @@ public sealed class UninstallPackageTests
 
         var result = await UninstallPackage.ExecuteAsync(config, CancellationToken.None);
 
-        Assert.True(result.Success);
-        Assert.Null(result.Error);
+        Assert.That(result.Success, Is.True);
+        Assert.That(result.Error, Is.Null);
     }
 
-    [Fact]
+    [Test]
     public async Task UninstallPackage_UsesArtifactPath_WhenCommandIsPlaceholder()
     {
         var config = new InstallAdapterConfig
@@ -122,11 +122,11 @@ public sealed class UninstallPackageTests
 
         var result = await UninstallPackage.ExecuteAsync(config, "cmd.exe", CancellationToken.None);
 
-        Assert.True(result.Success);
-        Assert.Null(result.Error);
+        Assert.That(result.Success, Is.True);
+        Assert.That(result.Error, Is.Null);
     }
 
-    [Fact]
+    [Test]
     public async Task UninstallPackage_UsesMsiexec_WhenTypeIsMsiAndCommandIsPlaceholder()
     {
         var tempFile = Path.Combine(Path.GetTempPath(), $"uninstall-msi-test-{Guid.NewGuid():N}.msi");
@@ -145,8 +145,8 @@ public sealed class UninstallPackageTests
             var result = await UninstallPackage.ExecuteAsync(config, tempFile, CancellationToken.None);
 
             // msiexec should run (so not command_not_found) but fail because the package is invalid
-            Assert.False(result.Success);
-            Assert.NotEqual("command_not_found", result.Error);
+            Assert.That(result.Success, Is.False);
+            Assert.That("command_not_found", Is.Not.EqualTo(result.Error));
         }
         finally
         {
@@ -155,7 +155,7 @@ public sealed class UninstallPackageTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task UninstallPackage_UsesUninstallCommand_WhenPresent()
     {
         var config = new InstallAdapterConfig
@@ -169,11 +169,11 @@ public sealed class UninstallPackageTests
 
         var result = await UninstallPackage.ExecuteAsync(config, "dummy-artifact.exe", CancellationToken.None);
 
-        Assert.True(result.Success);
-        Assert.Null(result.Error);
+        Assert.That(result.Success, Is.True);
+        Assert.That(result.Error, Is.Null);
     }
 
-    [Fact]
+    [Test]
     public async Task UninstallCommand_SkipsArtifactDownload_PlaceholderIgnored()
     {
         var config = new InstallAdapterConfig
@@ -188,11 +188,11 @@ public sealed class UninstallPackageTests
         // artifactPath is provided but should be ignored because UninstallCommand is set
         var result = await UninstallPackage.ExecuteAsync(config, "should-not-exist.exe", CancellationToken.None);
 
-        Assert.True(result.Success);
-        Assert.Null(result.Error);
+        Assert.That(result.Success, Is.True);
+        Assert.That(result.Error, Is.Null);
     }
 
-    [Fact]
+    [Test]
     public async Task UninstallCommand_FallsBackToCommand_WhenUninstallCommandEmpty()
     {
         var config = new InstallAdapterConfig
@@ -206,11 +206,11 @@ public sealed class UninstallPackageTests
 
         var result = await UninstallPackage.ExecuteAsync(config, CancellationToken.None);
 
-        Assert.True(result.Success);
-        Assert.Null(result.Error);
+        Assert.That(result.Success, Is.True);
+        Assert.That(result.Error, Is.Null);
     }
 
-    [Fact]
+    [Test]
     public async Task UninstallCommand_ExpandsEnvironmentVariables_WindowsStyle()
     {
         var config = new InstallAdapterConfig
@@ -223,11 +223,11 @@ public sealed class UninstallPackageTests
 
         var result = await UninstallPackage.ExecuteAsync(config, CancellationToken.None);
 
-        Assert.True(result.Success);
-        Assert.Null(result.Error);
+        Assert.That(result.Success, Is.True);
+        Assert.That(result.Error, Is.Null);
     }
 
-    [Fact]
+    [Test]
     public async Task UninstallCommand_ExpandsPowerShellEnvVariable()
     {
         var config = new InstallAdapterConfig
@@ -240,7 +240,7 @@ public sealed class UninstallPackageTests
 
         var result = await UninstallPackage.ExecuteAsync(config, CancellationToken.None);
 
-        Assert.True(result.Success);
-        Assert.Null(result.Error);
+        Assert.That(result.Success, Is.True);
+        Assert.That(result.Error, Is.Null);
     }
 }

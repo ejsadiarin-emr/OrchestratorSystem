@@ -6,13 +6,13 @@ using DeploymentPoC.Contracts.Runtime.RunPayloads;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Xunit;
+using NUnit.Framework;
 
 namespace DeploymentPoC.Agent.Tests;
 
 public sealed class PipelineExecutorTests
 {
-    [Fact]
+    [Test]
     public async Task ExecuteAsync_RespectsCancellationToken()
     {
         // Arrange: handler that delays until cancellation is requested
@@ -76,16 +76,16 @@ public sealed class PipelineExecutorTests
         // Act & Assert: AcquireArtifact catches OperationCanceledException and returns failure,
         // so PipelineExecutor returns a failed result instead of throwing.
         var result = await executor.ExecuteAsync(context, sendMessageAsync, cts.Token);
-        Assert.False(result.Success);
-        Assert.NotNull(result.Error);
+        Assert.That(result.Success, Is.False);
+        Assert.That(result.Error, Is.Not.Null);
 
         // Verify that SendStepStatusAsync passed a cancellation token linked to the provided CT.
-        Assert.True(capturedTokens.Count > 0);
+        Assert.That(capturedTokens.Count > 0, Is.True);
         cts.Cancel();
-        Assert.Contains(capturedTokens, t => t.IsCancellationRequested);
+        Assert.That(capturedTokens.Any(t => t.IsCancellationRequested), Is.True);
     }
 
-    [Fact]
+    [Test]
     public async Task ExecuteAsync_PassesExpectedSha256ToAcquireArtifact()
     {
         // Arrange: handler that returns fixed content so hash verification runs
@@ -140,8 +140,8 @@ public sealed class PipelineExecutorTests
 
         var result = await executor.ExecuteAsync(context, (msg, ct) => Task.CompletedTask);
 
-        Assert.False(result.Success);
-        Assert.Equal("hash_mismatch", result.Error);
+        Assert.That(result.Success, Is.False);
+        Assert.That(result.Error, Is.EqualTo("hash_mismatch"));
     }
 
     private sealed class DelayHttpMessageHandler : HttpMessageHandler

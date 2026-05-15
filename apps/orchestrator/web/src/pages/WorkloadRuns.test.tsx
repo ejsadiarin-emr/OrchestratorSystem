@@ -1,7 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { axe } from 'vitest-axe'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import WorkloadRuns from './WorkloadRuns'
 import { createWorkloadRun, downloadWorkloadRunReport } from '../services/api'
+import { TestRouterWrapper } from '../test-utils/TestRouterWrapper'
 
 vi.mock('../services/realtime', () => ({
   subscribeToRunProgress: vi.fn().mockReturnValue(() => {}),
@@ -143,7 +146,6 @@ vi.mock('../services/api', async (importOriginal) => {
       completedAt: new Date().toISOString(),
       timeline: [],
     }),
-    advanceWorkloadRun: vi.fn(),
     runNodesPreCheckSummary: vi.fn().mockResolvedValue([
       { nodeId: 'node-001', hostname: 'wj-plant-01', overallStatus: 'passed', workloadStatus: 'Current', action: 'Skip', packages: [] },
       { nodeId: 'node-002', hostname: 'wj-plant-02', overallStatus: 'passed', workloadStatus: 'Current', action: 'Skip', packages: [] },
@@ -162,22 +164,22 @@ describe('Workload Runs page', () => {
   })
 
   beforeEach(async () => {
-    render(<WorkloadRuns />)
+    render(<WorkloadRuns />, { wrapper: TestRouterWrapper })
     await screen.findByText('Create Workload Run')
   })
 
   it('opens run creator popup and creates a run', async () => {
+    const user = userEvent.setup()
     expect(screen.getByRole('button', { name: 'Open Run Creator' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open Run Creator' }))
+    await user.click(screen.getByRole('button', { name: 'Open Run Creator' }))
     const dialog = await screen.findByRole('dialog')
 
     expect(within(dialog).getByText('Create Workload Run')).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Install' })).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Uninstall' })).toBeInTheDocument()
 
-    // Step 0 -> Step 1
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
 
     // wait for workload details to load and revision dropdown to populate
     await waitFor(() => {
@@ -190,10 +192,10 @@ describe('Workload Runs page', () => {
     expect(within(revisionSelect).getByText('1.1.0')).toBeInTheDocument()
 
     // Step 1 -> Step 2
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
 
     // select all online nodes via helper link
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Select all eligible online' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Select all eligible online' }))
 
     // verify online nodes checked, offline node not
     const nodeCheckbox1 = within(dialog).getByLabelText('Plant Line A')
@@ -205,7 +207,7 @@ describe('Workload Runs page', () => {
     expect(nodeCheckbox3).toBeDisabled()
 
     // Step 2 -> Step 3 (pre-checks)
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
 
     // wait for pre-check results
     await waitFor(() => {
@@ -213,7 +215,7 @@ describe('Workload Runs page', () => {
     })
 
     // Step 3 -> Step 4 (confirm)
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
 
     // summary should appear with confirm button and correct details
     await waitFor(() => {
@@ -224,7 +226,7 @@ describe('Workload Runs page', () => {
     expect(within(dialog).getByText(/2 selected/)).toBeInTheDocument()
 
     // click confirm
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm Create Run' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm Create Run' }))
 
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -234,9 +236,10 @@ describe('Workload Runs page', () => {
   })
 
   it('opens diagnostics popup from run row', async () => {
+    const user = userEvent.setup()
     const row = screen.getByText('run-001').closest('tr')
     expect(row).not.toBeNull()
-    fireEvent.click(row as HTMLTableRowElement)
+    await user.click(row as HTMLTableRowElement)
     const dialog = await screen.findByRole('dialog')
 
     expect(within(dialog).getByText('Run diagnostics')).toBeInTheDocument()
@@ -249,17 +252,18 @@ describe('Workload Runs page', () => {
   })
 
   it('renders offline nodes disabled with visual cue and prevents selection', async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Open Run Creator' }))
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Open Run Creator' }))
     const dialog = await screen.findByRole('dialog')
 
     // Step 0 -> Step 1
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
     await waitFor(() => {
       expect(within(dialog).getByLabelText('Revision')).toBeInTheDocument()
     })
 
     // Step 1 -> Step 2
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
     await waitFor(() => {
       expect(within(dialog).getByLabelText('Plant Line C')).toBeInTheDocument()
     })
@@ -269,40 +273,41 @@ describe('Workload Runs page', () => {
     expect(offlineCheckbox).not.toBeChecked()
 
     // clicking disabled checkbox does nothing
-    fireEvent.click(offlineCheckbox)
+    await user.click(offlineCheckbox)
     expect(offlineCheckbox).not.toBeChecked()
   })
 
   it('shows error and keeps modal open on creation failure', async () => {
+    const user = userEvent.setup()
     vi.mocked(createWorkloadRun).mockRejectedValueOnce(new Error('Backend unavailable'))
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open Run Creator' }))
+    await user.click(screen.getByRole('button', { name: 'Open Run Creator' }))
     const dialog = await screen.findByRole('dialog')
 
     // Step 0 -> Step 1
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
 
     await waitFor(() => {
       expect(within(dialog).getByLabelText('Revision')).toBeInTheDocument()
     })
 
     // Step 1 -> Step 2
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Select all eligible online' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Select all eligible online' }))
 
     // Step 2 -> Step 3
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
     await waitFor(() => {
       expect(within(dialog).getAllByText('Skip')).toHaveLength(2)
     })
 
     // Step 3 -> Step 4
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
     await waitFor(() => {
       expect(within(dialog).getByRole('button', { name: 'Confirm Create Run' })).toBeInTheDocument()
     })
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm Create Run' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm Create Run' }))
 
     await waitFor(() => {
       expect(within(dialog).getByText('Backend unavailable')).toBeInTheDocument()
@@ -313,19 +318,20 @@ describe('Workload Runs page', () => {
   })
 
   it('in uninstall mode, only shows nodes with the workload installed', async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Open Run Creator' }))
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Open Run Creator' }))
     const dialog = await screen.findByRole('dialog')
 
     // Step 0: select Uninstall
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Uninstall' }))
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Uninstall' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
 
     await waitFor(() => {
       expect(within(dialog).getByLabelText('Installed Revision')).toBeInTheDocument()
     })
 
     // Step 1 -> Step 2
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
 
     await waitFor(() => {
       expect(within(dialog).getByLabelText('Plant Line A')).toBeInTheDocument()
@@ -336,35 +342,36 @@ describe('Workload Runs page', () => {
   })
 
   it('uninstall confirmation shows warning banner, package list, and requires checkbox', async () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Open Run Creator' }))
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Open Run Creator' }))
     const dialog = await screen.findByRole('dialog')
 
     // Step 0: select Uninstall
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Uninstall' }))
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Uninstall' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
 
     await waitFor(() => {
       expect(within(dialog).getByLabelText('Installed Revision')).toBeInTheDocument()
     })
 
     // Step 1 -> Step 2
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
 
     await waitFor(() => {
       expect(within(dialog).getByLabelText('Plant Line A')).toBeInTheDocument()
     })
 
     const nodeCheckbox = within(dialog).getByLabelText('Plant Line A')
-    fireEvent.click(nodeCheckbox)
+    await user.click(nodeCheckbox)
 
     // Step 2 -> Step 3 (pre-checks)
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
     await waitFor(() => {
       expect(within(dialog).getAllByText('Skip')).toHaveLength(2)
     })
 
     // Step 3 -> Step 4 (confirm)
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Next' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Next' }))
 
     await waitFor(() => {
       expect(within(dialog).getByText('Warning: This will permanently remove packages from nodes.')).toBeInTheDocument()
@@ -379,39 +386,49 @@ describe('Workload Runs page', () => {
     const confirmButton = within(dialog).getByRole('button', { name: 'Confirm Create Run' })
     expect(confirmButton).toBeDisabled()
 
-    fireEvent.click(confirmCheckbox)
+    await user.click(confirmCheckbox)
     expect(confirmCheckbox).toBeChecked()
     expect(confirmButton).not.toBeDisabled()
   })
 
   it('shows download report button for completed runs', async () => {
+    const user = userEvent.setup()
     const row = screen.getByText('run-002').closest('tr')
     expect(row).not.toBeNull()
-    fireEvent.click(row as HTMLTableRowElement)
+    await user.click(row as HTMLTableRowElement)
     const dialog = await screen.findByRole('dialog')
 
     expect(within(dialog).getByText('Download Report')).toBeInTheDocument()
   })
 
   it('hides download report button for queued/running runs', async () => {
+    const user = userEvent.setup()
     const row = screen.getByText('run-003').closest('tr')
     expect(row).not.toBeNull()
-    fireEvent.click(row as HTMLTableRowElement)
+    await user.click(row as HTMLTableRowElement)
     const dialog = await screen.findByRole('dialog')
 
     expect(within(dialog).queryByText('Download Report')).not.toBeInTheDocument()
   })
 
   it('download report button triggers download', async () => {
+    const user = userEvent.setup()
     vi.mocked(downloadWorkloadRunReport).mockResolvedValueOnce('test report content')
 
     const row = screen.getByText('run-002').closest('tr')
     expect(row).not.toBeNull()
-    fireEvent.click(row as HTMLTableRowElement)
+    await user.click(row as HTMLTableRowElement)
     const dialog = await screen.findByRole('dialog')
 
-    fireEvent.click(within(dialog).getByText('Download Report'))
+    await user.click(within(dialog).getByText('Download Report'))
 
     expect(downloadWorkloadRunReport).toHaveBeenCalledWith('run-002')
+  })
+
+  it('has no accessibility violations', async () => {
+    const { container } = render(<WorkloadRuns />, { wrapper: TestRouterWrapper })
+    await screen.findByText('Create Workload Run')
+    const results = await axe(container)
+    expect(results.violations).toEqual([])
   })
 })

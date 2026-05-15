@@ -1,7 +1,7 @@
 using DeploymentPoC.Agent.Pipeline;
 using DeploymentPoC.Agent.Steps;
 using DeploymentPoC.Contracts.Runtime.RunPayloads;
-using Xunit;
+using NUnit.Framework;
 
 namespace DeploymentPoC.Agent.Tests;
 
@@ -54,7 +54,7 @@ public sealed class ReportGeneratorTests
         };
     }
 
-    [Fact]
+    [Test]
     public void Generate_Success_HasAllSections()
     {
         var context = CreateContext();
@@ -76,15 +76,15 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, preCheck, postVerify);
 
-        Assert.Contains("=== Deployment Report ===", report);
-        Assert.Contains("Result:       SUCCESS", report);
-        Assert.Contains("--- Pre-Run Detection ---", report);
-        Assert.Contains("--- Post-Run Detection ---", report);
-        Assert.Contains("--- Run Summary ---", report);
-        Assert.Contains("--- Step Timeline ---", report);
+        Assert.That(report, Does.Contain("=== Deployment Report ==="));
+        Assert.That(report, Does.Contain("Result:       SUCCESS"));
+        Assert.That(report, Does.Contain("--- Pre-Run Detection ---"));
+        Assert.That(report, Does.Contain("--- Post-Run Detection ---"));
+        Assert.That(report, Does.Contain("--- Run Summary ---"));
+        Assert.That(report, Does.Contain("--- Step Timeline ---"));
     }
 
-    [Fact]
+    [Test]
     public void Generate_Failure_ShowsFailedInHeaderAndTimeline()
     {
         var context = CreateContext(allSucceeded: false, error: "install_failed");
@@ -96,11 +96,11 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, null, null);
 
-        Assert.Contains("Result:       FAILED [install_failed]", report);
-        Assert.Contains("Failed", report);
+        Assert.That(report, Does.Contain("Result:       FAILED [install_failed]"));
+        Assert.That(report, Does.Contain("Failed"));
     }
 
-    [Fact]
+    [Test]
     public void Generate_NullPreCheck_ShowsForceInstall()
     {
         var context = CreateContext();
@@ -113,11 +113,11 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, null, null);
 
-        Assert.Contains("ForceInstall", report);
-        Assert.Contains("(skipped)", report);
+        Assert.That(report, Does.Contain("ForceInstall"));
+        Assert.That(report, Does.Contain("(skipped)"));
     }
 
-    [Fact]
+    [Test]
     public void Generate_PackageNotReached_ShowsNotReachedInPostRun()
     {
         var context = CreateContext(allSucceeded: false, error: "install_failed");
@@ -131,22 +131,22 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, null, null);
 
-        Assert.Contains("(not reached)", report);
+        Assert.That(report, Does.Contain("(not reached)"));
     }
 
-    [Fact]
+    [Test]
     public void Generate_EmptyPackageList_ShowsZeroCount()
     {
         var context = CreateContext();
 
         var report = ReportGenerator.Generate(context, null, null);
 
-        Assert.Contains("Packages processed:  0", report);
-        Assert.Contains("Installed:         0", report);
-        Assert.Contains("Failed/Skipped:    0", report);
+        Assert.That(report, Does.Contain("Packages processed:  0"));
+        Assert.That(report, Does.Contain("Installed:         0"));
+        Assert.That(report, Does.Contain("Failed/Skipped:    0"));
     }
 
-    [Fact]
+    [Test]
     public void Generate_InstalledCount_WhenNotPresent()
     {
         var context = CreateContext();
@@ -164,11 +164,11 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, preCheck, null);
 
-        Assert.Contains("Installed:         1", report);
-        Assert.Contains("Updated:           0", report);
+        Assert.That(report, Does.Contain("Installed:         1"));
+        Assert.That(report, Does.Contain("Updated:           0"));
     }
 
-    [Fact]
+    [Test]
     public void Generate_UpdatedCount_WhenAlreadySatisfied()
     {
         var context = CreateContext();
@@ -186,11 +186,11 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, preCheck, null);
 
-        Assert.Contains("Updated:           1", report);
-        Assert.Contains("Installed:         0", report);
+        Assert.That(report, Does.Contain("Updated:           1"));
+        Assert.That(report, Does.Contain("Installed:         0"));
     }
 
-    [Fact]
+    [Test]
     public void Generate_UpdatedCount_WhenWrongVersion()
     {
         var context = CreateContext();
@@ -208,10 +208,10 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, preCheck, null);
 
-        Assert.Contains("Updated:           1", report);
+        Assert.That(report, Does.Contain("Updated:           1"));
     }
 
-    [Fact]
+    [Test]
     public void Generate_UninstalledCount_WhenUninstallMode()
     {
         var context = CreateContext(mode: "uninstall");
@@ -222,10 +222,10 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, null, null);
 
-        Assert.Contains("Uninstalled:       1", report);
+        Assert.That(report, Does.Contain("Uninstalled:       1"));
     }
 
-    [Fact]
+    [Test]
     public void Generate_FailedCount_WhenInstallFails()
     {
         var context = CreateContext(allSucceeded: false, error: "install_failed");
@@ -237,10 +237,10 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, null, null);
 
-        Assert.Contains("Failed/Skipped:    1", report);
+        Assert.That(report, Does.Contain("Failed/Skipped:    1"));
     }
 
-    [Fact]
+    [Test]
     public void Generate_TruncatesLongName()
     {
         var context = CreateContext();
@@ -254,10 +254,10 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, null, null);
 
-        Assert.Contains("very-long-pac...", report);
+        Assert.That(report, Does.Contain("very-long-pac..."));
     }
 
-    [Fact]
+    [Test]
     public void Generate_TruncatesLongVersion()
     {
         var context = CreateContext();
@@ -272,11 +272,11 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, null, null);
 
-        Assert.DoesNotContain(longVersion, report);
-        Assert.Contains("123456789...", report);
+        Assert.That(report, Does.Not.Contain(longVersion));
+        Assert.That(report, Does.Contain("123456789..."));
     }
 
-    [Fact]
+    [Test]
     public void Generate_PreCheckStatusMapped_AlreadySatisfied()
     {
         var context = CreateContext();
@@ -294,10 +294,10 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, preCheck, null);
 
-        Assert.Contains("AlreadySatisfied", report);
+        Assert.That(report, Does.Contain("AlreadySatisfied"));
     }
 
-    [Fact]
+    [Test]
     public void Generate_PreCheckStatusMapped_WrongVersion()
     {
         var context = CreateContext();
@@ -315,10 +315,10 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, preCheck, null);
 
-        Assert.Contains("WrongVersion", report);
+        Assert.That(report, Does.Contain("WrongVersion"));
     }
 
-    [Fact]
+    [Test]
     public void Generate_PreCheckStatusMapped_NotPresent()
     {
         var context = CreateContext();
@@ -336,10 +336,10 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, preCheck, null);
 
-        Assert.Contains("NotPresent", report);
+        Assert.That(report, Does.Contain("NotPresent"));
     }
 
-    [Fact]
+    [Test]
     public void Generate_PostVerifySuccess_ShowsVersion()
     {
         var context = CreateContext();
@@ -357,11 +357,11 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, null, postVerify);
 
-        Assert.Contains("2.5.0", report);
-        Assert.Contains("AlreadySatisfied", report);
+        Assert.That(report, Does.Contain("2.5.0"));
+        Assert.That(report, Does.Contain("AlreadySatisfied"));
     }
 
-    [Fact]
+    [Test]
     public void Generate_PostVerifyFailure_ShowsError()
     {
         var context = CreateContext(allSucceeded: false, error: "verify_failed");
@@ -378,11 +378,11 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, null, postVerify);
 
-        Assert.Contains("NotDetected", report);
-        Assert.Contains("version mismatch", report);
+        Assert.That(report, Does.Contain("NotDetected"));
+        Assert.That(report, Does.Contain("version mismatch"));
     }
 
-    [Fact]
+    [Test]
     public void Generate_PostVerifyNull_ShowsAssumedInstalledOnSuccess()
     {
         var context = CreateContext();
@@ -395,10 +395,10 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, null, null);
 
-        Assert.Contains("AssumedInstalled", report);
+        Assert.That(report, Does.Contain("AssumedInstalled"));
     }
 
-    [Fact]
+    [Test]
     public void Generate_TimelineShowsAllStepRecords()
     {
         var context = CreateContext();
@@ -411,14 +411,14 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, null, null);
 
-        Assert.Contains("PreCheckProbe", report);
-        Assert.Contains("AcquireArtifact", report);
-        Assert.Contains("InstallOrUpgrade", report);
-        Assert.Contains("PostInstallVerify", report);
-        Assert.Contains("Completed", report);
+        Assert.That(report, Does.Contain("PreCheckProbe"));
+        Assert.That(report, Does.Contain("AcquireArtifact"));
+        Assert.That(report, Does.Contain("InstallOrUpgrade"));
+        Assert.That(report, Does.Contain("PostInstallVerify"));
+        Assert.That(report, Does.Contain("Completed"));
     }
 
-    [Fact]
+    [Test]
     public void Generate_TimelineShowsFailedStepWithDetail()
     {
         var context = CreateContext(allSucceeded: false, error: "disk full");
@@ -430,7 +430,7 @@ public sealed class ReportGeneratorTests
 
         var report = ReportGenerator.Generate(context, null, null);
 
-        Assert.Contains("Failed", report);
-        Assert.Contains("disk full", report);
+        Assert.That(report, Does.Contain("Failed"));
+        Assert.That(report, Does.Contain("disk full"));
     }
 }

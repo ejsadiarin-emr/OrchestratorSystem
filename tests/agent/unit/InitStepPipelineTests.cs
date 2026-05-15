@@ -6,7 +6,7 @@ using DeploymentPoC.Contracts.Runtime.RunPayloads;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Moq;
-using Xunit;
+using NUnit.Framework;
 
 namespace DeploymentPoC.Agent.Tests;
 
@@ -116,7 +116,7 @@ public sealed class InitStepPipelineTests
     private static List<string> StepHistoryNames(PipelineContext context)
         => context.StepHistory.Select(s => s.StepName).ToList();
 
-    [Fact]
+    [Test]
     public async Task PreWorkload_steps_execute_before_packages()
     {
         var (executor, _) = CreateExecutor();
@@ -133,12 +133,12 @@ public sealed class InitStepPipelineTests
         var names = StepHistoryNames(context);
         var preWorkloadIdx = names.IndexOf("PreWorkload_0");
         var postWorkloadIdx = names.IndexOf("PostWorkload_0");
-        Assert.True(preWorkloadIdx >= 0, "PreWorkload_0 should be in step history");
-        Assert.True(postWorkloadIdx >= 0, "PostWorkload_0 should be in step history");
-        Assert.True(preWorkloadIdx < postWorkloadIdx, "PreWorkload should run before PostWorkload");
+        Assert.That(preWorkloadIdx >= 0, Is.True, "PreWorkload_0 should be in step history");
+        Assert.That(postWorkloadIdx >= 0, Is.True, "PostWorkload_0 should be in step history");
+        Assert.That(preWorkloadIdx < postWorkloadIdx, Is.True, "PreWorkload should run before PostWorkload");
     }
 
-    [Fact]
+    [Test]
     public async Task PreWorkload_failure_aborts_entire_run()
     {
         var (executor, _) = CreateExecutor();
@@ -154,15 +154,15 @@ public sealed class InitStepPipelineTests
 
         var result = await executor.ExecuteAsync(context, (msg, ct) => Task.CompletedTask);
 
-        Assert.False(result.Success);
+        Assert.That(result.Success, Is.False);
         var names = StepHistoryNames(context);
-        Assert.Contains("PreWorkload_0", names);
-        Assert.DoesNotContain("AcquireArtifact", names);
-        Assert.DoesNotContain("InstallOrUpgrade", names);
-        Assert.DoesNotContain("PostInstallVerify", names);
+        Assert.That(names, Does.Contain("PreWorkload_0"));
+        Assert.That(names, Does.Not.Contain("AcquireArtifact"));
+        Assert.That(names, Does.Not.Contain("InstallOrUpgrade"));
+        Assert.That(names, Does.Not.Contain("PostInstallVerify"));
     }
 
-    [Fact]
+    [Test]
     public async Task PreInit_steps_execute_before_AcquireArtifact()
     {
         var (executor, _) = CreateExecutor(respond: (req, ct) =>
@@ -182,12 +182,12 @@ public sealed class InitStepPipelineTests
         var names = StepHistoryNames(context);
         var preInitIdx = names.IndexOf("PreInit_0_0");
         var acquireIdx = names.IndexOf("AcquireArtifact");
-        Assert.True(preInitIdx >= 0, "PreInit_0_0 should be in step history");
-        Assert.True(acquireIdx >= 0, "AcquireArtifact should be in step history");
-        Assert.True(preInitIdx < acquireIdx, "PreInit should run before AcquireArtifact");
+        Assert.That(preInitIdx >= 0, Is.True, "PreInit_0_0 should be in step history");
+        Assert.That(acquireIdx >= 0, Is.True, "AcquireArtifact should be in step history");
+        Assert.That(preInitIdx < acquireIdx, Is.True, "PreInit should run before AcquireArtifact");
     }
 
-    [Fact]
+    [Test]
     public async Task PreInit_failure_skips_install_but_continues_workload()
     {
         var (executor, _) = CreateExecutor(respond: (req, ct) =>
@@ -210,20 +210,20 @@ public sealed class InitStepPipelineTests
         await executor.ExecuteAsync(context, (msg, ct) => Task.CompletedTask);
 
         var names = StepHistoryNames(context);
-        Assert.Contains("PreInit_0_0", names);
+        Assert.That(names, Does.Contain("PreInit_0_0"));
         var pkg0PreInit = context.StepHistory.First(s => s.StepName == "PreInit_0_0");
-        Assert.False(pkg0PreInit.Success);
+        Assert.That(pkg0PreInit.Success, Is.False);
 
-        Assert.Contains("PreInit_1_0", names);
+        Assert.That(names, Does.Contain("PreInit_1_0"));
         var pkg1PreInit = context.StepHistory.First(s => s.StepName == "PreInit_1_0");
-        Assert.True(pkg1PreInit.Success);
+        Assert.That(pkg1PreInit.Success, Is.True);
         var pkg1HasAcquire = names.Contains("AcquireArtifact");
-        Assert.True(pkg1HasAcquire);
+        Assert.That(pkg1HasAcquire, Is.True);
 
-        Assert.Contains("PostWorkload_0", names);
+        Assert.That(names, Does.Contain("PostWorkload_0"));
     }
 
-    [Fact]
+    [Test]
     public async Task PostInit_steps_execute_after_PostInstallVerify()
     {
         var (executor, _) = CreateExecutor(respond: (req, ct) =>
@@ -250,12 +250,12 @@ public sealed class InitStepPipelineTests
         var names = StepHistoryNames(context);
         var postInstallVerifyIdx = names.IndexOf("PostInstallVerify");
         var postInitIdx = names.IndexOf("PostInit_0_0");
-        Assert.True(postInstallVerifyIdx >= 0, "PostInstallVerify should be in step history");
-        Assert.True(postInitIdx >= 0, "PostInit_0_0 should be in step history");
-        Assert.True(postInstallVerifyIdx < postInitIdx, "PostInstallVerify should run before PostInit");
+        Assert.That(postInstallVerifyIdx >= 0, Is.True, "PostInstallVerify should be in step history");
+        Assert.That(postInitIdx >= 0, Is.True, "PostInit_0_0 should be in step history");
+        Assert.That(postInstallVerifyIdx < postInitIdx, Is.True, "PostInstallVerify should run before PostInit");
     }
 
-    [Fact]
+    [Test]
     public async Task PostInit_failure_marks_package_failed_continues()
     {
         var (executor, _) = CreateExecutor(respond: (req, ct) =>
@@ -281,15 +281,15 @@ public sealed class InitStepPipelineTests
         await executor.ExecuteAsync(context, (msg, ct) => Task.CompletedTask);
 
         var pkg0PostInit = context.StepHistory.First(s => s.StepName == "PostInit_0_0");
-        Assert.False(pkg0PostInit.Success);
+        Assert.That(pkg0PostInit.Success, Is.False);
 
         var names = StepHistoryNames(context);
-        Assert.Contains("PostInit_1_0", names);
+        Assert.That(names, Does.Contain("PostInit_1_0"));
         var pkg1PostInit = context.StepHistory.First(s => s.StepName == "PostInit_1_0");
-        Assert.True(pkg1PostInit.Success);
+        Assert.That(pkg1PostInit.Success, Is.True);
     }
 
-    [Fact]
+    [Test]
     public async Task PostWorkload_steps_execute_after_all_packages()
     {
         var (executor, _) = CreateExecutor(respond: (req, ct) =>
@@ -320,11 +320,11 @@ public sealed class InitStepPipelineTests
             names.IndexOf("PostInstallVerify"),
             names.LastIndexOf("AcquireArtifact"));
         var postWorkloadIdx = names.IndexOf("PostWorkload_0");
-        Assert.True(postWorkloadIdx >= 0, "PostWorkload_0 should be in step history");
-        Assert.True(lastPkgStepIdx < postWorkloadIdx, "PostWorkload should run after all package steps");
+        Assert.That(postWorkloadIdx >= 0, Is.True, "PostWorkload_0 should be in step history");
+        Assert.That(lastPkgStepIdx < postWorkloadIdx, Is.True, "PostWorkload should run after all package steps");
     }
 
-    [Fact]
+    [Test]
     public async Task PostWorkload_failure_marks_run_failed()
     {
         var (executor, _) = CreateExecutor();
@@ -338,14 +338,14 @@ public sealed class InitStepPipelineTests
 
         var result = await executor.ExecuteAsync(context, (msg, ct) => Task.CompletedTask);
 
-        Assert.False(result.Success);
+        Assert.That(result.Success, Is.False);
         var names = StepHistoryNames(context);
-        Assert.Contains("PostWorkload_0", names);
+        Assert.That(names, Does.Contain("PostWorkload_0"));
         var pwStep = context.StepHistory.First(s => s.StepName == "PostWorkload_0");
-        Assert.False(pwStep.Success);
+        Assert.That(pwStep.Success, Is.False);
     }
 
-    [Fact]
+    [Test]
     public async Task Uninstall_mode_skips_all_init_steps()
     {
         var (executor, _) = CreateExecutor();
@@ -368,15 +368,15 @@ public sealed class InitStepPipelineTests
         await executor.ExecuteAsync(context, (msg, ct) => Task.CompletedTask);
 
         var names = StepHistoryNames(context);
-        Assert.DoesNotContain(names, n => n.StartsWith("PreWorkload"));
-        Assert.DoesNotContain(names, n => n.StartsWith("PreInit"));
-        Assert.DoesNotContain(names, n => n.StartsWith("PostInit"));
-        Assert.DoesNotContain(names, n => n.StartsWith("PostWorkload"));
-        Assert.Contains("PreUninstall_0", names);
-        Assert.Contains("PostUninstall_0", names);
+        Assert.That(names, Has.None.Matches<string>(n => n.StartsWith("PreWorkload")));
+        Assert.That(names, Has.None.Matches<string>(n => n.StartsWith("PreInit")));
+        Assert.That(names, Has.None.Matches<string>(n => n.StartsWith("PostInit")));
+        Assert.That(names, Has.None.Matches<string>(n => n.StartsWith("PostWorkload")));
+        Assert.That(names, Does.Contain("PreUninstall_0"));
+        Assert.That(names, Does.Contain("PostUninstall_0"));
     }
 
-    [Fact]
+    [Test]
     public async Task Uninstall_mode_runs_pre_and_post_uninstall_steps()
     {
         var (executor, _) = CreateExecutor();
@@ -399,14 +399,14 @@ public sealed class InitStepPipelineTests
         var uninstallIdx = names.IndexOf("UninstallPackage");
         var postUninstallIdx = names.IndexOf("PostUninstall_0");
 
-        Assert.True(preUninstallIdx >= 0, "PreUninstall_0 should be in step history");
-        Assert.True(uninstallIdx >= 0, "UninstallPackage should be in step history");
-        Assert.True(postUninstallIdx >= 0, "PostUninstall_0 should be in step history");
-        Assert.True(preUninstallIdx < uninstallIdx, "PreUninstall should run before UninstallPackage");
-        Assert.True(uninstallIdx < postUninstallIdx, "PostUninstall should run after UninstallPackage");
+        Assert.That(preUninstallIdx >= 0, Is.True, "PreUninstall_0 should be in step history");
+        Assert.That(uninstallIdx >= 0, Is.True, "UninstallPackage should be in step history");
+        Assert.That(postUninstallIdx >= 0, Is.True, "PostUninstall_0 should be in step history");
+        Assert.That(preUninstallIdx < uninstallIdx, Is.True, "PreUninstall should run before UninstallPackage");
+        Assert.That(uninstallIdx < postUninstallIdx, Is.True, "PostUninstall should run after UninstallPackage");
     }
 
-    [Fact]
+    [Test]
     public async Task ForceInstall_runs_init_steps_on_all_packages()
     {
         var (executor, _) = CreateExecutor(respond: (req, ct) =>
@@ -436,17 +436,17 @@ public sealed class InitStepPipelineTests
         var result = await executor.ExecuteAsync(context, (msg, ct) => Task.CompletedTask);
 
         var names = StepHistoryNames(context);
-        Assert.Contains("PreWorkload_0", names);
-        Assert.Contains("PreInit_0_0", names);
-        Assert.Contains("PostInit_0_0", names);
-        Assert.Contains("PreInit_1_0", names);
-        Assert.Contains("PostInit_1_0", names);
-        Assert.Contains("PostWorkload_0", names);
+        Assert.That(names, Does.Contain("PreWorkload_0"));
+        Assert.That(names, Does.Contain("PreInit_0_0"));
+        Assert.That(names, Does.Contain("PostInit_0_0"));
+        Assert.That(names, Does.Contain("PreInit_1_0"));
+        Assert.That(names, Does.Contain("PostInit_1_0"));
+        Assert.That(names, Does.Contain("PostWorkload_0"));
 
-        Assert.True(result.Success);
+        Assert.That(result.Success, Is.True);
     }
 
-    [Fact]
+    [Test]
     public async Task Update_ChangedPackage_RunsPreInitAndPostInit()
     {
         var (executor, _) = CreateExecutor();
@@ -473,12 +473,12 @@ public sealed class InitStepPipelineTests
         var postInstallVerifyIdx = names.IndexOf("PostInstallVerify");
         var postInitIdx = names.IndexOf("PostInit_0_0");
 
-        Assert.True(preInitIdx >= 0, "PreInit_0_0 should be in step history");
-        Assert.True(acquireIdx >= 0, "AcquireArtifact should be in step history");
-        Assert.True(preInitIdx < acquireIdx, "PreInit should run before AcquireArtifact");
+        Assert.That(preInitIdx >= 0, Is.True, "PreInit_0_0 should be in step history");
+        Assert.That(acquireIdx >= 0, Is.True, "AcquireArtifact should be in step history");
+        Assert.That(preInitIdx < acquireIdx, Is.True, "PreInit should run before AcquireArtifact");
 
-        Assert.True(postInstallVerifyIdx >= 0, "PostInstallVerify should be in step history");
-        Assert.True(postInitIdx >= 0, "PostInit_0_0 should be in step history");
-        Assert.True(postInstallVerifyIdx < postInitIdx, "PostInstallVerify should run before PostInit");
+        Assert.That(postInstallVerifyIdx >= 0, Is.True, "PostInstallVerify should be in step history");
+        Assert.That(postInitIdx >= 0, Is.True, "PostInit_0_0 should be in step history");
+        Assert.That(postInstallVerifyIdx < postInitIdx, Is.True, "PostInstallVerify should run before PostInit");
     }
 }

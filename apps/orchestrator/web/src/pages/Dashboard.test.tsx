@@ -1,4 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { axe } from 'vitest-axe'
 import { describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import Dashboard from './Dashboard'
@@ -144,7 +146,7 @@ describe('Dashboard orchestrator home', () => {
 
     expect(screen.getByText('Workload Count')).toBeInTheDocument()
     expect(screen.getByText('Workload Updates')).toBeInTheDocument()
-expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
+    expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
   })
 
   it('renders explicit update indicators and events severity filters', async () => {
@@ -166,6 +168,7 @@ expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
   })
 
   it('filters right-rail events by severity', async () => {
+    const user = userEvent.setup()
     render(
       <MemoryRouter>
         <Dashboard />
@@ -175,7 +178,7 @@ expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
     await screen.findByText('Important Events')
     expect(screen.getByText('Workload package sequencing healthy')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'critical' }))
+    await user.click(screen.getByRole('button', { name: 'critical' }))
 
     await waitFor(() => {
       expect(screen.queryByText('Workload package sequencing healthy')).not.toBeInTheDocument()
@@ -195,6 +198,7 @@ expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
   })
 
   it('opens node popup from row click and shows node log content', async () => {
+    const user = userEvent.setup()
     render(
       <MemoryRouter>
         <Dashboard />
@@ -203,7 +207,7 @@ expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
 
     await screen.findByText('Nodes Live Table')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open node details node-002' }))
+    await user.click(screen.getByRole('button', { name: 'Open node details node-002' }))
 
     expect(await screen.findByRole('heading', { name: 'Node details' })).toBeInTheDocument()
     expect(screen.getByText('Health: warning')).toBeInTheDocument()
@@ -214,6 +218,7 @@ expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
   })
 
   it('supports keyboard row activation for node drilldown', async () => {
+    const user = userEvent.setup()
     render(
       <MemoryRouter>
         <Dashboard />
@@ -223,13 +228,15 @@ expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
     await screen.findByText('Nodes Live Table')
 
     const rowTrigger = screen.getByRole('button', { name: 'Open node details node-002' })
-    fireEvent.keyDown(rowTrigger, { key: 'Enter' })
+    rowTrigger.focus()
+    await user.keyboard('{Enter}')
 
     expect(await screen.findByRole('heading', { name: 'Node details' })).toBeInTheDocument()
     expect(screen.getByText(/wj-plant-02 \(node-002\)/)).toBeInTheDocument()
   })
 
   it('opens workload popup from row click and shows derived signal copy', async () => {
+    const user = userEvent.setup()
     render(
       <MemoryRouter>
         <Dashboard />
@@ -238,7 +245,7 @@ expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
 
     await screen.findByText('Workloads Overview')
 
-    fireEvent.click(screen.getByLabelText('Open workload details Observer Stack'))
+    await user.click(screen.getByLabelText('Open workload details Observer Stack'))
 
     expect(await screen.findByRole('heading', { name: 'Workload details' })).toBeInTheDocument()
     expect(screen.getByText('Mixed revisions: No')).toBeInTheDocument()
@@ -255,6 +262,7 @@ expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
   })
 
   it('supports keyboard row activation for workload drilldown', async () => {
+    const user = userEvent.setup()
     render(
       <MemoryRouter>
         <Dashboard />
@@ -264,13 +272,15 @@ expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
     await screen.findByText('Workloads Overview')
 
     const workloadTrigger = screen.getByRole('button', { name: 'Open workload details Observer Stack' })
-    fireEvent.keyDown(workloadTrigger, { key: ' ' })
+    workloadTrigger.focus()
+    await user.keyboard(' ')
 
     expect(await screen.findByRole('heading', { name: 'Workload details' })).toBeInTheDocument()
     expect(screen.getByText('Mixed revisions: No')).toBeInTheDocument()
   })
 
   it('shows mixed revision indicator and impacted-node snapshots for mixed workload', async () => {
+    const user = userEvent.setup()
     render(
       <MemoryRouter>
         <Dashboard />
@@ -279,7 +289,7 @@ expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
 
     await screen.findByText('Workloads Overview')
 
-    fireEvent.click(screen.getByLabelText('Open workload details Factory Base Install'))
+    await user.click(screen.getByLabelText('Open workload details Factory Base Install'))
 
     expect(await screen.findByRole('heading', { name: 'Workload details' })).toBeInTheDocument()
     expect(screen.getByText('Mixed revisions: Yes')).toBeInTheDocument()
@@ -352,6 +362,18 @@ expect(screen.getByText('Factory Base Install (1.1.0)')).toBeInTheDocument()
 
     await screen.findByText('Nodes Live Table')
     expect(screen.queryByText('Mini Log Viewer')).not.toBeInTheDocument()
+  })
+
+  it('has no accessibility violations', async () => {
+    const { container } = render(
+      <MemoryRouter>
+        <Dashboard />
+      </MemoryRouter>,
+    )
+
+    await screen.findByText('Nodes Live Table')
+    const results = await axe(container)
+    expect(results.violations).toEqual([])
   })
 
   it('renders fallback error message when orchestrator home data fetch fails', async () => {

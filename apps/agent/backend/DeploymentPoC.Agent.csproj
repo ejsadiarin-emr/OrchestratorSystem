@@ -16,11 +16,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="DeploymentPoC.Agent.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="9.0.4" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="9.0.4" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="9.0.4" />
   </ItemGroup>

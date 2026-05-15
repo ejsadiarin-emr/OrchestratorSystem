@@ -1524,15 +1524,13 @@ function computeLastCheckInAge(lastSeenAt: string): string {
   return `${Math.floor(hours / 24)}d`
 }
 
-export async function getOrchestratorHomeData(): Promise<OrchestratorHomeData> {
-  const [nodes, workloadStates, runs, artifacts, workloads] = await Promise.all([
-    listNodes(),
-    listNodeWorkloadStates(),
-    listWorkloadRuns(),
-    listArtifacts(),
-    listWorkloads(),
-  ])
-
+export function transformOrchestratorHomeData(
+  nodes: Node[],
+  workloadStates: NodeWorkloadState[],
+  runs: WorkloadRun[],
+  artifacts: ArtifactRecord[],
+  workloads: WorkloadDefinition[],
+): OrchestratorHomeData {
   const stateByNodeId = new Map(workloadStates.map(s => [s.nodeId, s]))
   const workloadById = new Map(workloads.map(w => [w.id, w]))
 
@@ -1632,6 +1630,18 @@ export async function getOrchestratorHomeData(): Promise<OrchestratorHomeData> {
     logsByNodeId: {},
     workloads,
   }
+}
+
+export async function getOrchestratorHomeData(): Promise<OrchestratorHomeData> {
+  const [nodes, workloadStates, runs, artifacts, workloads] = await Promise.all([
+    listNodes(),
+    listNodeWorkloadStates(),
+    listWorkloadRuns(),
+    listArtifacts(),
+    listWorkloads(),
+  ])
+
+  return transformOrchestratorHomeData(nodes, workloadStates, runs, artifacts, workloads)
 }
 
 export async function getAgentLocalSummary(): Promise<AgentLocalSummary> {

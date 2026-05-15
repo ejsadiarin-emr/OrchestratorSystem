@@ -1,6 +1,9 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { axe } from 'vitest-axe'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Install from './Install'
+import { TestRouterWrapper } from '../test-utils/TestRouterWrapper'
 
 function emptyArtifactListResponse() {
   return new Response(JSON.stringify([]), {
@@ -38,7 +41,7 @@ describe('Install page flow', () => {
     )
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(artifactResponse)
 
-    render(<Install />)
+    render(<Install />, { wrapper: TestRouterWrapper })
 
     await waitFor(() => {
       expect(screen.getByText('EJ-Installer')).toBeInTheDocument()
@@ -51,8 +54,9 @@ describe('Install page flow', () => {
   })
 
   it('prefills manifest via file picker and shows channel validation error when channel is invalid', async () => {
+    const user = userEvent.setup()
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(emptyArtifactListResponse())
-    render(<Install />)
+    render(<Install />, { wrapper: TestRouterWrapper })
 
     await screen.findByText('Ingest Artifact')
 
@@ -60,7 +64,7 @@ describe('Install page flow', () => {
     const pickedFile = new File(['installer-binary'], 'EJ-Installer-9.9.9.msi', {
       type: 'application/x-msi',
     })
-    fireEvent.change(fileInput, { target: { files: [pickedFile] } })
+    await user.upload(fileInput, pickedFile)
 
     await screen.findByText(/Selected/)
 
@@ -68,14 +72,14 @@ describe('Install page flow', () => {
     const option = document.createElement('option')
     option.value = 'bad-channel'
     channelSelect.appendChild(option)
-    channelSelect.value = 'bad-channel'
-    fireEvent.change(channelSelect, { target: { value: 'bad-channel' } })
+    await user.selectOptions(channelSelect, 'bad-channel')
     channelSelect.removeChild(option)
 
     expect(await screen.findByText('manifest.channel must be one of stable, canary, or test.')).toBeInTheDocument()
   })
 
   it('prefills manifest from drag-drop and stores artifact through multipart flow', async () => {
+    const user = userEvent.setup()
     vi.spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(emptyArtifactListResponse())
       .mockResolvedValueOnce(
@@ -96,7 +100,7 @@ describe('Install page flow', () => {
         ),
       )
 
-    render(<Install />)
+    render(<Install />, { wrapper: TestRouterWrapper })
 
     await screen.findByText('Ingest Artifact')
 
@@ -109,10 +113,19 @@ describe('Install page flow', () => {
       },
     })
 
-    fireEvent.click(await screen.findByText('Validate and Store Artifact'))
+    await user.click(await screen.findByText('Validate and Store Artifact'))
 
     await waitFor(() => {
       expect(screen.getByText(/Stored EJ-Installer-2.0.0.msi/)).toBeInTheDocument()
     })
+  })
+
+  it('has no accessibility violations', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(emptyArtifactListResponse())
+
+    const { container } = render(<Install />, { wrapper: TestRouterWrapper })
+    await screen.findByText('Ingest Artifact')
+    const results = await axe(container)
+    expect(results.violations).toEqual([])
   })
 })

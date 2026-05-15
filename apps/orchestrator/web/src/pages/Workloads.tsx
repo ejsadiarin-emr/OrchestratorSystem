@@ -405,6 +405,7 @@ export default function Workloads() {
           </div>
           <Button
             size="sm"
+            aria-label="Import workloads"
             onClick={() => setIsImportModalOpen(true)}
             className="rounded-full bg-[var(--accent)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--accent-strong)]"
           >

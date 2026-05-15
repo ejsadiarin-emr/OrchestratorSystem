@@ -100,6 +100,14 @@ public class PipelineTests
 
         await pipeline.ExecuteAsync(context);
 
-        Assert.That(true, Is.True);
+        stepMock.Verify(s => s.ExecuteAsync(It.IsAny<InstallContext>()), Times.Once);
+        _loggerMock.Verify(
+            l => l.Log(
+                LogLevel.Information,
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((o, _) => o!.ToString()!.Contains("TestStep")),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
+            Times.AtLeastOnce);
     }
 }

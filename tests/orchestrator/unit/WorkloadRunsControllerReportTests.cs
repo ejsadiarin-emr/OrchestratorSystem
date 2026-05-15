@@ -67,7 +67,7 @@ public class WorkloadRunsControllerReportTests
 
     private WorkloadRunsController CreateController()
     {
-        var configMock = new Mock<Microsoft.Extensions.Configuration.IConfiguration>();
+        var configMock = new Mock<IConfiguration>();
         configMock.Setup(c => c["ArtifactStore:RootPath"]).Returns(_tempArtifactPath);
         var artifactStore = new ArtifactStoreService(configMock.Object);
         var dispatcherLoggerMock = new Mock<ILogger<WorkloadRunDispatcher>>();

@@ -1,11 +1,12 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import type { ArtifactManifest, InstallAdapterInput, DetectionInput, PolicyTagsInput } from '../types'
+import type { ArtifactManifest, InstallAdapterInput, DetectionInput, PolicyTagsInput, Node, NodeWorkloadState, WorkloadRun, WorkloadDefinition, ArtifactRecord } from '../types'
 import {
   issueEnrollmentToken,
   suggestManifestFromFile,
   uploadArtifact,
   validateManifestChannel,
   getOrchestratorHomeData,
+  transformOrchestratorHomeData,
 } from './api'
 
 beforeEach(() => {
@@ -363,5 +364,266 @@ describe('getOrchestratorHomeData', () => {
     expect(data.nodes[0].assignedWorkload).toBe('Factory Base Install')
     expect(data.nodes[1].health).toBe('offline')
     expect(data.selectedNodeId).toBe('node-001')
+  })
+})
+
+function makeNode(overrides: Partial<Node> = {}): Node {
+  return {
+    id: 'n1',
+    hostname: 'host-1',
+    displayName: 'Node One',
+    ipAddress: '10.0.0.1',
+    status: 'online',
+    description: '',
+    osVersion: '',
+    agentVersion: '',
+    lastSeenAt: new Date().toISOString(),
+    ...overrides,
+  }
+}
+
+function makeWorkloadState(overrides: Partial<NodeWorkloadState> = {}): NodeWorkloadState {
+  return {
+    nodeId: 'n1',
+    workloadId: 'w1',
+    workloadRevision: '1.0.0',
+    runId: 'run-1',
+    status: 'running',
+    updatedAt: new Date().toISOString(),
+    ...overrides,
+  }
+}
+
+function makeWorkloadRun(overrides: Partial<WorkloadRun> = {}): WorkloadRun {
+  return {
+    id: 'run-1',
+    workloadId: 'w1',
+    workloadName: 'MyWorkload',
+    workloadRevision: '1.0.0',
+    mode: 'install',
+    targetNodeIds: ['n1'],
+    targetNodeHostnames: ['host-1'],
+    status: 'running',
+    createdAt: new Date().toISOString(),
+    timeline: [],
+    ...overrides,
+  }
+}
+
+function makeWorkloadDefinition(overrides: Partial<WorkloadDefinition> = {}): WorkloadDefinition {
+  return {
+    id: 'w1',
+    name: 'MyWorkload',
+    description: '',
+    createdAt: new Date().toISOString(),
+    ...overrides,
+  }
+}
+
+describe('transformOrchestratorHomeData', () => {
+  it('handles empty arrays gracefully', () => {
+    const result = transformOrchestratorHomeData([], [], [], [], [])
+
+    expect(result.kpis.nodesOnline).toBe(0)
+    expect(result.kpis.nodesOffline).toBe(0)
+    expect(result.kpis.workloadDefinitions).toBe(0)
+    expect(result.kpis.runningWorkloads).toBe(0)
+    expect(result.kpis.artifactsStored).toBe(0)
+    expect(result.kpis.activeRuns24h).toBe(0)
+    expect(result.kpis.failedRuns24h).toBe(0)
+    expect(result.kpis.pendingApprovals).toBe(0)
+    expect(result.kpis.controlPlaneLatencyP95Ms).toBe(0)
+    expect(result.nodes).toEqual([])
+    expect(result.selectedNodeId).toBe('')
+    expect(result.workloads).toEqual([])
+    expect(result.events).toHaveLength(1)
+    expect(result.events[0].id).toBe('evt-healthy')
+    expect(result.events[0].severity).toBe('info')
+  })
+
+  it('computes KPI metrics from raw API data', () => {
+    const nodes: Node[] = [
+      makeNode({ id: 'n1', status: 'online', hostname: 'online-node' }),
+      makeNode({ id: 'n2', status: 'online', hostname: 'online-node-2' }),
+      makeNode({ id: 'n3', status: 'offline', hostname: 'offline-node' }),
+    ]
+    const workloads: WorkloadDefinition[] = [
+      makeWorkloadDefinition({ id: 'w1', name: 'Workload A' }),
+      makeWorkloadDefinition({ id: 'w2', name: 'Workload B' }),
+    ]
+    const runs: WorkloadRun[] = [
+      makeWorkloadRun({ id: 'run-1', status: 'running' }),
+      makeWorkloadRun({ id: 'run-2', status: 'running' }),
+      makeWorkloadRun({ id: 'run-3', status: 'completed' }),
+      makeWorkloadRun({ id: 'run-4', status: 'failed' }),
+    ]
+    const artifacts: ArtifactRecord[] = [
+      { id: 'a1', fileName: 'pkg.msi', createdAt: new Date().toISOString(), manifest: {} as ArtifactManifest },
+    ]
+    const workloadStates: NodeWorkloadState[] = [
+      makeWorkloadState({ nodeId: 'n1', status: 'queued' }),
+    ]
+
+    const result = transformOrchestratorHomeData(nodes, workloadStates, runs, artifacts, workloads)
+
+    expect(result.kpis.nodesOnline).toBe(2)
+    expect(result.kpis.nodesOffline).toBe(1)
+    expect(result.kpis.workloadDefinitions).toBe(2)
+    expect(result.kpis.runningWorkloads).toBe(2)
+    expect(result.kpis.artifactsStored).toBe(1)
+    expect(result.kpis.pendingApprovals).toBe(1)
+  })
+
+  it('maps node status to health correctly', () => {
+    const online = makeNode({ id: 'n1', status: 'online' })
+    const offline = makeNode({ id: 'n2', status: 'offline' })
+    const installing = makeNode({ id: 'n3', status: 'installing' })
+    const unknown = makeNode({ id: 'n4', status: 'unknown' })
+
+    const result = transformOrchestratorHomeData([online, offline, installing, unknown], [], [], [], [])
+
+    expect(result.nodes[0].health).toBe('online')
+    expect(result.nodes[1].health).toBe('offline')
+    expect(result.nodes[2].health).toBe('warning')
+    expect(result.nodes[3].health).toBe('warning')
+  })
+
+  it('maps workload state status to runState correctly', () => {
+    const baseNode = makeNode({ id: 'n1', status: 'online' })
+
+    const runningState = makeWorkloadState({ nodeId: 'n1', status: 'running' })
+    const queuedState = makeWorkloadState({ nodeId: 'n1', status: 'queued' })
+
+    const running = transformOrchestratorHomeData([baseNode], [runningState], [], [], [])
+    expect(running.nodes[0].runState).toBe('update')
+
+    const pending = transformOrchestratorHomeData([baseNode], [queuedState], [], [], [])
+    expect(pending.nodes[0].runState).toBe('pending-approval')
+  })
+
+  it('maps offline node without workload state to failed', () => {
+    const offlineNode = makeNode({ id: 'n1', status: 'offline' })
+
+    const result = transformOrchestratorHomeData([offlineNode], [], [], [], [])
+    expect(result.nodes[0].runState).toBe('failed')
+    expect(result.nodes[0].health).toBe('offline')
+  })
+
+  it('maps online node without workload state to idle', () => {
+    const onlineNode = makeNode({ id: 'n1', status: 'online' })
+
+    const result = transformOrchestratorHomeData([onlineNode], [], [], [], [])
+    expect(result.nodes[0].runState).toBe('idle')
+  })
+
+  it('populates assignedWorkload from workload definition name', () => {
+    const node = makeNode({ id: 'n1' })
+    const state = makeWorkloadState({ nodeId: 'n1', workloadId: 'w1' })
+    const workload = makeWorkloadDefinition({ id: 'w1', name: 'MyWorkload' })
+
+    const result = transformOrchestratorHomeData([node], [state], [], [], [workload])
+    expect(result.nodes[0].assignedWorkload).toBe('MyWorkload')
+    expect(result.nodes[0].workloadRevision).toBe('1.0.0')
+  })
+
+  it('sets assignedWorkload to empty when workload not found', () => {
+    const node = makeNode({ id: 'n1' })
+    const state = makeWorkloadState({ nodeId: 'n1', workloadId: 'nonexistent' })
+
+    const result = transformOrchestratorHomeData([node], [state], [], [], [])
+    expect(result.nodes[0].assignedWorkload).toBe('')
+  })
+
+  it('generates critical events for offline nodes', () => {
+    const offlineNode = makeNode({ id: 'n1', status: 'offline' })
+
+    const result = transformOrchestratorHomeData([offlineNode], [], [], [], [])
+
+    const offlineEvents = result.events.filter(e => e.severity === 'critical')
+    expect(offlineEvents).toHaveLength(1)
+    expect(offlineEvents[0].title).toBe('Node heartbeat timeout')
+    expect(offlineEvents[0].nodeId).toBe('n1')
+  })
+
+  it('generates high-severity events for failed runs', () => {
+    const failedRun: WorkloadRun = makeWorkloadRun({
+      id: 'run-1',
+      status: 'failed',
+      workloadName: 'BadWorkload',
+      completedAt: new Date().toISOString(),
+    })
+
+    const result = transformOrchestratorHomeData([], [], [failedRun], [], [])
+
+    const highEvents = result.events.filter(e => e.severity === 'high')
+    expect(highEvents).toHaveLength(1)
+    expect(highEvents[0].title).toBe('Workload run failed')
+    expect(highEvents[0].runId).toBe('run-1')
+    expect(highEvents[0].detail).toContain('BadWorkload')
+  })
+
+  it('produces healthy system event when no issues exist', () => {
+    const onlineNode = makeNode({ id: 'n1', status: 'online' })
+
+    const result = transformOrchestratorHomeData([onlineNode], [], [], [], [])
+
+    expect(result.events).toHaveLength(1)
+    expect(result.events[0].id).toBe('evt-healthy')
+    expect(result.events[0].severity).toBe('info')
+  })
+
+  it('computes check-in age without throwing', () => {
+    const node = makeNode({ id: 'n1', lastSeenAt: new Date(Date.now() - 30_000).toISOString() })
+
+    const result = transformOrchestratorHomeData([node], [], [], [], [])
+    expect(result.nodes[0].lastCheckInAge).toMatch(/^\d+s$/)
+  })
+
+  it('selects first node id as selectedNodeId', () => {
+    const n1 = makeNode({ id: 'node-a' })
+    const n2 = makeNode({ id: 'node-b' })
+
+    const result = transformOrchestratorHomeData([n1, n2], [], [], [], [])
+    expect(result.selectedNodeId).toBe('node-a')
+  })
+
+  it('sets riskLevel to low for all nodes', () => {
+    const onlineNode = makeNode({ id: 'n1', status: 'online' })
+    const offlineNode = makeNode({ id: 'n2', status: 'offline' })
+
+    const result = transformOrchestratorHomeData([onlineNode, offlineNode], [], [], [], [])
+    expect(result.nodes[0].riskLevel).toBe('low')
+    expect(result.nodes[1].riskLevel).toBe('low')
+  })
+
+  it('provides logsByNodeId as empty object', () => {
+    const result = transformOrchestratorHomeData([], [], [], [], [])
+    expect(result.logsByNodeId).toEqual({})
+  })
+
+  it('includes workloads in output for frontend use', () => {
+    const workloads: WorkloadDefinition[] = [
+      makeWorkloadDefinition({ id: 'w1', name: 'Workload A' }),
+    ]
+
+    const result = transformOrchestratorHomeData([], [], [], [], workloads)
+    expect(result.workloads).toHaveLength(1)
+    expect(result.workloads[0].id).toBe('w1')
+  })
+
+  it('does not include healthy event when issues exist', () => {
+    const offlineNode = makeNode({ id: 'n1', status: 'offline' })
+
+    const result = transformOrchestratorHomeData([offlineNode], [], [], [], [])
+
+    const healthyEvents = result.events.filter(e => e.id === 'evt-healthy')
+    expect(healthyEvents).toHaveLength(0)
+  })
+
+  it('includes displayName on dashboard nodes', () => {
+    const node = makeNode({ id: 'n1', displayName: 'Plant A - Host 1' })
+
+    const result = transformOrchestratorHomeData([node], [], [], [], [])
+    expect(result.nodes[0].displayName).toBe('Plant A - Host 1')
   })
 })

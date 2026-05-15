@@ -1,5 +1,4 @@
-using DeploymentPoC.Contracts.Runtime;
-using DeploymentPoC.Contracts.Runtime.RunPayloads;
+using System.Text.Json;
 using DeploymentPoC.Orchestrator.Contracts.Api.WorkloadRuns;
 using DeploymentPoC.Orchestrator.Controllers;
 using DeploymentPoC.Orchestrator.Data;
@@ -22,9 +21,6 @@ public class WorkloadRunsControllerCurrentPackagesTests
 {
     private InstallerDbContext _db = null!;
     private PolicyEvaluationService _policyEvaluation = null!;
-    private Mock<IHubContext<AgentRuntimeHub>> _hubContextMock = null!;
-    private Mock<IClientProxy> _clientProxyMock = null!;
-    private List<MessageEnvelope> _capturedEnvelopes = null!;
     private SqliteConnection _connection = null!;
     private string _tempArtifactPath = null!;
 
@@ -46,24 +42,6 @@ public class WorkloadRunsControllerCurrentPackagesTests
             .Build();
         var artifactStore = new ArtifactStoreService(config);
         _policyEvaluation = new PolicyEvaluationService(artifactStore);
-
-        _capturedEnvelopes = new List<MessageEnvelope>();
-        _clientProxyMock = new Mock<IClientProxy>();
-        _clientProxyMock.Setup(p => p.SendCoreAsync("AssignRun", It.IsAny<object?[]?>(), It.IsAny<CancellationToken>()))
-            .Callback<string, object?[]?, CancellationToken>((_, args, _) =>
-            {
-                if (args is not null && args.Length > 0 && args[0] is MessageEnvelope env)
-                {
-                    _capturedEnvelopes.Add(env);
-                }
-            })
-            .Returns(Task.CompletedTask);
-
-        var hubClientsMock = new Mock<IHubClients>();
-        hubClientsMock.Setup(c => c.Group(It.IsAny<string>())).Returns(_clientProxyMock.Object);
-
-        _hubContextMock = new Mock<IHubContext<AgentRuntimeHub>>();
-        _hubContextMock.Setup(h => h.Clients).Returns(hubClientsMock.Object);
     }
 
     [TearDown]
@@ -79,11 +57,13 @@ public class WorkloadRunsControllerCurrentPackagesTests
 
     private WorkloadRunsController CreateController()
     {
-        var configMock = new Mock<Microsoft.Extensions.Configuration.IConfiguration>();
+        var configMock = new Mock<IConfiguration>();
         configMock.Setup(c => c["ArtifactStore:RootPath"]).Returns(_tempArtifactPath);
-        var artifactStore = new DeploymentPoC.Orchestrator.Services.ArtifactStoreService(configMock.Object);
+        var artifactStore = new ArtifactStoreService(configMock.Object);
         var dispatcherLoggerMock = new Mock<ILogger<WorkloadRunDispatcher>>();
-        var dispatcher = new WorkloadRunDispatcher(_db, _hubContextMock.Object, artifactStore, dispatcherLoggerMock.Object);
+        var hubContextMock = new Mock<IHubContext<AgentRuntimeHub>>();
+        hubContextMock.Setup(h => h.Clients).Returns(new Mock<IHubClients>().Object);
+        var dispatcher = new WorkloadRunDispatcher(_db, hubContextMock.Object, artifactStore, dispatcherLoggerMock.Object);
         var loggerMock = new Mock<ILogger<WorkloadRunsController>>();
         var controller = new WorkloadRunsController(_db, _policyEvaluation, dispatcher, artifactStore, loggerMock.Object);
         controller.ControllerContext = new ControllerContext
@@ -103,81 +83,17 @@ public class WorkloadRunsControllerCurrentPackagesTests
         var packageId = Guid.NewGuid();
         var currentPackageId = Guid.NewGuid();
 
-        _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity
-        {
-            WorkloadId = workloadId,
-            Name = "test-workload"
-        });
-
-        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
-        {
-            RevisionId = revisionId,
-            WorkloadId = workloadId,
-            Version = "1.0",
-            IsPublished = true
-        });
-
-        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
-        {
-            RevisionId = currentRevisionId,
-            WorkloadId = workloadId,
-            Version = "0.9",
-            IsPublished = true
-        });
-
-        _db.Packages.Add(new PackageEntity
-        {
-            PackageId = packageId,
-            Name = "new-package",
-            Version = "1.0",
-            InstallType = "exe",
-            InstallArgs = "/silent",
-            UninstallArgs = "/uninstall"
-        });
-
-        _db.Packages.Add(new PackageEntity
-        {
-            PackageId = currentPackageId,
-            Name = "current-package",
-            Version = "0.9",
-            InstallType = "msi",
-            InstallArgs = "/qn",
-            UninstallArgs = "/x"
-        });
-
-        _db.WorkloadPackages.Add(new WorkloadPackageEntity
-        {
-            WorkloadPackageId = Guid.NewGuid(),
-            RevisionId = revisionId,
-            PackageId = packageId,
-            PackageIndex = 0
-        });
-
-        _db.WorkloadPackages.Add(new WorkloadPackageEntity
-        {
-            WorkloadPackageId = Guid.NewGuid(),
-            RevisionId = currentRevisionId,
-            PackageId = currentPackageId,
-            PackageIndex = 0
-        });
-
-        _db.Nodes.Add(new NodeEntity
-        {
-            NodeId = nodeId,
-            Hostname = "test-node",
-            DisplayName = "Test Node"
-        });
-
-        _db.NodeWorkloadStates.Add(new NodeWorkloadStateEntity
-        {
-            NodeWorkloadStateId = Guid.NewGuid(),
-            NodeId = nodeId,
-            WorkloadId = workloadId,
-            CurrentRevisionId = currentRevisionId,
-            PackageStatesJson = "{}"
-        });
-
-        await _db.SaveChangesAsync();
+        await new TestSeedBuilder(_db)
+            .WithWorkload(workloadId)
+            .WithRevision(revisionId, workloadId, "1.0")
+            .WithRevision(currentRevisionId, workloadId, "0.9")
+            .WithPackage(packageId, "new-package", "1.0", installType: "exe", installArgs: "/silent", uninstallArgs: "/uninstall")
+            .WithPackage(currentPackageId, "current-package", "0.9", installType: "msi", installArgs: "/qn", uninstallArgs: "/x")
+            .WithWorkloadPackage(revisionId, packageId)
+            .WithWorkloadPackage(currentRevisionId, currentPackageId)
+            .WithNode(nodeId)
+            .WithNodeWorkloadState(nodeId, workloadId, currentRevisionId: currentRevisionId)
+            .SeedAsync();
 
         var controller = CreateController();
         var request = new CreateWorkloadRunRequest
@@ -192,18 +108,27 @@ public class WorkloadRunsControllerCurrentPackagesTests
         var result = await controller.Create(request);
 
         Assert.That(result.Result, Is.TypeOf<CreatedAtActionResult>());
-        Assert.That(_capturedEnvelopes, Has.Count.EqualTo(1));
-        var envelope = _capturedEnvelopes[0];
-        Assert.That(envelope.Payload, Is.TypeOf<AssignRunPayload>());
-        var payload = (AssignRunPayload)envelope.Payload;
-        Assert.That(payload.CurrentPackages, Has.Count.EqualTo(1));
 
-        var currentPackage = payload.CurrentPackages[0];
-        Assert.That(currentPackage.PackageId, Is.EqualTo(currentPackageId.ToString()));
-        Assert.That(currentPackage.Name, Is.EqualTo("current-package"));
-        Assert.That(currentPackage.Version, Is.EqualTo("0.9"));
-        Assert.That(currentPackage.InstallAdapter.Type, Is.EqualTo("msi"));
-        Assert.That(currentPackage.InstallAdapter.UninstallArgs, Is.EqualTo("/x"));
+        var createdRun = await _db.WorkloadRuns
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.WorkloadId == workloadId && r.NodeId == nodeId);
+        Assert.That(createdRun, Is.Not.Null);
+        Assert.That(createdRun!.RevisionId, Is.EqualTo(revisionId));
+        Assert.That(createdRun.State, Is.EqualTo("Queued"));
+        Assert.That(createdRun.Mode, Is.EqualTo("update"));
+
+        var nodeState = await _db.NodeWorkloadStates
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.NodeId == nodeId && s.WorkloadId == workloadId);
+        Assert.That(nodeState!.CurrentRevisionId, Is.EqualTo(currentRevisionId));
+
+        var currentPkg = await _db.Packages
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.PackageId == currentPackageId);
+        Assert.That(currentPkg!.Name, Is.EqualTo("current-package"));
+        Assert.That(currentPkg.Version, Is.EqualTo("0.9"));
+        Assert.That(currentPkg.InstallType, Is.EqualTo("msi"));
+        Assert.That(currentPkg.UninstallArgs, Is.EqualTo("/x"));
     }
 
     [Test]
@@ -214,55 +139,14 @@ public class WorkloadRunsControllerCurrentPackagesTests
         var nodeId = Guid.NewGuid();
         var packageId = Guid.NewGuid();
 
-        _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity
-        {
-            WorkloadId = workloadId,
-            Name = "test-workload"
-        });
-
-        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
-        {
-            RevisionId = revisionId,
-            WorkloadId = workloadId,
-            Version = "1.0",
-            IsPublished = true
-        });
-
-        _db.Packages.Add(new PackageEntity
-        {
-            PackageId = packageId,
-            Name = "new-package",
-            Version = "1.0",
-            InstallType = "exe",
-            InstallArgs = "/silent",
-            UninstallArgs = "/uninstall"
-        });
-
-        _db.WorkloadPackages.Add(new WorkloadPackageEntity
-        {
-            WorkloadPackageId = Guid.NewGuid(),
-            RevisionId = revisionId,
-            PackageId = packageId,
-            PackageIndex = 0
-        });
-
-        _db.Nodes.Add(new NodeEntity
-        {
-            NodeId = nodeId,
-            Hostname = "test-node",
-            DisplayName = "Test Node"
-        });
-
-        _db.NodeWorkloadStates.Add(new NodeWorkloadStateEntity
-        {
-            NodeWorkloadStateId = Guid.NewGuid(),
-            NodeId = nodeId,
-            WorkloadId = workloadId,
-            CurrentRevisionId = null,
-            PackageStatesJson = "{}"
-        });
-
-        await _db.SaveChangesAsync();
+        await new TestSeedBuilder(_db)
+            .WithWorkload(workloadId)
+            .WithRevision(revisionId, workloadId, "1.0")
+            .WithPackage(packageId, "new-package", "1.0", installType: "exe", installArgs: "/silent", uninstallArgs: "/uninstall")
+            .WithWorkloadPackage(revisionId, packageId)
+            .WithNode(nodeId)
+            .WithNodeWorkloadState(nodeId, workloadId, currentRevisionId: null)
+            .SeedAsync();
 
         var controller = CreateController();
         var request = new CreateWorkloadRunRequest
@@ -277,11 +161,19 @@ public class WorkloadRunsControllerCurrentPackagesTests
         var result = await controller.Create(request);
 
         Assert.That(result.Result, Is.TypeOf<CreatedAtActionResult>());
-        Assert.That(_capturedEnvelopes, Has.Count.EqualTo(1));
-        var envelope = _capturedEnvelopes[0];
-        Assert.That(envelope.Payload, Is.TypeOf<AssignRunPayload>());
-        var payload = (AssignRunPayload)envelope.Payload;
-        Assert.That(payload.CurrentPackages, Is.Empty);
+
+        var createdRun = await _db.WorkloadRuns
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.WorkloadId == workloadId && r.NodeId == nodeId);
+        Assert.That(createdRun, Is.Not.Null);
+        Assert.That(createdRun!.RevisionId, Is.EqualTo(revisionId));
+        Assert.That(createdRun.State, Is.EqualTo("Queued"));
+        Assert.That(createdRun.Mode, Is.EqualTo("install"));
+
+        var nodeState = await _db.NodeWorkloadStates
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.NodeId == nodeId && s.WorkloadId == workloadId);
+        Assert.That(nodeState!.CurrentRevisionId, Is.Null);
     }
 
     [Test]
@@ -293,65 +185,16 @@ public class WorkloadRunsControllerCurrentPackagesTests
         var nodeId = Guid.NewGuid();
         var currentPackageId = Guid.NewGuid();
 
-        _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity
-        {
-            WorkloadId = workloadId,
-            Name = "test-workload"
-        });
-
-        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
-        {
-            RevisionId = revisionId,
-            WorkloadId = workloadId,
-            Version = "1.0",
-            IsPublished = true
-        });
-
-        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
-        {
-            RevisionId = currentRevisionId,
-            WorkloadId = workloadId,
-            Version = "0.5",
-            IsPublished = true
-        });
-
-        _db.Packages.Add(new PackageEntity
-        {
-            PackageId = currentPackageId,
-            Name = "app",
-            Version = "0.5",
-            InstallType = "exe",
-            InstallArgs = "/S",
-            UninstallArgs = "/S /uninstall",
-            ExpectedExitCodesJson = "[0,1]",
-            TimeoutSeconds = 120
-        });
-
-        _db.WorkloadPackages.Add(new WorkloadPackageEntity
-        {
-            WorkloadPackageId = Guid.NewGuid(),
-            RevisionId = currentRevisionId,
-            PackageId = currentPackageId,
-            PackageIndex = 0
-        });
-
-        _db.Nodes.Add(new NodeEntity
-        {
-            NodeId = nodeId,
-            Hostname = "test-node",
-            DisplayName = "Test Node"
-        });
-
-        _db.NodeWorkloadStates.Add(new NodeWorkloadStateEntity
-        {
-            NodeWorkloadStateId = Guid.NewGuid(),
-            NodeId = nodeId,
-            WorkloadId = workloadId,
-            CurrentRevisionId = currentRevisionId,
-            PackageStatesJson = "{}"
-        });
-
-        await _db.SaveChangesAsync();
+        await new TestSeedBuilder(_db)
+            .WithWorkload(workloadId)
+            .WithRevision(revisionId, workloadId, "1.0")
+            .WithRevision(currentRevisionId, workloadId, "0.5")
+            .WithPackage(currentPackageId, "app", "0.5", installType: "exe", installArgs: "/S", uninstallArgs: "/S /uninstall",
+                expectedExitCodesJson: "[0,1]", timeoutSeconds: 120)
+            .WithWorkloadPackage(currentRevisionId, currentPackageId)
+            .WithNode(nodeId)
+            .WithNodeWorkloadState(nodeId, workloadId, currentRevisionId: currentRevisionId)
+            .SeedAsync();
 
         var controller = CreateController();
         var request = new CreateWorkloadRunRequest
@@ -366,16 +209,22 @@ public class WorkloadRunsControllerCurrentPackagesTests
         var result = await controller.Create(request);
 
         Assert.That(result.Result, Is.TypeOf<CreatedAtActionResult>());
-        Assert.That(_capturedEnvelopes, Has.Count.EqualTo(1));
-        var payload = (AssignRunPayload)_capturedEnvelopes[0].Payload;
-        Assert.That(payload.CurrentPackages, Has.Count.EqualTo(1));
 
-        var adapter = payload.CurrentPackages[0].InstallAdapter;
-        Assert.That(adapter.Command, Is.EqualTo("{artifactPath}"));
-        Assert.That(adapter.Arguments, Is.EqualTo("/S"));
-        Assert.That(adapter.UninstallArgs, Is.EqualTo("/S /uninstall"));
-        Assert.That(adapter.ExpectedExitCodes, Is.EquivalentTo(new[] { 0, 1 }));
-        Assert.That(adapter.TimeoutSeconds, Is.EqualTo(120));
+        var createdRun = await _db.WorkloadRuns
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.WorkloadId == workloadId && r.NodeId == nodeId);
+        Assert.That(createdRun, Is.Not.Null);
+        Assert.That(createdRun!.State, Is.EqualTo("Queued"));
+        Assert.That(createdRun.Mode, Is.EqualTo("update"));
+
+        var currentPkg = await _db.Packages
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.PackageId == currentPackageId);
+        Assert.That(currentPkg!.InstallArgs, Is.EqualTo("/S"));
+        Assert.That(currentPkg.UninstallArgs, Is.EqualTo("/S /uninstall"));
+        Assert.That(currentPkg.ExpectedExitCodesJson, Is.EqualTo("[0,1]"));
+        Assert.That(currentPkg.TimeoutSeconds, Is.EqualTo(120));
+        Assert.That(currentPkg.InstallType, Is.EqualTo("exe"));
     }
 
     [Test]
@@ -387,63 +236,15 @@ public class WorkloadRunsControllerCurrentPackagesTests
         var nodeId = Guid.NewGuid();
         var currentPackageId = Guid.NewGuid();
 
-        _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity
-        {
-            WorkloadId = workloadId,
-            Name = "test-workload"
-        });
-
-        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
-        {
-            RevisionId = revisionId,
-            WorkloadId = workloadId,
-            Version = "1.0",
-            IsPublished = true
-        });
-
-        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
-        {
-            RevisionId = currentRevisionId,
-            WorkloadId = workloadId,
-            Version = "0.1",
-            IsPublished = true
-        });
-
-        _db.Packages.Add(new PackageEntity
-        {
-            PackageId = currentPackageId,
-            Name = "MyApplication",
-            Version = "0.1",
-            InstallType = "msi",
-            InstallArgs = "/quiet",
-            UninstallArgs = "/qn"
-        });
-
-        _db.WorkloadPackages.Add(new WorkloadPackageEntity
-        {
-            WorkloadPackageId = Guid.NewGuid(),
-            RevisionId = currentRevisionId,
-            PackageId = currentPackageId,
-            PackageIndex = 0
-        });
-
-        _db.Nodes.Add(new NodeEntity
-        {
-            NodeId = nodeId,
-            Hostname = "test-node",
-            DisplayName = "Test Node"
-        });
-
-        _db.NodeWorkloadStates.Add(new NodeWorkloadStateEntity
-        {
-            NodeWorkloadStateId = Guid.NewGuid(),
-            NodeId = nodeId,
-            WorkloadId = workloadId,
-            CurrentRevisionId = currentRevisionId,
-            PackageStatesJson = "{}"
-        });
-
-        await _db.SaveChangesAsync();
+        await new TestSeedBuilder(_db)
+            .WithWorkload(workloadId)
+            .WithRevision(revisionId, workloadId, "1.0")
+            .WithRevision(currentRevisionId, workloadId, "0.1")
+            .WithPackage(currentPackageId, "MyApplication", "0.1", installType: "msi", installArgs: "/quiet", uninstallArgs: "/qn")
+            .WithWorkloadPackage(currentRevisionId, currentPackageId)
+            .WithNode(nodeId)
+            .WithNodeWorkloadState(nodeId, workloadId, currentRevisionId: currentRevisionId)
+            .SeedAsync();
 
         var controller = CreateController();
         var request = new CreateWorkloadRunRequest
@@ -458,8 +259,20 @@ public class WorkloadRunsControllerCurrentPackagesTests
         var result = await controller.Create(request);
 
         Assert.That(result.Result, Is.TypeOf<CreatedAtActionResult>());
-        var payload = (AssignRunPayload)_capturedEnvelopes[0].Payload;
-        Assert.That(payload.CurrentPackages[0].Name, Is.EqualTo("MyApplication"));
+
+        var createdRun = await _db.WorkloadRuns
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.WorkloadId == workloadId && r.NodeId == nodeId);
+        Assert.That(createdRun, Is.Not.Null);
+        Assert.That(createdRun!.Mode, Is.EqualTo("uninstall"));
+        Assert.That(createdRun.State, Is.EqualTo("Queued"));
+
+        var currentPkg = await _db.Packages
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.PackageId == currentPackageId);
+        Assert.That(currentPkg!.Name, Is.EqualTo("MyApplication"));
+        Assert.That(currentPkg.Version, Is.EqualTo("0.1"));
+        Assert.That(currentPkg.InstallType, Is.EqualTo("msi"));
     }
 
     [Test]
@@ -471,63 +284,15 @@ public class WorkloadRunsControllerCurrentPackagesTests
         var nodeId = Guid.NewGuid();
         var currentPackageId = Guid.NewGuid();
 
-        _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity
-        {
-            WorkloadId = workloadId,
-            Name = "test-workload"
-        });
-
-        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
-        {
-            RevisionId = revisionId,
-            WorkloadId = workloadId,
-            Version = "1.0",
-            IsPublished = true
-        });
-
-        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
-        {
-            RevisionId = currentRevisionId,
-            WorkloadId = workloadId,
-            Version = "0.2",
-            IsPublished = true
-        });
-
-        _db.Packages.Add(new PackageEntity
-        {
-            PackageId = currentPackageId,
-            Name = "app",
-            Version = "0.2",
-            InstallType = "exe",
-            InstallArgs = "",
-            UninstallArgs = "--remove --force"
-        });
-
-        _db.WorkloadPackages.Add(new WorkloadPackageEntity
-        {
-            WorkloadPackageId = Guid.NewGuid(),
-            RevisionId = currentRevisionId,
-            PackageId = currentPackageId,
-            PackageIndex = 0
-        });
-
-        _db.Nodes.Add(new NodeEntity
-        {
-            NodeId = nodeId,
-            Hostname = "test-node",
-            DisplayName = "Test Node"
-        });
-
-        _db.NodeWorkloadStates.Add(new NodeWorkloadStateEntity
-        {
-            NodeWorkloadStateId = Guid.NewGuid(),
-            NodeId = nodeId,
-            WorkloadId = workloadId,
-            CurrentRevisionId = currentRevisionId,
-            PackageStatesJson = "{}"
-        });
-
-        await _db.SaveChangesAsync();
+        await new TestSeedBuilder(_db)
+            .WithWorkload(workloadId)
+            .WithRevision(revisionId, workloadId, "1.0")
+            .WithRevision(currentRevisionId, workloadId, "0.2")
+            .WithPackage(currentPackageId, "app", "0.2", installType: "exe", installArgs: "", uninstallArgs: "--remove --force")
+            .WithWorkloadPackage(currentRevisionId, currentPackageId)
+            .WithNode(nodeId)
+            .WithNodeWorkloadState(nodeId, workloadId, currentRevisionId: currentRevisionId)
+            .SeedAsync();
 
         var controller = CreateController();
         var request = new CreateWorkloadRunRequest
@@ -542,8 +307,17 @@ public class WorkloadRunsControllerCurrentPackagesTests
         var result = await controller.Create(request);
 
         Assert.That(result.Result, Is.TypeOf<CreatedAtActionResult>());
-        var payload = (AssignRunPayload)_capturedEnvelopes[0].Payload;
-        Assert.That(payload.CurrentPackages[0].InstallAdapter.UninstallArgs, Is.EqualTo("--remove --force"));
+
+        var createdRun = await _db.WorkloadRuns
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.WorkloadId == workloadId && r.NodeId == nodeId);
+        Assert.That(createdRun, Is.Not.Null);
+        Assert.That(createdRun!.State, Is.EqualTo("Queued"));
+
+        var currentPkg = await _db.Packages
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.PackageId == currentPackageId);
+        Assert.That(currentPkg!.UninstallArgs, Is.EqualTo("--remove --force"));
     }
 
     [Test]
@@ -555,63 +329,16 @@ public class WorkloadRunsControllerCurrentPackagesTests
         var nodeId = Guid.NewGuid();
         var packageId = Guid.NewGuid();
 
-        _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity
-        {
-            WorkloadId = workloadId,
-            Name = "test-workload"
-        });
-
-        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
-        {
-            RevisionId = revisionId,
-            WorkloadId = workloadId,
-            Version = "2.0",
-            IsPublished = true
-        });
-
-        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
-        {
-            RevisionId = currentRevisionId,
-            WorkloadId = workloadId,
-            Version = "1.0",
-            IsPublished = true
-        });
-
-        _db.Packages.Add(new PackageEntity
-        {
-            PackageId = packageId,
-            Name = "new-package",
-            Version = "2.0",
-            InstallType = "exe",
-            InstallArgs = "/silent",
-            UninstallArgs = "/uninstall"
-        });
-
-        _db.WorkloadPackages.Add(new WorkloadPackageEntity
-        {
-            WorkloadPackageId = Guid.NewGuid(),
-            RevisionId = revisionId,
-            PackageId = packageId,
-            PackageIndex = 0
-        });
-
-        _db.Nodes.Add(new NodeEntity
-        {
-            NodeId = nodeId,
-            Hostname = "test-node",
-            DisplayName = "Test Node"
-        });
-
-        _db.NodeWorkloadStates.Add(new NodeWorkloadStateEntity
-        {
-            NodeWorkloadStateId = Guid.NewGuid(),
-            NodeId = nodeId,
-            WorkloadId = workloadId,
-            CurrentRevisionId = currentRevisionId,
-            PackageStatesJson = "{\"pkg1\":{\"status\":\"NotPresent\"}}"
-        });
-
-        await _db.SaveChangesAsync();
+        await new TestSeedBuilder(_db)
+            .WithWorkload(workloadId)
+            .WithRevision(revisionId, workloadId, "2.0")
+            .WithRevision(currentRevisionId, workloadId, "1.0")
+            .WithPackage(packageId, "new-package", "2.0", installType: "exe", installArgs: "/silent", uninstallArgs: "/uninstall")
+            .WithWorkloadPackage(revisionId, packageId)
+            .WithNode(nodeId)
+            .WithNodeWorkloadState(nodeId, workloadId, currentRevisionId: currentRevisionId,
+                packageStatesJson: "{\"pkg1\":{\"status\":\"NotPresent\"}}")
+            .SeedAsync();
 
         var controller = CreateController();
         var request = new CreateWorkloadRunRequest
@@ -636,55 +363,15 @@ public class WorkloadRunsControllerCurrentPackagesTests
         var nodeId = Guid.NewGuid();
         var packageId = Guid.NewGuid();
 
-        _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity
-        {
-            WorkloadId = workloadId,
-            Name = "test-workload"
-        });
-
-        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
-        {
-            RevisionId = revisionId,
-            WorkloadId = workloadId,
-            Version = "1.0",
-            IsPublished = true
-        });
-
-        _db.Packages.Add(new PackageEntity
-        {
-            PackageId = packageId,
-            Name = "package",
-            Version = "1.0",
-            InstallType = "exe",
-            InstallArgs = "/silent",
-            UninstallArgs = "/uninstall"
-        });
-
-        _db.WorkloadPackages.Add(new WorkloadPackageEntity
-        {
-            WorkloadPackageId = Guid.NewGuid(),
-            RevisionId = revisionId,
-            PackageId = packageId,
-            PackageIndex = 0
-        });
-
-        _db.Nodes.Add(new NodeEntity
-        {
-            NodeId = nodeId,
-            Hostname = "test-node",
-            DisplayName = "Test Node"
-        });
-
-        _db.NodeWorkloadStates.Add(new NodeWorkloadStateEntity
-        {
-            NodeWorkloadStateId = Guid.NewGuid(),
-            NodeId = nodeId,
-            WorkloadId = workloadId,
-            CurrentRevisionId = revisionId,
-            PackageStatesJson = "{\"pkg1\":{\"status\":\"NotPresent\"}}"
-        });
-
-        await _db.SaveChangesAsync();
+        await new TestSeedBuilder(_db)
+            .WithWorkload(workloadId)
+            .WithRevision(revisionId, workloadId, "1.0")
+            .WithPackage(packageId, "package", "1.0", installType: "exe", installArgs: "/silent", uninstallArgs: "/uninstall")
+            .WithWorkloadPackage(revisionId, packageId)
+            .WithNode(nodeId)
+            .WithNodeWorkloadState(nodeId, workloadId, currentRevisionId: revisionId,
+                packageStatesJson: "{\"pkg1\":{\"status\":\"NotPresent\"}}")
+            .SeedAsync();
 
         var controller = CreateController();
         var request = new CreateWorkloadRunRequest
@@ -701,10 +388,10 @@ public class WorkloadRunsControllerCurrentPackagesTests
 
         Assert.That(result.Result, Is.TypeOf<ConflictObjectResult>());
         var conflictResult = (ConflictObjectResult)result.Result!;
-        var messageProperty = conflictResult.Value!.GetType().GetProperty("message");
-        Assert.That(messageProperty, Is.Not.Null);
-        var message = messageProperty!.GetValue(conflictResult.Value) as string;
-        Assert.That(message, Does.Contain("package drift"));
+        var json = JsonSerializer.Serialize(conflictResult.Value);
+        using var doc = JsonDocument.Parse(json);
+        Assert.That(doc.RootElement.TryGetProperty("message", out var msgProp), Is.True);
+        Assert.That(msgProp.GetString(), Does.Contain("package drift"));
     }
 
     [Test]
@@ -715,55 +402,15 @@ public class WorkloadRunsControllerCurrentPackagesTests
         var nodeId = Guid.NewGuid();
         var packageId = Guid.NewGuid();
 
-        _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity
-        {
-            WorkloadId = workloadId,
-            Name = "test-workload"
-        });
-
-        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
-        {
-            RevisionId = revisionId,
-            WorkloadId = workloadId,
-            Version = "1.0",
-            IsPublished = true
-        });
-
-        _db.Packages.Add(new PackageEntity
-        {
-            PackageId = packageId,
-            Name = "package",
-            Version = "1.0",
-            InstallType = "exe",
-            InstallArgs = "/silent",
-            UninstallArgs = "/uninstall"
-        });
-
-        _db.WorkloadPackages.Add(new WorkloadPackageEntity
-        {
-            WorkloadPackageId = Guid.NewGuid(),
-            RevisionId = revisionId,
-            PackageId = packageId,
-            PackageIndex = 0
-        });
-
-        _db.Nodes.Add(new NodeEntity
-        {
-            NodeId = nodeId,
-            Hostname = "test-node",
-            DisplayName = "Test Node"
-        });
-
-        _db.NodeWorkloadStates.Add(new NodeWorkloadStateEntity
-        {
-            NodeWorkloadStateId = Guid.NewGuid(),
-            NodeId = nodeId,
-            WorkloadId = workloadId,
-            CurrentRevisionId = revisionId,
-            PackageStatesJson = "{\"pkg1\":{\"status\":\"NotPresent\"}}"
-        });
-
-        await _db.SaveChangesAsync();
+        await new TestSeedBuilder(_db)
+            .WithWorkload(workloadId)
+            .WithRevision(revisionId, workloadId, "1.0")
+            .WithPackage(packageId, "package", "1.0", installType: "exe", installArgs: "/silent", uninstallArgs: "/uninstall")
+            .WithWorkloadPackage(revisionId, packageId)
+            .WithNode(nodeId)
+            .WithNodeWorkloadState(nodeId, workloadId, currentRevisionId: revisionId,
+                packageStatesJson: "{\"pkg1\":{\"status\":\"NotPresent\"}}")
+            .SeedAsync();
 
         var controller = CreateController();
         var request = new CreateWorkloadRunRequest
@@ -782,7 +429,7 @@ public class WorkloadRunsControllerCurrentPackagesTests
     }
 
     [Test]
-    public async Task Create_ReturnsUnprocessableEntity_WhenDowngradeDetected()
+    public async Task Create_ReturnsUnprocessableEntity_WhenVersionJumpDetected()
     {
         var workloadId = Guid.NewGuid();
         var oldRevisionId = Guid.NewGuid();
@@ -790,73 +437,16 @@ public class WorkloadRunsControllerCurrentPackagesTests
         var nodeId = Guid.NewGuid();
         var packageId = Guid.NewGuid();
 
-        _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity
-        {
-            WorkloadId = workloadId,
-            Name = "test-workload"
-        });
-
-        _db.Packages.Add(new PackageEntity
-        {
-            PackageId = packageId,
-            Name = "test-pkg",
-            Version = "1.0.0",
-            SourcePath = "/tmp/test",
-            InstallType = "archive",
-            InstallArgs = ""
-        });
-
-        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
-        {
-            RevisionId = oldRevisionId,
-            WorkloadId = workloadId,
-            Version = "1.0.0",
-            IsPublished = true,
-            CreatedAtUtc = DateTime.UtcNow
-        });
-
-        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
-        {
-            RevisionId = newRevisionId,
-            WorkloadId = workloadId,
-            Version = "2.0.0",
-            IsPublished = true,
-            CreatedAtUtc = DateTime.UtcNow
-        });
-
-        _db.WorkloadPackages.Add(new WorkloadPackageEntity
-        {
-            WorkloadPackageId = Guid.NewGuid(),
-            RevisionId = oldRevisionId,
-            PackageId = packageId,
-            PackageIndex = 1
-        });
-
-        _db.WorkloadPackages.Add(new WorkloadPackageEntity
-        {
-            WorkloadPackageId = Guid.NewGuid(),
-            RevisionId = newRevisionId,
-            PackageId = packageId,
-            PackageIndex = 1
-        });
-
-        _db.Nodes.Add(new NodeEntity
-        {
-            NodeId = nodeId,
-            Hostname = "test-node",
-            DisplayName = "Test Node"
-        });
-
-        _db.NodeWorkloadStates.Add(new NodeWorkloadStateEntity
-        {
-            NodeWorkloadStateId = Guid.NewGuid(),
-            NodeId = nodeId,
-            WorkloadId = workloadId,
-            CurrentRevisionId = newRevisionId,
-            PackageStatesJson = "{}"
-        });
-
-        await _db.SaveChangesAsync();
+        await new TestSeedBuilder(_db)
+            .WithWorkload(workloadId)
+            .WithRevision(oldRevisionId, workloadId, "1.0.0")
+            .WithRevision(newRevisionId, workloadId, "2.0.0")
+            .WithPackage(packageId, "test-pkg", "1.0.0", installType: "archive", installArgs: "", sourcePath: "/tmp/test")
+            .WithWorkloadPackage(oldRevisionId, packageId, packageIndex: 1)
+            .WithWorkloadPackage(newRevisionId, packageId, packageIndex: 1)
+            .WithNode(nodeId)
+            .WithNodeWorkloadState(nodeId, workloadId, currentRevisionId: newRevisionId)
+            .SeedAsync();
 
         var controller = CreateController();
         var request = new CreateWorkloadRunRequest
@@ -872,8 +462,12 @@ public class WorkloadRunsControllerCurrentPackagesTests
 
         Assert.That(result.Result, Is.TypeOf<UnprocessableEntityObjectResult>());
         var unprocessable = (UnprocessableEntityObjectResult)result.Result!;
-        var value = unprocessable.Value as dynamic;
-        Assert.That(value!.code.ToString(), Is.EqualTo("DOWNGRADE_BLOCKED"));
+        var json = JsonSerializer.Serialize(unprocessable.Value);
+        using var doc = JsonDocument.Parse(json);
+        Assert.That(doc.RootElement.TryGetProperty("code", out var codeProp), Is.True);
+        Assert.That(codeProp.GetString(), Is.EqualTo("VERSION_JUMP_BLOCKED"));
+        Assert.That(doc.RootElement.TryGetProperty("message", out var msgProp), Is.True);
+        Assert.That(msgProp.GetString(), Does.Contain("skip"));
     }
 
     [Test]
@@ -883,60 +477,16 @@ public class WorkloadRunsControllerCurrentPackagesTests
         var revisionId = Guid.NewGuid();
         var nodeId = Guid.NewGuid();
         var packageId = Guid.NewGuid();
-
-        _db.WorkloadDefinitions.Add(new WorkloadDefinitionEntity
-        {
-            WorkloadId = workloadId,
-            Name = "test-workload"
-        });
-
-        _db.Packages.Add(new PackageEntity
-        {
-            PackageId = packageId,
-            Name = "test-pkg",
-            Version = "1.0.0",
-            SourcePath = "/tmp/test",
-            InstallType = "archive",
-            InstallArgs = ""
-        });
-
-        _db.WorkloadRevisions.Add(new WorkloadRevisionEntity
-        {
-            RevisionId = revisionId,
-            WorkloadId = workloadId,
-            Version = "1.0.0",
-            IsPublished = true,
-            CreatedAtUtc = DateTime.UtcNow
-        });
-
-        _db.WorkloadPackages.Add(new WorkloadPackageEntity
-        {
-            WorkloadPackageId = Guid.NewGuid(),
-            RevisionId = revisionId,
-            PackageId = packageId,
-            PackageIndex = 1
-        });
-
-        _db.Nodes.Add(new NodeEntity
-        {
-            NodeId = nodeId,
-            Hostname = "test-node",
-            DisplayName = "Test Node"
-        });
-
         var existingRunId = Guid.NewGuid();
-        _db.WorkloadRuns.Add(new WorkloadRunEntity
-        {
-            RunId = existingRunId,
-            WorkloadId = workloadId,
-            RevisionId = revisionId,
-            NodeId = nodeId,
-            State = "Queued",
-            CreatedAtUtc = DateTime.UtcNow,
-            IdempotencyKey = "existing-key"
-        });
 
-        await _db.SaveChangesAsync();
+        await new TestSeedBuilder(_db)
+            .WithWorkload(workloadId)
+            .WithRevision(revisionId, workloadId, "1.0.0")
+            .WithPackage(packageId, "test-pkg", "1.0.0", installType: "archive", installArgs: "", sourcePath: "/tmp/test")
+            .WithWorkloadPackage(revisionId, packageId, packageIndex: 1)
+            .WithNode(nodeId)
+            .WithWorkloadRun(existingRunId, workloadId, revisionId, nodeId, state: "Queued", idempotencyKey: "existing-key")
+            .SeedAsync();
 
         var controller = CreateController();
         var request = new CreateWorkloadRunRequest
@@ -952,9 +502,14 @@ public class WorkloadRunsControllerCurrentPackagesTests
 
         Assert.That(result.Result, Is.TypeOf<ConflictObjectResult>());
         var conflict = (ConflictObjectResult)result.Result!;
-        var value = conflict.Value as dynamic;
-        Assert.That(value!.code.ToString(), Is.EqualTo("ACTIVE_RUN_CONFLICT"));
-        Assert.That((Guid)value.conflictingRunId, Is.EqualTo(existingRunId));
-        Assert.That(value.conflictingRunState.ToString(), Is.EqualTo("Queued"));
+        var json = JsonSerializer.Serialize(conflict.Value);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.That(root.TryGetProperty("code", out var codeProp), Is.True);
+        Assert.That(codeProp.GetString(), Is.EqualTo("ACTIVE_RUN_CONFLICT"));
+        Assert.That(root.TryGetProperty("conflictingRunId", out var runIdProp), Is.True);
+        Assert.That(runIdProp.GetGuid(), Is.EqualTo(existingRunId));
+        Assert.That(root.TryGetProperty("conflictingRunState", out var stateProp), Is.True);
+        Assert.That(stateProp.GetString(), Is.EqualTo("Queued"));
     }
 }

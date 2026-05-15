@@ -242,6 +242,7 @@ export default function Nodes() {
                     </td>
                     <td className="px-6 py-4 text-sm">
                       <span
+                        data-testid={`node-status-${node.status}`}
                         className={`rounded-full px-2 py-1 text-xs font-medium ${
                           node.status === 'online'
                             ? 'bg-emerald-100 text-emerald-800'

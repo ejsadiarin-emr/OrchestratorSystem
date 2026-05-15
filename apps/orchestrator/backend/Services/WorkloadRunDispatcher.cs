@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using DeploymentPoC.Contracts.Runtime;
 using DeploymentPoC.Contracts.Runtime.RunPayloads;
@@ -8,6 +9,8 @@ using DeploymentPoC.Orchestrator.Validation;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+
+[assembly: InternalsVisibleTo("DeploymentPoC.Orchestrator.Tests")]
 
 namespace DeploymentPoC.Orchestrator.Services;
 
@@ -235,7 +238,7 @@ public sealed class WorkloadRunDispatcher
             .ToList();
     }
 
-    private static DetectionConfig BuildDetectionConfig(PackageEntity? pkg)
+    internal static DetectionConfig BuildDetectionConfig(PackageEntity? pkg)
     {
         DetectionConfig? config = null;
 
@@ -262,7 +265,7 @@ public sealed class WorkloadRunDispatcher
         return config;
     }
 
-    private static List<string> DeserializeStringList(string? json)
+    internal static List<string> DeserializeStringList(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
         {

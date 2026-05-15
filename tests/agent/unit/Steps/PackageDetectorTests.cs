@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.InteropServices;
 using DeploymentPoC.Agent.Steps;
 using DeploymentPoC.Contracts.Runtime.RunPayloads;
 using Microsoft.Win32;
@@ -9,6 +10,12 @@ namespace DeploymentPoC.Agent.Tests.Steps;
 [TestFixture]
 public class PackageDetectorTests
 {
+    [SetUp]
+    public void SkipOnNonWindows()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            Assert.Ignore("Registry tests require Windows");
+    }
     [Test]
     public async Task DetectAsync_FileExists_ReturnsAlreadySatisfied()
     {

@@ -11,7 +11,7 @@ namespace DeploymentPoC.Agent.IntegrationTests;
 public sealed class PipelineExecutorTests
 {
     [Test]
-    public async Task PipelineExecutor_ExecutesAllSteps_AndSendsCompletion()
+    public async Task ExecuteAsync_WithValidPayload_ExecutesAllStepsAndSendsCompletion()
     {
         var payload = Encoding.UTF8.GetBytes("Hello World!");
         var handler = new StubArtifactHandler(payload, supportsRange: false);
@@ -85,7 +85,7 @@ public sealed class PipelineExecutorTests
     }
 
     [Test]
-    public async Task PipelineExecutor_HaltsOnAcquireFailure_AndSendsFail()
+    public async Task ExecuteAsync_WhenAcquireFails_HaltsAndSendsFailureEnvelope()
     {
         var handler = new StubArtifactHandler([], supportsRange: false, statusCode: HttpStatusCode.NotFound);
         using var http = new HttpClient(handler);
@@ -147,7 +147,7 @@ public sealed class PipelineExecutorTests
     }
 
     [Test]
-    public async Task PipelineExecutor_HaltsOnInstallFailure_AndSendsFail()
+    public async Task ExecuteAsync_WhenInstallFails_HaltsAndSendsFailureEnvelope()
     {
         var payload = Encoding.UTF8.GetBytes("Hello World!");
         var handler = new StubArtifactHandler(payload, supportsRange: false);
@@ -207,7 +207,7 @@ public sealed class PipelineExecutorTests
     }
 
     [Test]
-    public async Task PipelineExecutor_ExecutesPackagesInOrder()
+    public async Task ExecuteAsync_WithMultiplePackages_ExecutesInPackageIndexOrder()
     {
         var payload = Encoding.UTF8.GetBytes("Hello World!");
         var handler = new StubArtifactHandler(payload, supportsRange: false);
@@ -301,7 +301,7 @@ public sealed class PipelineExecutorTests
     }
 
     [Test]
-    public async Task PipelineExecutor_PostInstallVerifyFails_SetsReasonCode2003()
+    public async Task ExecuteAsync_WhenPostInstallVerifyFails_SetsReasonCode2003()
     {
         var payload = Encoding.UTF8.GetBytes("Hello World!");
         var handler = new StubArtifactHandler(payload, supportsRange: false);
@@ -365,7 +365,7 @@ public sealed class PipelineExecutorTests
 public sealed class InstallOrUpgradeTests
 {
     [Test]
-    public async Task InstallOrUpgrade_ExecutesCommandSuccessfully()
+    public async Task ExecuteAsync_WithValidConfig_ExecutesCommandSuccessfully()
     {
         var tempFile = Path.Combine(Path.GetTempPath(), $"install-test-{Guid.NewGuid():N}.txt");
 
@@ -403,7 +403,7 @@ public sealed class InstallOrUpgradeTests
     }
 
     [Test]
-    public async Task InstallOrUpgrade_FailsWhenArtifactMissing()
+    public async Task ExecuteAsync_WhenArtifactMissing_ReturnsNotFoundError()
     {
         var config = new InstallAdapterConfig
         {
@@ -419,7 +419,7 @@ public sealed class InstallOrUpgradeTests
     }
 
     [Test]
-    public async Task InstallOrUpgrade_FailsOnNonZeroExitCode()
+    public async Task ExecuteAsync_WithNonZeroExitCode_ReturnsExitCodeError()
     {
         var artifactPath = Path.Combine(Path.GetTempPath(), $"artifact-{Guid.NewGuid():N}.bin");
         File.WriteAllText(artifactPath, "dummy");
@@ -446,7 +446,7 @@ public sealed class InstallOrUpgradeTests
     }
 
     [Test]
-    public async Task InstallOrUpgrade_ExpandsArtifactPathPlaceholder()
+    public async Task ExecuteAsync_WithArtifactPathPlaceholder_ExpandsPlaceholder()
     {
         var artifactPath = Path.Combine(Path.GetTempPath(), $"artifact-{Guid.NewGuid():N}.bin");
         File.WriteAllText(artifactPath, "dummy");
@@ -475,7 +475,7 @@ public sealed class InstallOrUpgradeTests
 public sealed class PostInstallVerifyTests
 {
     [Test]
-    public async Task PostInstallVerify_FileExists_ReturnsSuccess()
+    public async Task ExecuteAsync_WhenFileExists_ReturnsSuccess()
     {
         var tempFile = Path.Combine(Path.GetTempPath(), $"verify-test-{Guid.NewGuid():N}.txt");
         File.WriteAllText(tempFile, "test");
@@ -500,7 +500,7 @@ public sealed class PostInstallVerifyTests
     }
 
     [Test]
-    public async Task PostInstallVerify_FileMissing_ReturnsFailure()
+    public async Task ExecuteAsync_WhenFileMissing_ReturnsFailure()
     {
         var config = new DetectionConfig
         {
@@ -515,7 +515,7 @@ public sealed class PostInstallVerifyTests
     }
 
     [Test]
-    public async Task PostInstallVerify_Registry_ReturnsSuccessStub()
+    public async Task ExecuteAsync_WithRegistryDetection_ReturnsSuccessStub()
     {
         var config = new DetectionConfig
         {
@@ -529,7 +529,7 @@ public sealed class PostInstallVerifyTests
     }
 
     [Test]
-    public async Task PostInstallVerify_InvalidType_ReturnsFailure()
+    public async Task ExecuteAsync_WithInvalidDetectionType_ReturnsFailure()
     {
         var config = new DetectionConfig
         {
@@ -580,8 +580,8 @@ public sealed class EmitFinalizationTests
 
 public sealed class PipelineExecutorDiffTests
 {
-    [Xunit.Fact]
-    public async Task PipelineExecutor_TwoPhaseExecution_UninstallRunsBeforeInstall()
+    [Test]
+    public async Task ExecuteAsync_WithCurrentPackages_UninstallRunsBeforeInstall()
     {
         var payload = Encoding.UTF8.GetBytes("Hello World!");
         var handler = new StubArtifactHandler(payload, supportsRange: false);
@@ -661,18 +661,18 @@ public sealed class PipelineExecutorDiffTests
                 return Task.CompletedTask;
             });
 
-            Xunit.Assert.True(result.Success);
+            Assert.That(result.Success, Is.True);
 
             var stepStatuses = messages.Where(m => m.MessageType == MessageTypes.StepStatus).ToList();
-            Xunit.Assert.True(stepStatuses.Count >= 4);
+            Assert.That(stepStatuses.Count >= 4, Is.True);
 
             var firstStep = (StepStatusPayload)stepStatuses[2].Payload;
             var secondStep = (StepStatusPayload)stepStatuses[3].Payload;
 
-            Xunit.Assert.Equal("UninstallPackage", firstStep.StepName);
-            Xunit.Assert.Equal("pkg-a", firstStep.PackageId);
-            Xunit.Assert.Equal("AcquireArtifact", secondStep.StepName);
-            Xunit.Assert.Equal("pkg-b", secondStep.PackageId);
+            Assert.That(firstStep.StepName, Is.EqualTo("UninstallPackage"));
+            Assert.That(firstStep.PackageId, Is.EqualTo("pkg-a"));
+            Assert.That(secondStep.StepName, Is.EqualTo("AcquireArtifact"));
+            Assert.That(secondStep.PackageId, Is.EqualTo("pkg-b"));
         }
         finally
         {
@@ -683,8 +683,8 @@ public sealed class PipelineExecutorDiffTests
         }
     }
 
-    [Xunit.Fact]
-    public async Task PipelineExecutor_UnchangedPackages_AreSkipped()
+    [Test]
+    public async Task ExecuteAsync_WithUnchangedPackages_SkipsInstallation()
     {
         var payload = Encoding.UTF8.GetBytes("Hello World!");
         var handler = new StubArtifactHandler(payload, supportsRange: false);
@@ -770,7 +770,7 @@ public sealed class PipelineExecutorDiffTests
                 return Task.CompletedTask;
             });
 
-            Xunit.Assert.True(result.Success);
+            Assert.That(result.Success, Is.True);
 
             var stepStatuses = messages.Where(m => m.MessageType == MessageTypes.StepStatus).ToList();
             var installStepIds = stepStatuses
@@ -779,8 +779,8 @@ public sealed class PipelineExecutorDiffTests
                 .Distinct()
                 .ToList();
 
-            Xunit.Assert.DoesNotContain("pkg-a", installStepIds);
-            Xunit.Assert.Contains("pkg-b", installStepIds);
+            Assert.That(installStepIds, Does.Not.Contain("pkg-a"));
+            Assert.That(installStepIds, Does.Contain("pkg-b"));
         }
         finally
         {
@@ -789,8 +789,8 @@ public sealed class PipelineExecutorDiffTests
         }
     }
 
-    [Xunit.Fact]
-    public async Task PipelineExecutor_ChangedPackages_GoThroughInstallPipeline()
+    [Test]
+    public async Task ExecuteAsync_WithChangedPackages_GoesThroughInstallPipeline()
     {
         var payload = Encoding.UTF8.GetBytes("Hello World!");
         var handler = new StubArtifactHandler(payload, supportsRange: false);
@@ -857,17 +857,17 @@ public sealed class PipelineExecutorDiffTests
                 return Task.CompletedTask;
             });
 
-            Xunit.Assert.True(result.Success);
-            Xunit.Assert.Equal(4, result.StepsExecuted); // PreCheck + Acquire + Install + Verify
+            Assert.That(result.Success, Is.True);
+            Assert.That(result.StepsExecuted, Is.EqualTo(4)); // PreCheck + Acquire + Install + Verify
 
             var stepStatuses = messages.Where(m => m.MessageType == MessageTypes.StepStatus).ToList();
-            Xunit.Assert.Equal(4, stepStatuses.Count);
+            Assert.That(stepStatuses.Count, Is.EqualTo(4));
 
             var steps = stepStatuses.Select(m => (m.Payload as StepStatusPayload)?.StepName).ToList();
-            Xunit.Assert.Contains("PreCheckProbe", steps);
-            Xunit.Assert.Contains("AcquireArtifact", steps);
-            Xunit.Assert.Contains("InstallOrUpgrade", steps);
-            Xunit.Assert.Contains("PostInstallVerify", steps);
+            Assert.That(steps, Does.Contain("PreCheckProbe"));
+            Assert.That(steps, Does.Contain("AcquireArtifact"));
+            Assert.That(steps, Does.Contain("InstallOrUpgrade"));
+            Assert.That(steps, Does.Contain("PostInstallVerify"));
         }
         finally
         {
@@ -876,8 +876,8 @@ public sealed class PipelineExecutorDiffTests
         }
     }
 
-    [Xunit.Fact]
-    public async Task PipelineExecutor_RemovedPackages_GoThroughUninstallStep()
+    [Test]
+    public async Task ExecuteAsync_WithRemovedPackages_GoesThroughUninstallStep()
     {
         var payload = Encoding.UTF8.GetBytes("Hello World!");
         var handler = new StubArtifactHandler(payload, supportsRange: false);
@@ -934,16 +934,16 @@ public sealed class PipelineExecutorDiffTests
                 return Task.CompletedTask;
             });
 
-            Xunit.Assert.True(result.Success);
-            Xunit.Assert.Equal(2, result.StepsExecuted); // PreCheck + Uninstall
+            Assert.That(result.Success, Is.True);
+            Assert.That(result.StepsExecuted, Is.EqualTo(2)); // PreCheck + Uninstall
 
             var stepStatuses = messages.Where(m => m.MessageType == MessageTypes.StepStatus).ToList();
-            Xunit.Assert.Equal(2, stepStatuses.Count);
+            Assert.That(stepStatuses.Count, Is.EqualTo(2));
 
             var uninstallStep = stepStatuses
                 .Select(m => (StepStatusPayload)m.Payload)
                 .First(s => s.StepName == "UninstallPackage");
-            Xunit.Assert.Equal("pkg-a", uninstallStep.PackageId);
+            Assert.That(uninstallStep.PackageId, Is.EqualTo("pkg-a"));
         }
         finally
         {
@@ -952,8 +952,8 @@ public sealed class PipelineExecutorDiffTests
         }
     }
 
-    [Xunit.Fact]
-    public async Task PipelineExecutor_FailureDuringUninstall_HaltsPipeline()
+    [Test]
+    public async Task ExecuteAsync_WhenUninstallFails_HaltsPipeline()
     {
         var payload = Encoding.UTF8.GetBytes("Hello World!");
         var handler = new StubArtifactHandler(payload, supportsRange: false);
@@ -1031,15 +1031,15 @@ public sealed class PipelineExecutorDiffTests
                 return Task.CompletedTask;
             });
 
-            Xunit.Assert.False(result.Success);
-            Xunit.Assert.Equal(3, result.StepsExecuted); // PreCheck(pkg-b) + PreCheck(pkg-a) + Uninstall(pkg-a)
-            Xunit.Assert.Equal("exit_code_1", result.Error);
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.StepsExecuted, Is.EqualTo(3)); // PreCheck(pkg-b) + PreCheck(pkg-a) + Uninstall(pkg-a)
+            Assert.That(result.Error, Is.EqualTo("exit_code_1"));
 
             var stepStatuses = messages.Where(m => m.MessageType == MessageTypes.StepStatus).ToList();
-            Xunit.Assert.Equal(3, stepStatuses.Count);
+            Assert.That(stepStatuses.Count, Is.EqualTo(3));
 
             var lastMessage = messages.Last();
-            Xunit.Assert.Equal(MessageTypes.Fail, lastMessage.MessageType);
+            Assert.That(lastMessage.MessageType, Is.EqualTo(MessageTypes.Fail));
         }
         finally
         {
@@ -1048,8 +1048,8 @@ public sealed class PipelineExecutorDiffTests
         }
     }
 
-    [Xunit.Fact]
-    public async Task Uninstall_UninstallsRemovedAndInstallsChanged_WithoutInitSteps()
+    [Test]
+    public async Task ExecuteAsync_WithRemovedAndChanged_UninstallsAndInstallsWithoutInitSteps()
     {
         var payload = Encoding.UTF8.GetBytes("artifact");
         var handler = new StubArtifactHandler(payload, supportsRange: false);
@@ -1141,30 +1141,30 @@ public sealed class PipelineExecutorDiffTests
                 return Task.CompletedTask;
             });
 
-            Xunit.Assert.True(result.Success);
+            Assert.That(result.Success, Is.True);
 
             var stepStatuses = messages.Where(m => m.MessageType == MessageTypes.StepStatus).ToList();
             var stepNames = stepStatuses.Select(m => ((StepStatusPayload)m.Payload).StepName).ToList();
 
-            Xunit.Assert.Contains("UninstallPackage", stepNames);
-            Xunit.Assert.Contains("InstallOrUpgrade", stepNames);
+            Assert.That(stepNames, Does.Contain("UninstallPackage"));
+            Assert.That(stepNames, Does.Contain("InstallOrUpgrade"));
 
             var uninstallStep = stepStatuses
                 .Select(m => (StepStatusPayload)m.Payload)
                 .First(s => s.StepName == "UninstallPackage");
-            Xunit.Assert.Equal("pkg-b", uninstallStep.PackageId);
+            Assert.That(uninstallStep.PackageId, Is.EqualTo("pkg-b"));
 
             var installStep = stepStatuses
                 .Select(m => (StepStatusPayload)m.Payload)
                 .First(s => s.StepName == "InstallOrUpgrade");
-            Xunit.Assert.Equal("pkg-a", installStep.PackageId);
+            Assert.That(installStep.PackageId, Is.EqualTo("pkg-a"));
 
-            Xunit.Assert.DoesNotContain(stepNames, n => n.StartsWith("PreWorkload"));
-            Xunit.Assert.DoesNotContain(stepNames, n => n.StartsWith("PreInit"));
-            Xunit.Assert.DoesNotContain(stepNames, n => n.StartsWith("PostInit"));
-            Xunit.Assert.DoesNotContain(stepNames, n => n.StartsWith("PostWorkload"));
-            Xunit.Assert.Contains("PreUninstall_0", stepNames);
-            Xunit.Assert.Contains("PostUninstall_0", stepNames);
+            Assert.That(stepNames, Has.None.StartsWith("PreWorkload"));
+            Assert.That(stepNames, Has.None.StartsWith("PreInit"));
+            Assert.That(stepNames, Has.None.StartsWith("PostInit"));
+            Assert.That(stepNames, Has.None.StartsWith("PostWorkload"));
+            Assert.That(stepNames, Does.Contain("PreUninstall_0"));
+            Assert.That(stepNames, Does.Contain("PostUninstall_0"));
         }
         finally
         {
@@ -1173,8 +1173,8 @@ public sealed class PipelineExecutorDiffTests
         }
     }
 
-    [Xunit.Fact]
-    public async Task Update_TwoPhaseWithInitSteps_RunsInOrder()
+    [Test]
+    public async Task ExecuteAsync_WithUpdateMode_RunsStepsInCorrectOrder()
     {
         var payload = Encoding.UTF8.GetBytes("artifact");
         var handler = new StubArtifactHandler(payload, supportsRange: false);
@@ -1259,7 +1259,7 @@ public sealed class PipelineExecutorDiffTests
                 return Task.CompletedTask;
             });
 
-            Xunit.Assert.True(result.Success);
+            Assert.That(result.Success, Is.True);
 
             var stepStatuses = messages.Where(m => m.MessageType == MessageTypes.StepStatus).ToList();
             var steps = stepStatuses.Select(m => (StepStatusPayload)m.Payload).ToList();
@@ -1272,20 +1272,20 @@ public sealed class PipelineExecutorDiffTests
             int postInitIdx = steps.FindIndex(s => s.StepName == "PostInit_1_0");
             int postWorkloadIdx = steps.FindIndex(s => s.StepName == "PostWorkload_0");
 
-            Xunit.Assert.True(uninstallIdx >= 0);
-            Xunit.Assert.True(preInitIdx >= 0);
-            Xunit.Assert.True(acquireIdx >= 0);
-            Xunit.Assert.True(installIdx >= 0);
-            Xunit.Assert.True(verifyIdx >= 0);
-            Xunit.Assert.True(postInitIdx >= 0);
-            Xunit.Assert.True(postWorkloadIdx >= 0);
+            Assert.That(uninstallIdx >= 0, Is.True);
+            Assert.That(preInitIdx >= 0, Is.True);
+            Assert.That(acquireIdx >= 0, Is.True);
+            Assert.That(installIdx >= 0, Is.True);
+            Assert.That(verifyIdx >= 0, Is.True);
+            Assert.That(postInitIdx >= 0, Is.True);
+            Assert.That(postWorkloadIdx >= 0, Is.True);
 
-            Xunit.Assert.True(uninstallIdx < preInitIdx);
-            Xunit.Assert.True(preInitIdx < acquireIdx);
-            Xunit.Assert.True(acquireIdx < installIdx);
-            Xunit.Assert.True(installIdx < verifyIdx);
-            Xunit.Assert.True(verifyIdx < postInitIdx);
-            Xunit.Assert.True(postInitIdx < postWorkloadIdx);
+            Assert.That(uninstallIdx < preInitIdx, Is.True);
+            Assert.That(preInitIdx < acquireIdx, Is.True);
+            Assert.That(acquireIdx < installIdx, Is.True);
+            Assert.That(installIdx < verifyIdx, Is.True);
+            Assert.That(verifyIdx < postInitIdx, Is.True);
+            Assert.That(postInitIdx < postWorkloadIdx, Is.True);
         }
         finally
         {

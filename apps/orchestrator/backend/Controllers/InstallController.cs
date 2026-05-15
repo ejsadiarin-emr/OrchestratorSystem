@@ -30,12 +30,19 @@ public class InstallController : ControllerBase
 
         var result = await _pipeline.ExecuteAsync(context);
 
-        return Ok(new
+        var response = new
         {
             result.IsSuccessful,
             result.ErrorMessage,
             result.ExecutionLog
-        });
+        };
+
+        if (!result.IsSuccessful)
+        {
+            return BadRequest(response);
+        }
+
+        return Ok(response);
     }
 }
 

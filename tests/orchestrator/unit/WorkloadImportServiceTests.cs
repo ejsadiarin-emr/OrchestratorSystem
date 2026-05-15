@@ -284,23 +284,16 @@ public sealed class WorkloadImportServiceTests : IDisposable
     [Test]
     public void Dispatch_DeserializeInitSteps_HandlesEmptyAndNull()
     {
-        var dispatcher = new WorkloadRunDispatcher(null!, null!, null!, null!);
-        var method = typeof(WorkloadRunDispatcher).GetMethod("DeserializeStringList",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        var result1 = WorkloadRunDispatcher.DeserializeStringList(null);
+        Assert.That(result1, Is.Empty);
 
-        Assert.That(method, Is.Not.Null);
+        var result2 = WorkloadRunDispatcher.DeserializeStringList("");
+        Assert.That(result2, Is.Empty);
 
-        var result1 = method!.Invoke(null, new object?[] { null });
-        Assert.That(result1, Is.TypeOf<List<string>>());
-        Assert.That((List<string>)result1!, Is.Empty);
+        var result3 = WorkloadRunDispatcher.DeserializeStringList("[]");
+        Assert.That(result3, Is.Empty);
 
-        var result2 = method.Invoke(null, new object[] { "" });
-        Assert.That((List<string>)result2!, Is.Empty);
-
-        var result3 = method.Invoke(null, new object[] { "[]" });
-        Assert.That((List<string>)result3!, Is.Empty);
-
-        var result4 = method.Invoke(null, new object[] { "[\"cmd1\",\"cmd2\"]" });
-        Assert.That((List<string>)result4!, Is.EqualTo(new List<string> { "cmd1", "cmd2" }));
+        var result4 = WorkloadRunDispatcher.DeserializeStringList("[\"cmd1\",\"cmd2\"]");
+        Assert.That(result4, Is.EqualTo(new List<string> { "cmd1", "cmd2" }));
     }
 }

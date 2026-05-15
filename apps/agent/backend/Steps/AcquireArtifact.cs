@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
+
+[assembly: InternalsVisibleTo("DeploymentPoC.Agent.Tests")]
 
 namespace DeploymentPoC.Agent.Steps;
 
@@ -195,6 +198,7 @@ public sealed class AcquireArtifact
                                     }
 
                                     bytesWritten = output.Length;
+                                    from = expectedLength.Value;
                                     chunkDownloaded = true;
                                     break;
                                 }
@@ -315,7 +319,7 @@ public sealed class AcquireArtifact
         }
     }
 
-    private async Task<long> DownloadFullAsync(Uri artifactUri, Stream output, CancellationToken ct)
+    internal async Task<long> DownloadFullAsync(Uri artifactUri, Stream output, CancellationToken ct)
     {
         using var response = await _http.GetAsync(artifactUri, HttpCompletionOption.ResponseHeadersRead, ct);
         response.EnsureSuccessStatusCode();
@@ -347,7 +351,7 @@ public sealed class AcquireArtifact
         return totalCopied;
     }
 
-    private static async Task<AcquireArtifactResult> FinalizeResultAsync(
+    internal static async Task<AcquireArtifactResult> FinalizeResultAsync(
         AcquireArtifactRequest request,
         string destinationPath,
         long bytesWritten,
@@ -518,7 +522,7 @@ public sealed class AcquireArtifact
         return path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
-    private static bool IsValidContentRange(ContentRangeHeaderValue? contentRange, long from, long to, long expectedLength)
+    internal static bool IsValidContentRange(ContentRangeHeaderValue? contentRange, long from, long to, long expectedLength)
     {
         if (contentRange is null || !contentRange.HasRange || contentRange.From is null || contentRange.To is null)
         {

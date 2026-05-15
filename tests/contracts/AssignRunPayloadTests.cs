@@ -189,6 +189,8 @@ public class AssignRunPayloadTests
         // Assert
         Assert.Equal(2, payload.PreWorkloadSteps.Count);
         Assert.Equal("backup", payload.PreWorkloadSteps[0]);
+    }
+
     [Fact]
     public void AssignRunPayload_RoundTrips_ThroughJson()
     {

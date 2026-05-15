@@ -34,6 +34,7 @@ ifeq ($(SHELL_KIND),powershell)
 	STOP_PROCESSES_CMD = taskkill /F /IM DeploymentPoC.Orchestrator.exe *>$$null; taskkill /F /IM DeploymentPoC.Agent.exe *>$$null; Start-Sleep -Seconds 2
 	BUILD_FRONTEND_CMD = Set-Location apps/orchestrator/web; pnpm install; pnpm run build
 	RUN_FRONTEND_CMD = Set-Location apps/orchestrator/web; pnpm run dev
+	TEST_FRONTEND_CMD = Set-Location apps/orchestrator/web; pnpm test -- --run
 	COPY_WORKLOADS_CMD = if (!(Test-Path ./dist/workloads)) { New-Item -ItemType Directory -Path ./dist/workloads | Out-Null }; Copy-Item -Path test-workloads/*.json -Destination ./dist/workloads/ -Force
 	CLEAN_DIST_CMD = if (Test-Path ./dist) { Get-ChildItem -Path ./dist -Exclude .gitignore | Remove-Item -Recurse -Force }
 	DOWNLOAD_ARTIFACTS_CMD = ./scripts/download-amazing-workload-artifacts.ps1
@@ -41,12 +42,13 @@ else
 	STOP_PROCESSES_CMD = pkill -f '[D]eploymentPoC.Orchestrator' || true; pkill -f '[D]eploymentPoC.Agent' || true; sleep 2
 	BUILD_FRONTEND_CMD = cd apps/orchestrator/web && pnpm install && pnpm run build
 	RUN_FRONTEND_CMD = cd apps/orchestrator/web && pnpm run dev
+	TEST_FRONTEND_CMD = cd apps/orchestrator/web && pnpm test -- --run
 	COPY_WORKLOADS_CMD = mkdir -p dist/workloads && cp test-workloads/*.json dist/workloads/
 	CLEAN_DIST_CMD = if [ -d dist ]; then find dist -mindepth 1 ! -name .gitignore -exec rm -rf {} +; fi
 	DOWNLOAD_ARTIFACTS_CMD = ./scripts/download-amazing-workload-artifacts.sh
 endif
 
-.PHONY: publish build publish-orchestrator publish-agent publish-full build-frontend copy-workloads download-artifacts run-orchestrator run-agent run-frontend clean stop-processes wsl-cross-publish wsl-cross-publish-full clean-win-dist
+.PHONY: publish build test publish-orchestrator publish-agent publish-full build-frontend copy-workloads download-artifacts run-orchestrator run-agent run-frontend clean stop-processes wsl-cross-publish wsl-cross-publish-full clean-win-dist
 
 # Default target (preserves DB)
 publish: stop-processes build-frontend publish-orchestrator publish-agent download-artifacts copy-workloads
@@ -57,6 +59,29 @@ build: build-frontend
 	@echo "-----------------------------------------------------"
 	dotnet build apps/orchestrator/backend/DeploymentPoC.Orchestrator.csproj
 	dotnet build apps/agent/backend/DeploymentPoC.Agent.csproj
+
+# Run all test suites
+test:
+	@echo "====================================================="
+	@echo "=== Running contracts tests ==="
+	dotnet test tests/contracts/
+	@echo "====================================================="
+	@echo "=== Running orchestrator unit tests ==="
+	dotnet test tests/orchestrator/unit/
+	@echo "====================================================="
+	@echo "=== Running orchestrator integration tests ==="
+	dotnet test tests/orchestrator/integration/
+	@echo "====================================================="
+	@echo "=== Running agent unit tests ==="
+	dotnet test tests/agent/unit/
+	@echo "====================================================="
+	@echo "=== Running agent integration tests ==="
+	dotnet test tests/agent/integration/
+	@echo "====================================================="
+	@echo "=== Running frontend tests ==="
+	$(TEST_FRONTEND_CMD)
+	@echo "====================================================="
+	@echo "=== All test suites complete ==="
 
 # Publish self-contained orchestrator
 publish-orchestrator: build-frontend stop-processes

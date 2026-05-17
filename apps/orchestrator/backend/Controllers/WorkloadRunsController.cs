@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace DeploymentPoC.Orchestrator.Controllers;
@@ -27,14 +28,16 @@ public sealed class WorkloadRunsController : ControllerBase
     private readonly WorkloadRunDispatcher _dispatcher;
     private readonly ArtifactStoreService _artifactStore;
     private readonly ILogger<WorkloadRunsController> _logger;
+    private readonly int _heartbeatStaleThresholdSeconds;
 
-    public WorkloadRunsController(InstallerDbContext db, PolicyEvaluationService policyEvaluation, WorkloadRunDispatcher dispatcher, ArtifactStoreService artifactStore, ILogger<WorkloadRunsController> logger)
+    public WorkloadRunsController(InstallerDbContext db, PolicyEvaluationService policyEvaluation, WorkloadRunDispatcher dispatcher, ArtifactStoreService artifactStore, ILogger<WorkloadRunsController> logger, IConfiguration configuration)
     {
         _db = db;
         _policyEvaluation = policyEvaluation;
         _dispatcher = dispatcher;
         _artifactStore = artifactStore;
         _logger = logger;
+        _heartbeatStaleThresholdSeconds = configuration.GetValue("Heartbeat:StaleThresholdSeconds", 15);
     }
 
     [HttpPost]
@@ -626,9 +629,9 @@ public sealed class WorkloadRunsController : ControllerBase
                 : new List<PendingPackageDto>()
         }).ToList();
 
-        // Heartbeat: refresh node status and last-seen timestamp on every poll
+        // Heartbeat: only write when stale to reduce SQLite write pressure
         var node = await _db.Nodes.FindAsync(agentId);
-        if (node is not null)
+        if (node is not null && (DateTime.UtcNow - node.LastSeenUtc).TotalSeconds > _heartbeatStaleThresholdSeconds)
         {
             node.Status = "Online";
             node.LastSeenUtc = DateTime.UtcNow;

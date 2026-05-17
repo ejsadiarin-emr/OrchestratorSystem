@@ -67,13 +67,14 @@ public class WorkloadRunsControllerReportTests
 
     private WorkloadRunsController CreateController()
     {
-        var configMock = new Mock<IConfiguration>();
-        configMock.Setup(c => c["ArtifactStore:RootPath"]).Returns(_tempArtifactPath);
-        var artifactStore = new ArtifactStoreService(configMock.Object);
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { { "ArtifactStore:RootPath", _tempArtifactPath }, { "Heartbeat:StaleThresholdSeconds", "15" } })
+            .Build();
+        var artifactStore = new ArtifactStoreService(config);
         var dispatcherLoggerMock = new Mock<ILogger<WorkloadRunDispatcher>>();
         var dispatcher = new WorkloadRunDispatcher(_db, _hubContextMock.Object, artifactStore, dispatcherLoggerMock.Object);
         var loggerMock = new Mock<ILogger<WorkloadRunsController>>();
-        var controller = new WorkloadRunsController(_db, _policyEvaluation, dispatcher, artifactStore, loggerMock.Object);
+        var controller = new WorkloadRunsController(_db, _policyEvaluation, dispatcher, artifactStore, loggerMock.Object, config);
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext()

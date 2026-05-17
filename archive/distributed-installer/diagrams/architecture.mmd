@@ -1,0 +1,89 @@
+flowchart LR
+    subgraph Admin[System Admin]
+        UI[React Dashboard]
+    end
+
+    subgraph Orchestrator[Orchestrator Node]
+        API[REST API]
+        HUB[SignalR Hub]
+        HANGFIRE[Hangfire Queue]
+        DB[(SQL Server)]
+        AUDIT[(Audit Events)]
+    end
+
+    subgraph Artifact[Artifact Source]
+        REPO[(UNC/HTTPS Package Repo)]
+    end
+
+    subgraph AgentNodeA[Remote Machine A]
+        AGENT1[Agent Windows Service]
+        CH1[Channel<T> + BackgroundService]
+        CHILD1[Child Process (Job Executor)]
+        PIPE1[Install Pipeline]
+    end
+
+    subgraph AgentNodeB[Remote Machine B]
+        AGENT2[Agent Windows Service]
+        CH2[Channel<T> + BackgroundService]
+        CHILD2[Child Process (Job Executor)]
+        PIPE2[Install Pipeline]
+    end
+
+    subgraph Legacy[Legacy/External Installers]
+        MSI[MSI]
+        EXE[EXE/Custom]
+        VB[Legacy Components]
+    end
+
+    subgraph Obs[Observability]
+        OTEL[OTel Collector]
+        LOGS[(Logs)]
+        METRICS[(Metrics)]
+        TRACES[(Traces)]
+    end
+
+    UI -->|REST| API
+    UI -.->|TB-01| API
+    UI -->|live updates| HUB
+    API --> DB
+    API --> AUDIT
+    API -->|enqueue| HANGFIRE
+    HANGFIRE -->|resolve + dispatch| HUB
+
+    HUB -->|SignalR: AssignJob| AGENT1
+    HUB -->|SignalR: AssignJob| AGENT2
+    AGENT1 -.->|TB-02| HUB
+    AGENT2 -.->|TB-02| HUB
+    AGENT1 -->|SignalR: heartbeat + status| HUB
+    AGENT2 -->|SignalR: heartbeat + status| HUB
+
+    AGENT1 -->|enqueue| CH1
+    AGENT2 -->|enqueue| CH2
+    CH1 -->|dequeue| CHILD1
+    CH2 -->|dequeue| CHILD2
+    CHILD1 --> PIPE1
+    CHILD2 --> PIPE2
+
+    AGENT1 --> REPO
+    AGENT2 --> REPO
+    API -.->|TB-03| REPO
+    AGENT1 -.->|TB-03| REPO
+    AGENT2 -.->|TB-03| REPO
+
+    API -.->|TB-04| AUDIT
+
+    PIPE1 --> MSI
+    PIPE1 --> EXE
+    PIPE1 --> VB
+
+    PIPE2 --> MSI
+    PIPE2 --> EXE
+    PIPE2 --> VB
+
+    API --> OTEL
+    AGENT1 --> OTEL
+    AGENT2 --> OTEL
+
+    OTEL --> LOGS
+    OTEL --> METRICS
+    OTEL --> TRACES

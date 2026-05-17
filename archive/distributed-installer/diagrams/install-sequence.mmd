@@ -1,0 +1,53 @@
+sequenceDiagram
+    participant Admin as System Admin
+    participant UI as React UI
+    participant API as Orchestrator REST API
+    participant HF as Hangfire
+    participant Hub as SignalR Hub
+    participant Agent as Agent Windows Service
+    participant Ch as Channel<T> + BG Service
+    participant Child as Child Process
+    participant Repo as Package Repo
+    participant Installer as Installer Adapter
+    participant Obs as OTel Pipeline
+
+    Admin->>UI: Submit install request
+    UI->>API: POST /jobs
+    API->>API: Validate manifest
+    API->>HF: Enqueue job
+    HF->>HF: Resolve dependencies
+    HF->>Hub: Dispatch to target agent
+    Hub->>Agent: SignalR: AssignJob(assignmentId, leaseId, sequence)
+    Agent->>Hub: SignalR: AckClaim(assignmentId, leaseId, sequence)
+    Agent->>Ch: Enqueue job message
+    Ch->>Child: Spawn child process
+
+    Child->>Obs: Start root + step spans
+    Child->>Child: Prechecks (dry-run)
+    Child->>Repo: Download artifact
+    Child->>Child: Verify signature/hash
+    Child->>Installer: Execute install
+    Installer-->>Child: Exit code/log
+    Child->>Child: Post-verify
+
+    Child->>Agent: Report step status
+    Agent->>Hub: SignalR: StepStatus(jobId, stepId, sequence, status)
+    Agent->>Hub: SignalR: LeaseHeartbeat(leaseId)
+    Hub->>UI: Push live update
+
+    alt Success
+        Child->>Agent: Report succeeded
+        Agent->>Hub: SignalR: Complete(result, reasonCode)
+        Agent->>Hub: SignalR: LeaseClose(leaseId)
+        Hub->>HF: Mark job complete
+    else Failure
+        Child->>Child: Run rollback/compensation
+        Child->>Agent: Report failed/rolledback
+        Agent->>Hub: SignalR: Fail(result, reasonCode)
+        Agent->>Hub: SignalR: LeaseClose(leaseId)
+        Hub->>HF: Mark job failed
+    end
+
+    Child->>Obs: Emit final status telemetry
+    Hub->>UI: Push final state
+    UI-->>Admin: Show outcome and diagnostics
